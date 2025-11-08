@@ -38,8 +38,9 @@ All colors MUST be HSL.
 
     --radius: 1rem;
 
-    --wedding-gradient-start: 226 100% 83%;
-    --wedding-gradient-end: 171 100% 44%;
+    --wedding-gold: 45 100% 72%;
+    --wedding-blue: 221 79% 82%;
+    --wedding-pink: 333 89% 62%;
     --kakao-yellow: 54 99% 50%;
 
     --sidebar-background: 0 0% 98%;
@@ -72,8 +73,9 @@ All colors MUST be HSL.
     --border: 217 33% 18%;
     --input: 217 33% 18%;
     --ring: 226 100% 83%;
-    --wedding-gradient-start: 226 100% 83%;
-    --wedding-gradient-end: 171 100% 44%;
+    --wedding-gold: 45 100% 72%;
+    --wedding-blue: 221 79% 82%;
+    --wedding-pink: 333 89% 62%;
     --kakao-yellow: 54 99% 50%;
   }
 }
@@ -93,12 +95,12 @@ All colors MUST be HSL.
 }
 
 @layer utilities {
-  .wedding-gradient {
-    background: linear-gradient(135deg, hsl(var(--wedding-gradient-start)), hsl(var(--wedding-gradient-end)));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
+.wedding-gradient {
+  background: linear-gradient(135deg, hsl(var(--wedding-blue)), hsl(var(--wedding-pink)), hsl(var(--wedding-gold)));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
 
   .kakao-button {
     background-color: hsl(var(--kakao-yellow));

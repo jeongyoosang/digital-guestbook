@@ -19,8 +19,7 @@ export const HeroSection = ({ onCTAClick }: HeroSectionProps) => {
       
       <div className="relative z-10 container mx-auto px-4 py-20 text-center">
         <h1 className="text-5xl md:text-7xl font-extrabold mb-6 tracking-tight">
-          디지털{" "}
-          <span className="wedding-gradient">방명록</span>
+          <span className="wedding-gradient">디지털 방명록</span>
         </h1>
         
         <p className="text-2xl md:text-3xl mb-8 text-foreground/90">

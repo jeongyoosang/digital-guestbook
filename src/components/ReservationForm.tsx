@@ -25,6 +25,7 @@ const formSchema = z.object({
   tentativeDate: z.string().optional(),
   venueName: z.string().min(1, "예식장명을 입력해주세요."),
   venueLocation: z.string().min(1, "예식장 위치를 입력해주세요."),
+  mobileInvitationLink: z.string().optional(),
   inquiry: z.string().optional(),
 });
 
@@ -174,6 +175,19 @@ export const ReservationForm = () => {
             <Label htmlFor="venueLocation">예식장 위치 또는 주소</Label>
             <Input id="venueLocation" {...register("venueLocation")} className="mt-2" />
             {errors.venueLocation && <p className="text-sm text-destructive mt-1">{errors.venueLocation.message}</p>}
+          </div>
+
+          <div>
+            <Label htmlFor="mobileInvitationLink">모바일 청첩장 링크 (선택)</Label>
+            <Input 
+              id="mobileInvitationLink" 
+              placeholder="예: https://m-card.com/parkjae0"
+              {...register("mobileInvitationLink")} 
+              className="mt-2" 
+            />
+            <p className="text-sm text-muted-foreground mt-1">
+              아직 모바일 청첩장이 없으신 경우, 예식 일정만 남겨주세요.
+            </p>
           </div>
 
           <div>

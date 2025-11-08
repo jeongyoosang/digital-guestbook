@@ -58,10 +58,9 @@ export default {
           ring: "hsl(var(--sidebar-ring))",
         },
         wedding: {
-          gradient: {
-            start: "hsl(var(--wedding-gradient-start))",
-            end: "hsl(var(--wedding-gradient-end))",
-          },
+          gold: "hsl(var(--wedding-gold))",
+          blue: "hsl(var(--wedding-blue))",
+          pink: "hsl(var(--wedding-pink))",
         },
         kakao: "hsl(var(--kakao-yellow))",
       },
