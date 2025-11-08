@@ -57,6 +57,16 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        wedding: {
+          gradient: {
+            start: "hsl(var(--wedding-gradient-start))",
+            end: "hsl(var(--wedding-gradient-end))",
+          },
+        },
+        kakao: "hsl(var(--kakao-yellow))",
+      },
+      fontFamily: {
+        sans: ['"Nanum Gothic"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         lg: "var(--radius)",
