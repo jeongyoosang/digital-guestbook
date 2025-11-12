@@ -5,18 +5,18 @@ import receptionScreens from "@/assets/reception-screens.jpg";
 const features = [
   {
     icon: QrCode,
-    title: "QR로 하객의 축하 메시지 자동 수집",
-    description: "하객들은 QR만 스캔하면 간편하게 축하 메시지를 남길 수 있습니다."
+    title: "QR 한번으로 간편하게 축하 메시지 작성",
+    description: "하객들은 QR만 스캔하면 자신의 휴대폰으로 간편하게 축하 메시지를 남길 수 있어요."
   },
   {
     icon: Mail,
-    title: "결혼식 후 신랑신부에게 자동 전달",
-    description: "모든 메시지가 정리되어 PDF로 신랑신부님께 전달됩니다."
+    title: "결혼식 직후 신랑신부에게 자동 전달",
+    description: "모든 메시지가 정리되어 동영상과 Excel로 신랑신부님께 전달됩니다."
   },
   {
     icon: Coins,
-    title: "식권 및 정산 기능",
-    description: "Coming soon — 식권 관리와 정산까지 한 번에 해결합니다."
+    title: "모바일 식권",
+    description: "종이식권 대신 모바일 식권으로 빠르고 투명하게 정산까지 한 번에 해결합니다.- Coming Soon"
   }
 ];
 
@@ -44,8 +44,8 @@ export const FeaturesSection = () => {
 
         <div className="text-center mb-8">
           <p className="text-lg md:text-xl leading-relaxed max-w-3xl mx-auto text-foreground/90">
-            실시간 축하 메시지는 연회장이나 클럽형 웨딩에서도<br />
-            하객 모두가 함께 즐길 수 있는 콘텐츠로 활용됩니다.
+            실시간 축하 메시지는 연회장이나 이색 결혼식에서도<br />
+            하객 모두가 함께 즐길 수 있는 콘텐츠로 활용될 수 있어요.
           </p>
         </div>
 

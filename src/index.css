@@ -2,10 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
-
+/* ============================
+   Design System (HSL only)
+   ============================ */
 @layer base {
   :root {
     --background: 210 17% 98%;
@@ -38,11 +37,15 @@ All colors MUST be HSL.
 
     --radius: 1rem;
 
+    /* Wedding palette */
     --wedding-gold: 45 100% 72%;
     --wedding-blue: 221 79% 82%;
     --wedding-pink: 333 89% 62%;
+
+    /* Brand extras */
     --kakao-yellow: 54 99% 50%;
 
+    /* Sidebar (unused on LP but kept) */
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5% 26%;
     --sidebar-primary: 240 6% 10%;
@@ -56,23 +59,32 @@ All colors MUST be HSL.
   .dark {
     --background: 222 84% 5%;
     --foreground: 210 40% 98%;
+
     --card: 222 84% 5%;
     --card-foreground: 210 40% 98%;
+
     --popover: 222 84% 5%;
     --popover-foreground: 210 40% 98%;
+
     --primary: 226 100% 83%;
     --primary-foreground: 222 47% 11%;
+
     --secondary: 217 33% 18%;
     --secondary-foreground: 210 40% 98%;
+
     --muted: 217 33% 18%;
     --muted-foreground: 215 20% 65%;
+
     --accent: 329 86% 64%;
     --accent-foreground: 0 0% 100%;
+
     --destructive: 0 63% 31%;
     --destructive-foreground: 210 40% 98%;
+
     --border: 217 33% 18%;
     --input: 217 33% 18%;
     --ring: 226 100% 83%;
+
     --wedding-gold: 45 100% 72%;
     --wedding-blue: 221 79% 82%;
     --wedding-pink: 333 89% 62%;
@@ -81,42 +93,137 @@ All colors MUST be HSL.
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
+  * { @apply border-border; }
 
-  body {
-    @apply bg-background text-foreground font-sans;
-  }
+  body { @apply bg-background text-foreground font-sans; }
 
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-bold;
-  }
+  h1, h2, h3, h4, h5, h6 { @apply font-bold; }
 }
 
+/* ============================
+   Utilities
+   ============================ */
 @layer utilities {
-.wedding-gradient {
-  background: linear-gradient(135deg, hsl(var(--wedding-blue)), hsl(var(--wedding-pink)), hsl(var(--wedding-gold)));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  .wedding-gradient{
+    background: linear-gradient(
+      135deg,
+      hsl(var(--wedding-blue)),
+      hsl(var(--wedding-pink)),
+      hsl(var(--wedding-gold))
+    );
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+    background-clip:text;
+  }
+
+  .kakao-button{ background-color:hsl(var(--kakao-yellow)); color:#000; }
+  .kakao-button:hover{ background-color:hsl(54 99% 45%); }
+
+  .scrollbar-hide{ -ms-overflow-style:none; scrollbar-width:none; }
+  .scrollbar-hide::-webkit-scrollbar{ display:none; }
+
+  /* Hero 하단이 흰 배경 섹션과 자연스럽게 이어지도록 */
+  .dg-fade-bottom{
+    background-image: linear-gradient(to bottom, transparent, hsl(var(--background)));
+  }
 }
 
-  .kakao-button {
-    background-color: hsl(var(--kakao-yellow));
-    color: #000000;
-  }
+/* -------------------------------------------------------------
+   🌈 Dynamic Background + Premium Texture (Hero 전용)
+   ------------------------------------------------------------- */
 
-  .kakao-button:hover {
-    background-color: hsl(54, 99%, 45%);
-  }
+/* 브랜드 팔레트 기반으로 톤-다운된 그라데이션 (아래 섹션과 조화) */
+.dg-animated-gradient{
+  background: linear-gradient(
+    120deg,
+    hsl(var(--wedding-blue)) 0%,
+    hsl(var(--secondary)) 35%,
+    hsl(var(--wedding-pink)) 70%,
+    hsl(var(--primary)) 100%
+  );
+  background-size: 280% 280%;
+  animation: dg-gradient-shift 20s ease-in-out infinite;
+}
+@keyframes dg-gradient-shift{
+  0%{   background-position: 0% 50%; }
+  50%{  background-position:100% 50%; }
+  100%{ background-position: 0% 50%; }
+}
 
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
+/* 고급 질감: 부드러운 필름 그레인 */
+.dg-grain{
+  pointer-events:none;
+  mix-blend-mode:soft-light;
+  opacity:.14; /* 살짝 약화 */
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.32'/></svg>");
+}
 
-  .scrollbar-hide::-webkit-scrollbar {
-    display: none;
+/* 은은한 비네트(가독성↑, 튀는 가장자리 ↓) */
+.dg-vignette{
+  pointer-events:none;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0) 58%, rgba(0,0,0,0.33) 100%);
+}
+
+/* 부드럽게 떠다니는 보케 라이트 */
+.dg-bokeh{
+  position:absolute; inset:0; filter:blur(6px); opacity:.5;
+}
+.dg-bokeh>span{
+  position:absolute; border-radius:9999px;
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.95), rgba(255,255,255,0) 60%);
+  opacity:.7; animation: dg-float 12s ease-in-out infinite;
+}
+.dg-bokeh>span:nth-child(2){ animation-duration:16s; transform:scale(1.2); opacity:.6; }
+.dg-bokeh>span:nth-child(3){ animation-duration:20s; transform:scale(.9);  opacity:.5; }
+.dg-bokeh>span:nth-child(4){ animation-duration:18s; transform:scale(1.4); opacity:.55; }
+
+@keyframes dg-float{
+  0%  { transform: translateY(0) translateX(0)   scale(1); }
+  50% { transform: translateY(-20px) translateX(10px) scale(1.05); }
+  100%{ transform: translateY(0) translateX(0)   scale(1); }
+}
+
+/* 접근성: 애니메이션 최소화 */
+@media (prefers-reduced-motion: reduce){
+  .dg-animated-gradient{ animation:none; }
+  .dg-bokeh>span{ animation:none; }
+}
+/* ------------------------------------------- */
+/* 🩰 자연스럽게 흘러가는 리뷰 애니메이션 */
+/* ------------------------------------------- */
+.marquee-wrapper {
+  overflow: hidden;
+  position: relative;
+}
+
+.marquee-track {
+  display: flex;
+  gap: 1rem;
+  width: max-content;
+  animation: marquee-scroll 30s linear infinite;
+}
+
+/* 모바일에서는 속도 더 빠르게 */
+@media (max-width: 640px) {
+  .marquee-track {
+    animation-duration: 10s;
+  }
+}
+
+
+
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* 모바일에서는 속도 조금 느리게 */
+@media (max-width: 640px) {
+  .marquee-track {
+    animation-duration: 30s;
   }
 }

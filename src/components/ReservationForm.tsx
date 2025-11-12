@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,54 +11,435 @@ import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+import { CalendarIcon, Lock, MapPin, Search } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
-import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
 
-const formSchema = z.object({
-  name: z.string().min(1, "이름을 입력해주세요.").max(100),
-  phone: z.string().min(1, "연락처를 입력해주세요."),
+/** 카카오 전역 타입 선언 */
+declare global {
+  interface Window {
+    kakao: any;
+  }
+}
+
+const KAKAO_APP_KEY = import.meta.env.VITE_KAKAO_JS_APPKEY as string;
+
+// 오늘 00:00(과거 날짜 비활성화 기준)
+const todayStart = new Date();
+todayStart.setHours(0, 0, 0, 0);
+
+/* ===========================
+   Zod 스키마 (검증)
+   =========================== */
+const baseSchema = z.object({
+  name: z.string().min(1, "이름을 입력해주세요."),
+  role: z.enum(["신랑", "신부", "기타"]),
+  relation: z.string().optional(), // role=기타일 때만 필수
+  phone: z.string().min(10, "연락처를 입력해주세요."), // 숫자만 기대
   dateStatus: z.enum(["confirmed", "tentative"]),
   weddingDate: z.date().optional(),
-  weddingTime: z.string().optional(),
+  weddingTime: z.string().optional(), // 30분 단위 "HH:MM"
   tentativeDate: z.string().optional(),
-  venueName: z.string().min(1, "예식장명을 입력해주세요."),
-  venueLocation: z.string().min(1, "예식장 위치를 입력해주세요."),
-  mobileInvitationLink: z.string().optional(),
+
+  // 카카오 선택 결과로만 세팅
+  venueName: z.string().optional(),
+  venueAddress: z.string().optional(),
+  venueLat: z.number().optional(),
+  venueLng: z.number().optional(),
+  venueKakaoUrl: z.string().optional(),
+
+  // ✅ 빈 문자열은 undefined 처리 → 선택 항목
+  mobileInvitationLink: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().url("유효한 URL을 입력해주세요.").optional()
+  ),
+
   inquiry: z.string().optional(),
+  agree: z.literal(true, {
+    errorMap: () => ({ message: "개인정보·얼굴 이미지 처리 동의가 필요합니다." }),
+  }),
 });
+
+// 조건부 검증
+const formSchema = baseSchema
+  .refine((v) => (v.role !== "기타" ? true : !!v.relation?.trim()), {
+    message: "관계를 입력해주세요. (예: 신랑 친구, 신부 사촌 등)",
+    path: ["relation"],
+  })
+  .refine(
+    (v) => {
+      if (v.dateStatus === "confirmed") return !!v.weddingDate;
+      return true;
+    },
+    {
+      message: "예식일자를 선택해주세요.",
+      path: ["weddingDate"],
+    }
+  )
+  .refine(
+    (v) => {
+      if (v.dateStatus === "confirmed" && v.weddingDate) {
+        const d = new Date(v.weddingDate);
+        d.setHours(0, 0, 0, 0);
+        return d.getTime() >= todayStart.getTime();
+      }
+      return true;
+    },
+    {
+      message: "과거 날짜는 선택할 수 없습니다.",
+      path: ["weddingDate"],
+    }
+  )
+  .refine(
+    (v) => {
+      if (v.dateStatus === "confirmed") return !!v.venueName?.trim();
+      return true;
+    },
+    {
+      message: "예식장명을 선택해주세요. (검색 버튼으로 선택)",
+      path: ["venueName"],
+    }
+  )
+  .refine(
+    (v) => {
+      if (v.dateStatus === "confirmed") return !!v.venueAddress?.trim();
+      return true;
+    },
+    {
+      message: "예식장 위치를 선택해주세요. (검색 버튼으로 선택)",
+      path: ["venueAddress"],
+    }
+  );
 
 type FormData = z.infer<typeof formSchema>;
 
-export const ReservationForm = () => {
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [date, setDate] = useState<Date>();
-  
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      dateStatus: "confirmed"
+/* ===========================
+   Kakao SDK Loader (신뢰성 강화)
+   =========================== */
+function useKakaoLoader() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!KAKAO_APP_KEY) {
+      console.warn("VITE_KAKAO_JS_APPKEY가 설정되지 않았습니다.");
+      return;
     }
+
+    // 이미 로드되어 있으면 즉시 ready
+    if (window.kakao?.maps) {
+      setReady(true);
+      return;
+    }
+
+    const onLoaded = () => {
+      try {
+        window.kakao.maps.load(() => setReady(true));
+      } catch {
+        // 일부 환경에서 maps가 바로 준비된 경우
+        setReady(true);
+      }
+    };
+
+    const existing = document.getElementById("kakao-jssdk") as HTMLScriptElement | null;
+    if (existing) {
+      // 스크립트는 있는데 아직 로드 안 된 케이스 대비
+      if (existing.getAttribute("data-loaded") === "true") {
+        onLoaded();
+      } else {
+        existing.addEventListener("load", onLoaded, { once: true });
+      }
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = "kakao-jssdk";
+    script.async = true;
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_APP_KEY}&autoload=false&libraries=services`;
+    script.addEventListener("load", () => {
+      script.setAttribute("data-loaded", "true");
+      onLoaded();
+    });
+    document.head.appendChild(script);
+  }, []);
+
+  return ready;
+}
+
+/* ===========================
+   Kakao 장소 검색 모달
+   =========================== */
+type Place = {
+  id: string;
+  place_name: string;
+  address_name: string;
+  road_address_name: string;
+  x: string; // lng
+  y: string; // lat
+  place_url: string;
+};
+
+type KakaoPickerProps = {
+  open: boolean;
+  onClose: () => void;
+  onSelect: (p: {
+    name: string;
+    address: string;
+    lat: number;
+    lng: number;
+    kakaoUrl: string;
+  }) => void;
+};
+
+function KakaoPlacePicker({ open, onClose, onSelect }: KakaoPickerProps) {
+  const ready = useKakaoLoader();
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<Place[]>([]);
+  const [isComposing, setIsComposing] = useState(false); // IME 조합 상태
+
+  useEffect(() => {
+    if (!open) {
+      setQuery("");
+      setResults([]);
+    }
+  }, [open]);
+
+  const doSearch = () => {
+    if (!ready || !window.kakao?.maps?.services) return;
+    if (!query.trim()) return;
+
+    setLoading(true);
+    const ps = new window.kakao.maps.services.Places();
+    ps.keywordSearch(query, (data: Place[], status: string) => {
+      setLoading(false);
+      if (status !== window.kakao.maps.services.Status.OK) {
+        setResults([]);
+        toast.error("검색 결과가 없습니다. 다른 키워드로 시도해 주세요.");
+        return;
+      }
+      setResults(data.slice(0, 10));
+    });
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-6">
+      <div className="w-full sm:max-w-lg bg-white rounded-t-2xl sm:rounded-2xl shadow-xl overflow-hidden border border-leafLight/40">
+        <div className="p-4 sm:p-5 border-b border-leafLight/40 bg-ivory/50">
+          <h3 className="text-lg font-semibold flex items-center gap-2 text-ink/90">
+            <Search className="w-4 h-4" /> 예식장 장소 검색
+          </h3>
+
+          {!KAKAO_APP_KEY && (
+            <p className="text-[12px] text-red-600 mt-2">
+              환경변수 VITE_KAKAO_JS_APPKEY가 설정되지 않아 검색이 동작하지 않습니다.
+            </p>
+          )}
+
+          {/* Enter로 바로 검색되도록 form + onSubmit + IME 처리 */}
+          <form
+            className="mt-3 flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!isComposing) doSearch();
+            }}
+          >
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="예: ○○성당 / △△호텔 웨딩홀"
+              onCompositionStart={() => setIsComposing(true)}
+              onCompositionEnd={() => setIsComposing(false)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !isComposing) {
+                  e.preventDefault();
+                  doSearch();
+                }
+              }}
+              className="bg-ivory/60 border-leafLight focus-visible:ring-leaf"
+            />
+            <Button type="submit" disabled={!ready || !KAKAO_APP_KEY} className="bg-leaf text-white hover:bg-leaf/90">
+              검색
+            </Button>
+          </form>
+        </div>
+
+        <div className="max-h-[60vh] overflow-auto">
+          {loading ? (
+            <div className="p-6 text-center text-ink/60">검색 중…</div>
+          ) : results.length === 0 ? (
+            <div className="p-6 text-center text-ink/60">검색 결과가 여기에 표시됩니다.</div>
+          ) : (
+            <ul className="divide-y divide-leafLight/40">
+              {results.map((r) => {
+                const address = r.road_address_name || r.address_name || "";
+                return (
+                  <li key={r.id}>
+                    <button
+                      type="button"
+                      className="w-full text-left p-4 hover:bg-ivory/40"
+                      onClick={() => {
+                        onSelect({
+                          name: r.place_name,
+                          address,
+                          lat: parseFloat(r.y),
+                          lng: parseFloat(r.x),
+                          kakaoUrl: r.place_url,
+                        });
+                        onClose();
+                      }}
+                    >
+                      <div className="font-medium text-ink">{r.place_name}</div>
+                      <div className="text-sm text-ink/70">{address}</div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="p-4 sm:p-5 border-t border-leafLight/40 bg-white/70">
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose} className="border-leafLight text-ink hover:bg-ivory/60">
+              닫기
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===========================
+   본 폼
+   =========================== */
+export const ReservationForm = () => {
+  const [date, setDate] = useState<Date>();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false); // 달력 Popover 제어
+  const [submitting, setSubmitting] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  // ✅ 성공 섹션 스크롤을 위한 ref
+  const successRef = useRef<HTMLDivElement>(null);
+
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    reset,
+    formState: { errors },
+  } = useForm<FormData>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { dateStatus: "confirmed", role: "신랑" },
   });
 
   const dateStatus = watch("dateStatus");
+  const role = watch("role");
+  const venueName = watch("venueName");
+  const venueAddress = watch("venueAddress");
 
-  const onSubmit = (data: FormData) => {
-    console.log("Form submitted:", data);
-    setShowSuccess(true);
-    toast.success("예약 신청이 접수되었습니다 💍");
+  // 시간 옵션 (09:00 ~ 20:30, 30분 단위)
+  const timeOptions = useMemo(() => {
+    const out: { value: string; label: string }[] = [];
+    for (let h = 9; h <= 20; h++) {
+      for (let m of [0, 30]) {
+        const value = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+        const isAm = h < 12;
+        const hour12 = h === 12 ? 12 : isAm ? h : h - 12;
+        const label = `${isAm ? "오전" : "오후"} ${hour12}:${String(m).padStart(2, "0")}`;
+        out.push({ value, label });
+        if (h === 20 && m === 30) break;
+      }
+    }
+    return out;
+  }, []);
+
+  // 제출 -> Supabase 저장 (문의내용만 message에 저장)
+  const onSubmit = async (data: FormData) => {
+    setSubmitting(true);
+    try {
+      const phone = (data.phone || "").replace(/[^0-9]/g, "");
+      const inquiryOnly = data.inquiry?.trim() || null; // ✅ message는 문의내용만
+
+      const { error } = await supabase.from("reservations").insert({
+        // 이름은 순수 이름만
+        name: data.name,
+
+        // 역할/관계 분리
+        role: data.role,
+        relation: data.role === "기타" ? (data.relation || null) : null,
+
+        phone,
+        event_date:
+          data.dateStatus === "confirmed" && data.weddingDate
+            ? format(data.weddingDate, "yyyy-MM-dd")
+            : null,
+        wedding_time: data.weddingTime || null,
+        date_status: data.dateStatus,
+        tentative_date: data.dateStatus === "tentative" ? (data.tentativeDate || null) : null,
+
+        // 장소 정보
+        venue_name: data.venueName || null,
+        venue_address: data.venueAddress || null,
+        venue_lat: data.venueLat ?? null,
+        venue_lng: data.venueLng ?? null,
+        venue_kakao_url: data.venueKakaoUrl || null,
+
+        // 링크
+        mobile_invitation_link: data.mobileInvitationLink || null,
+
+        // ✅ 문의내용만 저장
+        message: inquiryOnly,
+
+        status: "new",
+      });
+
+      if (error) throw error;
+
+      toast.success("예약 문의가 접수되었습니다. 빠르게 연락드릴게요 💌");
+      setShowSuccess(true);
+      reset();
+      setDate(undefined);
+
+      // 보강: 성공 섹션으로 부드럽게 스크롤
+      setTimeout(() => successRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+      (document.activeElement as HTMLElement)?.blur?.(); // 모바일 키보드 닫힘
+    } catch (e) {
+      console.error(e);
+      toast.error("제출 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  // 성공 섹션 렌더 직후에도 스크롤 보장
+  useEffect(() => {
+    if (showSuccess && successRef.current) {
+      requestAnimationFrame(() => {
+        successRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [showSuccess]);
 
   if (showSuccess) {
     return (
-      <section id="reservation" className="py-20 px-4 bg-muted/30">
+      <section id="reservation-success" ref={successRef} className="py-20 px-4 bg-ivory">
         <div className="container mx-auto max-w-2xl text-center">
-          <div className="bg-card p-12 rounded-3xl shadow-xl">
-            <h2 className="text-4xl font-bold mb-6">감사합니다 💍</h2>
-            <p className="text-xl mb-4">상담 신청이 접수되었습니다.</p>
-            <p className="text-muted-foreground">순차적으로 연락드리겠습니다.</p>
+          <div className="bg-white/80 backdrop-blur-xl border border-leafLight/40 shadow-soft p-10 sm:p-12 rounded-3xl">
+            <h2 className="font-display text-4xl mb-4 text-ink/90">감사합니다 💐</h2>
+            <p className="text-lg text-ink/70">
+              문의가 정상 접수되었습니다.
+              <br />
+              순차적으로 연락드리겠습니다.
+            </p>
           </div>
         </div>
       </section>
@@ -65,141 +447,277 @@ export const ReservationForm = () => {
   }
 
   return (
-    <section id="reservation" className="py-20 px-4 bg-muted/30">
+    <section id="reservation" className="py-20 px-4 bg-ivory">
       <div className="container mx-auto max-w-2xl">
-        <h2 className="text-4xl md:text-5xl font-bold text-center mb-4">예약 문의</h2>
-        <p className="text-center text-muted-foreground mb-12">
-          예식 일정과 장소, 서비스 구성을 남겨주시면 순차적으로 연락드리겠습니다.
+        <h2 className="font-display text-4xl md:text-5xl text-center mb-4 text-ink/90">예약 문의</h2>
+        <p className="text-center text-ink/70 mb-10">
+          예약문의가 확인되면 카카오톡 공식채널로 순차적으로 연락드립니다.
         </p>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="bg-card p-8 rounded-3xl shadow-xl space-y-6">
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="bg-white/80 backdrop-blur-xl border border-leafLight/40 shadow-soft rounded-3xl p-8 space-y-6"
+        >
+          {/* 이름 + 역할 + (기타시 관계) */}
           <div>
-            <Label htmlFor="name">이름</Label>
-            <Input id="name" {...register("name")} className="mt-2" />
+            <Label htmlFor="name" className="text-ink/80">이름</Label>
+            <Input id="name" {...register("name")} className="mt-2 bg-ivory/60 border-leafLight focus-visible:ring-leaf" />
             {errors.name && <p className="text-sm text-destructive mt-1">{errors.name.message}</p>}
+
+            <div className="flex gap-6 mt-3 text-sm">
+              {["신랑", "신부", "기타"].map((r) => (
+                <label key={r} className="flex items-center gap-2 text-ink/80">
+                  <input type="radio" value={r} {...register("role")} className="accent-leaf" />
+                  {r}
+                </label>
+              ))}
+            </div>
+
+            {role === "기타" && (
+              <div className="mt-3">
+                <Label htmlFor="relation" className="text-ink/80">관계</Label>
+                <Input
+                  id="relation"
+                  placeholder="예: 신랑 친구 / 신부 사촌 / 웨딩플래너"
+                  {...register("relation")}
+                  className="mt-2 bg-ivory/60 border-leafLight focus-visible:ring-leaf"
+                />
+                {errors.relation && (
+                  <p className="text-sm text-destructive mt-1">{errors.relation.message}</p>
+                )}
+              </div>
+            )}
           </div>
 
+          {/* 연락처 */}
           <div>
-            <Label htmlFor="phone">연락처</Label>
-            <Input id="phone" type="tel" {...register("phone")} className="mt-2" />
+            <Label htmlFor="phone" className="text-ink/80">연락처</Label>
+            <Input
+              id="phone"
+              type="tel"
+              inputMode="numeric"
+              placeholder="예: 01012345678"
+              {...register("phone")}
+              className="mt-2 bg-ivory/60 border-leafLight focus-visible:ring-leaf"
+            />
+            <p className="text-sm text-ink/60 mt-1">하이픈(-) 없이 숫자만 입력해주세요.</p>
             {errors.phone && <p className="text-sm text-destructive mt-1">{errors.phone.message}</p>}
           </div>
 
+          {/* 날짜 확정 여부 */}
           <div>
-            <Label>결혼 예정일</Label>
-            <RadioGroup 
-              defaultValue="confirmed" 
-              onValueChange={(value) => setValue("dateStatus", value as "confirmed" | "tentative")}
+            <Label className="text-ink/80">결혼 예정일</Label>
+            <RadioGroup
+              defaultValue="confirmed"
+              onValueChange={(value) => {
+                if (value === "tentative") {
+                  setValue("venueName", undefined);
+                  setValue("venueAddress", undefined);
+                  setValue("venueLat", undefined);
+                  setValue("venueLng", undefined);
+                  setValue("venueKakaoUrl", undefined);
+                }
+                setValue("dateStatus", value as "confirmed" | "tentative");
+              }}
               className="mt-2 space-y-2"
             >
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="confirmed" id="confirmed" />
-                <Label htmlFor="confirmed" className="font-normal cursor-pointer">날짜 확정</Label>
+                <RadioGroupItem value="confirmed" id="confirmed" className="border-leaf" />
+                <Label htmlFor="confirmed" className="font-normal cursor-pointer text-ink/80">
+                  날짜 확정
+                </Label>
               </div>
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="tentative" id="tentative" />
-                <Label htmlFor="tentative" className="font-normal cursor-pointer">미정</Label>
+                <RadioGroupItem value="tentative" id="tentative" className="border-leaf" />
+                <Label htmlFor="tentative" className="font-normal cursor-pointer text-ink/80">
+                  미정
+                </Label>
               </div>
             </RadioGroup>
           </div>
 
-          {dateStatus === "confirmed" ? (
-            <div className="grid md:grid-cols-2 gap-4">
+          {/* 확정일 때: 날짜/시간/예식장 + 모바일 청첩장 */}
+          {dateStatus === "confirmed" && (
+            <>
+              <div className="grid md:grid-cols-2 gap-4">
+                {/* 날짜 (과거 금지) */}
+                <div>
+                  <Label className="text-ink/80">예식일자</Label>
+                  {/* Popover 제어: 날짜 선택 시 닫힘 */}
+                  <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal mt-2 border-leafLight bg-ivory/60",
+                          !date && "text-ink/60"
+                        )}
+                        onClick={() => setDatePopoverOpen(true)}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {date ? format(date, "PPP", { locale: ko }) : "날짜 선택"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={date}
+                        onSelect={(newDate) => {
+                          setDate(newDate || undefined);
+                          setValue("weddingDate", newDate ?? undefined);
+                          setDatePopoverOpen(false); // ✅ 클릭 시 닫기
+                        }}
+                        disabled={(d) => {
+                          const dd = new Date(d);
+                          dd.setHours(0, 0, 0, 0);
+                          return dd.getTime() < todayStart.getTime();
+                        }}
+                        fromDate={todayStart}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  {errors.weddingDate && (
+                    <p className="text-sm text-destructive mt-1">{errors.weddingDate.message}</p>
+                  )}
+                </div>
+
+                {/* 시간 (30분 단위) */}
+                <div>
+                  <Label className="text-ink/80">예식 시간</Label>
+                  <Select onValueChange={(value) => setValue("weddingTime", value)}>
+                    <SelectTrigger className="mt-2 border-leafLight bg-ivory/60">
+                      <SelectValue placeholder="시간 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {timeOptions.map(({ value, label }) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* 예식장: 카카오 검색 */}
               <div>
-                <Label>날짜</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
+                <Label className="text-ink/80">예식장</Label>
+                <div className="mt-2 grid gap-2">
+                  <div className="flex flex-col md:flex-row gap-2 md:items-start">
+                    {/* 버튼: 모바일에선 가로 꽉, 데스크탑은 원래 크기 */}
                     <Button
+                      type="button"
                       variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal mt-2",
-                        !date && "text-muted-foreground"
-                      )}
+                      onClick={() => setPickerOpen(true)}
+                      className="w-full md:w-auto border-leafLight bg-white/70 hover:bg-ivory/60 text-ink"
                     >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {date ? format(date, "PPP", { locale: ko }) : "날짜 선택"}
+                      <MapPin className="w-4 h-4 mr-2" />
+                      예식장 검색하기
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={date}
-                      onSelect={(newDate) => {
-                        setDate(newDate);
-                        setValue("weddingDate", newDate);
-                      }}
-                      initialFocus
-                      className="pointer-events-auto"
-                    />
-                  </PopoverContent>
-                </Popover>
+
+                    {/* 미리보기: 모바일에선 버튼 아래 '가로 100%'로 표시 */}
+                    {venueName && (
+                      <div className="w-full md:flex-1 md:min-w-0 rounded-lg border border-leafLight/60 p-3 text-sm bg-white/70 overflow-hidden">
+                        <div className="font-medium text-ink truncate">{venueName}</div>
+                        <div className="text-ink/70 text-xs truncate" title={venueAddress}>
+                          {venueAddress}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 검증 메시지 */}
+                  {errors.venueName && <p className="text-sm text-destructive">{errors.venueName.message}</p>}
+                  {errors.venueAddress && <p className="text-sm text-destructive">{errors.venueAddress.message}</p>}
+                </div>
               </div>
-              <div>
-                <Label htmlFor="time">시간</Label>
-                <Select onValueChange={(value) => setValue("weddingTime", value)}>
-                  <SelectTrigger className="mt-2">
-                    <SelectValue placeholder="시간 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="11:00">오전 11:00</SelectItem>
-                    <SelectItem value="12:00">오후 12:00</SelectItem>
-                    <SelectItem value="13:00">오후 1:00</SelectItem>
-                    <SelectItem value="14:00">오후 2:00</SelectItem>
-                    <SelectItem value="15:00">오후 3:00</SelectItem>
-                    <SelectItem value="16:00">오후 4:00</SelectItem>
-                    <SelectItem value="17:00">오후 5:00</SelectItem>
-                    <SelectItem value="18:00">오후 6:00</SelectItem>
-                  </SelectContent>
-                </Select>
+
+              {/* 모바일 청첩장 링크 (선택) */}
+              <div className="mt-4">
+                <Label htmlFor="mobileInvitationLink" className="text-ink/80">모바일 청첩장 링크 (선택)</Label>
+                <Input
+                  id="mobileInvitationLink"
+                  placeholder="예: https://m-card.com/your-link"
+                  {...register("mobileInvitationLink")}
+                  className="mt-2 bg-ivory/60 border-leafLight focus-visible:ring-leaf"
+                />
+                <p className="text-sm text-ink/60 mt-1">아직 없으시면 비워두셔도 됩니다.</p>
+                {errors.mobileInvitationLink && (
+                  <p className="text-sm text-destructive mt-1">{errors.mobileInvitationLink.message}</p>
+                )}
               </div>
-            </div>
-          ) : (
+            </>
+          )}
+
+          {/* 미정일 때: 예상 시기 */}
+          {dateStatus === "tentative" && (
             <div>
-              <Label htmlFor="tentativeDate">예상 시기</Label>
-              <Input 
-                id="tentativeDate" 
-                placeholder="예: 2026년 봄 / 내년 하반기 / 아직 예식장 탐색 중" 
+              <Label htmlFor="tentativeDate" className="text-ink/80">예상 시기 (선택)</Label>
+              <Input
+                id="tentativeDate"
+                placeholder="예: 2026년 봄 / 내년 하반기 / 미정"
                 {...register("tentativeDate")}
-                className="mt-2"
+                className="mt-2 bg-ivory/60 border-leafLight focus-visible:ring-leaf"
               />
             </div>
           )}
 
+          {/* 문의내용 (선택) */}
           <div>
-            <Label htmlFor="venueName">예식장명</Label>
-            <Input id="venueName" {...register("venueName")} className="mt-2" />
-            {errors.venueName && <p className="text-sm text-destructive mt-1">{errors.venueName.message}</p>}
-          </div>
-
-          <div>
-            <Label htmlFor="venueLocation">예식장 위치 또는 주소</Label>
-            <Input id="venueLocation" {...register("venueLocation")} className="mt-2" />
-            {errors.venueLocation && <p className="text-sm text-destructive mt-1">{errors.venueLocation.message}</p>}
-          </div>
-
-          <div>
-            <Label htmlFor="mobileInvitationLink">모바일 청첩장 링크 (선택)</Label>
-            <Input 
-              id="mobileInvitationLink" 
-              placeholder="예: https://m-card.com/parkjae0"
-              {...register("mobileInvitationLink")} 
-              className="mt-2" 
+            <Label htmlFor="inquiry" className="text-ink/80">문의내용 (선택)</Label>
+            <Textarea
+              id="inquiry"
+              placeholder="간단히 궁금한 점을 남겨주세요."
+              {...register("inquiry")}
+              rows={4}
+              className="mt-2 bg-ivory/60 border-leafLight focus-visible:ring-leaf"
             />
-            <p className="text-sm text-muted-foreground mt-1">
-              아직 모바일 청첩장이 없으신 경우, 예식 일정만 남겨주세요.
-            </p>
           </div>
 
-          <div>
-            <Label htmlFor="inquiry">문의내용 (선택)</Label>
-            <Textarea id="inquiry" {...register("inquiry")} rows={4} className="mt-2" />
+          {/* 동의 (필수) */}
+          <div className="rounded-xl bg-white/70 border border-leafLight/60 p-4">
+            <label className="flex items-start gap-3">
+              <input type="checkbox" {...register("agree")} className="mt-1 h-4 w-4 accent-leaf" />
+              <span className="text-sm leading-6 text-ink/80">
+                <span className="inline-flex items-center gap-2 font-medium">
+                  <Lock className="w-4 h-4" aria-hidden="true" />
+                  개인정보 및 얼굴 이미지 처리에 동의합니다.
+                </span>
+                <br />
+                <span className="text-ink/60">
+                  입력하신 정보와 얼굴 이미지는 예약 상담 및 서비스 제공 목적 외에는 사용하지 않으며, 외부 공유나 마케팅에
+                  활용하지 않습니다. 동의 철회 요청 시 지체 없이 삭제합니다.
+                </span>
+              </span>
+            </label>
+            {errors.agree && <p className="text-sm text-destructive mt-2">{errors.agree.message}</p>}
           </div>
 
-          <Button type="submit" size="lg" className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground">
-            예약 신청하기 💐
+          {/* 제출 */}
+          <Button
+            type="submit"
+            size="lg"
+            disabled={submitting}
+            className="w-full bg-leaf hover:bg-leaf/90 text-white rounded-full shadow-soft"
+          >
+            {submitting ? "전송 중..." : "예약 문의 보내기 💌"}
           </Button>
         </form>
       </div>
+
+      {/* 카카오 장소 검색 모달 */}
+      <KakaoPlacePicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(p) => {
+          setValue("venueName", p.name, { shouldValidate: true });
+          setValue("venueAddress", p.address, { shouldValidate: true });
+          setValue("venueLat", p.lat);
+          setValue("venueLng", p.lng);
+          setValue("venueKakaoUrl", p.kakaoUrl);
+        }}
+      />
     </section>
   );
 };
