@@ -1,19 +1,24 @@
+// tailwind.config.ts
 import type { Config } from "tailwindcss";
 
 export default {
   darkMode: ["class"],
-  content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
+  content: [
+    "./pages/**/*.{ts,tsx}",
+    "./components/**/*.{ts,tsx}",
+    "./app/**/*.{ts,tsx}",
+    "./src/**/*.{ts,tsx}",
+  ],
   prefix: "",
   theme: {
     container: {
       center: true,
       padding: "2rem",
-      screens: {
-        "2xl": "1400px",
-      },
+      screens: { "2xl": "1400px" },
     },
     extend: {
       colors: {
+        // 기존 shadcn 토큰 유지
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -63,32 +68,35 @@ export default {
           pink: "hsl(var(--wedding-pink))",
         },
         kakao: "hsl(var(--kakao-yellow))",
+
+        // ✅ 웨딩 무드 팔레트 추가
+        ivory: "#F7F4EF",
+        leaf: "#6A7E5D",
+        leafLight: "#B7D1A6",
+        gold: "#C7A667",
+        ink: "#1C1D1B",
       },
+
+      // ✅ 폰트: 본문은 Noto Sans KR, 헤드라인은 Playfair Display
       fontFamily: {
-        sans: ['"Nanum Gothic"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['"Noto Sans KR"', "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ['"Playfair Display"', "serif"],
       },
+
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+
+      // (선택) 부드러운 그림자
+      boxShadow: {
+        soft: "0 6px 24px rgba(0,0,0,0.08)",
+      },
+
       keyframes: {
-        "accordion-down": {
-          from: {
-            height: "0",
-          },
-          to: {
-            height: "var(--radix-accordion-content-height)",
-          },
-        },
-        "accordion-up": {
-          from: {
-            height: "var(--radix-accordion-content-height)",
-          },
-          to: {
-            height: "0",
-          },
-        },
+        "accordion-down": { from: { height: "0" }, to: { height: "var(--radix-accordion-content-height)" } },
+        "accordion-up": { from: { height: "var(--radix-accordion-content-height)" }, to: { height: "0" } },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
