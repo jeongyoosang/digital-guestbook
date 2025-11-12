@@ -25,7 +25,7 @@ export const ComingSoonSection: React.FC = () => {
         </div>
 
         <p className="text-center text-lg mb-12 leading-relaxed">
-          결혼식의 축하는 감사의 마음으로 이어지고,<br />
+          결혼식의 축하는 <br />감사의 마음으로 이어지고,<br />
           새로운 연결이 시작됩니다.
         </p>
 
