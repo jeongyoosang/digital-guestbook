@@ -18,7 +18,7 @@ export const KakaoSection = () => {
         </h2>
 
         <p className="text-lg text-muted-foreground mb-10 leading-relaxed">
-          예식 일정이 아직 미정이신가요?<br />
+          예식 일정이 아직 미정이신가요? <br />
           간단한 질문은 <strong>카카오톡 공식채널 1:1 상담</strong>으로 빠르게 답변드립니다.<br />
           톡으로 편하게 문의해주세요.
         </p>
