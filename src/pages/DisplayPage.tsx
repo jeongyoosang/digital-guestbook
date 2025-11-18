@@ -159,9 +159,9 @@ export default function DisplayPage() {
     };
   }, [eventId]);
 
-  // 4) now + schedule 로 phase 계산 (렌더마다 바로 계산)
+  // 4) now + schedule 로 phase 계산
   const phase: EventPhase = useMemo(() => {
-    if (!schedule) return "open"; // 아직 세팅 안 됐으면 그냥 열어둠(안전장치)
+    if (!schedule) return "open"; // 아직 세팅 안 됐으면 그냥 열어둠
 
     const start = new Date(schedule.start);
     const end = new Date(schedule.end);
@@ -335,9 +335,9 @@ export default function DisplayPage() {
                 </div>
 
                 <div>
-                  <div className="w-[110px] h-[110px] md:w-[140px] md:h-[140px] bg-gray-50 rounded-2xl flex items-center justify-center overflow-hidden shadow-inner">
+                  <div className="w-[130px] h-[170px] md:w-[150px] md:h-[200px] rounded-2xl overflow-hidden shadow-inner flex items-center justify-center bg-gray-50">
                     <img
-                      src="/qr-display.png"
+                      src="/preic_qr.png"
                       alt="축하 메세지 QR"
                       className="w-full h-full object-contain"
                     />
