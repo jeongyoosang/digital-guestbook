@@ -16,7 +16,7 @@ const features = [
   {
     icon: Coins,
     title: "모바일 식권",
-    description: "종이식권 대신 모바일 식권으로 빠르고 투명하게 정산까지 한 번에 해결합니다.- Coming Soon"
+    description: "종이식권 대신 모바일 식권으로 빠르고 투명하게 정산까지 한 번에 해결합니다.-Coming Soon"
   }
 ];
 

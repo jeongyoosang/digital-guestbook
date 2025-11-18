@@ -1,10 +1,16 @@
+// src/App.tsx
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import GuestPage from "./pages/GuestPage";
+import DisplayPage from "./pages/DisplayPage";
+import ConfirmPage from "./pages/ConfirmPage";
+import ResultPage from "./pages/ResultPage"; // ✅ 결과 페이지 추가
 
 const queryClient = new QueryClient();
 
@@ -13,10 +19,25 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+
       <BrowserRouter>
         <Routes>
+          {/* 랜딩페이지 */}
           <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+
+          {/* 하객 입력 페이지 */}
+          <Route path="/guest/:eventId" element={<GuestPage />} />
+
+          {/* 디스플레이 페이지 */}
+          <Route path="/display/:eventId" element={<DisplayPage />} />
+
+          {/* 예식 전날/당일 설정 확정 페이지 */}
+          <Route path="/confirm/:eventId" element={<ConfirmPage />} />
+
+          {/* ✅ 예식 종료 후 결과/엑셀 다운로드 페이지 */}
+          <Route path="/result/:eventId" element={<ResultPage />} />
+
+          {/* 404 */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
