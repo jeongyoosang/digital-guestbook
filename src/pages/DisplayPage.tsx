@@ -22,7 +22,7 @@ type Recipient = {
 };
 
 type Schedule = {
-  start: string; // ISO 문자열
+  start: string;
   end: string;
 };
 
@@ -50,12 +50,12 @@ export default function DisplayPage() {
   if (!eventId) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-pink-100 via-pink-50 to-white">
-        <p className="text-base text-gray-500">이벤트 ID가 없습니다.</p>
+        <p className="text-2xl text-gray-500">이벤트 ID가 없습니다.</p>
       </div>
     );
   }
 
-  // now 1분마다 갱신 (타임라인 업데이트용)
+  // now 1분마다 갱신
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60 * 1000);
     return () => clearInterval(timer);
@@ -94,7 +94,7 @@ export default function DisplayPage() {
     };
   }, [eventId]);
 
-  // event_settings에서 설정값/예식시간 가져오기
+  // event_settings 가져오기
   useEffect(() => {
     let cancelled = false;
 
@@ -135,8 +135,8 @@ export default function DisplayPage() {
 
       if (data.ceremony_start_time && data.ceremony_end_time) {
         const dateStr = (data.ceremony_date as string) ?? "";
-        const startTime = data.ceremony_start_time as string; // "22:00"
-        const endTime = data.ceremony_end_time as string; // "23:00"
+        const startTime = data.ceremony_start_time as string;
+        const endTime = data.ceremony_end_time as string;
 
         const baseDate =
           dateStr && dateStr.length === 10
@@ -159,14 +159,13 @@ export default function DisplayPage() {
     };
   }, [eventId]);
 
-  // now + schedule 로 phase 계산
+  // phase 계산
   const phase: EventPhase = useMemo(() => {
-    if (!schedule) return "open"; // 아직 세팅 안 됐으면 그냥 열어둠(안전장치)
+    if (!schedule) return "open";
 
     const start = new Date(schedule.start);
     const end = new Date(schedule.end);
-    const p = getEventPhase(now, start, end);
-    return p;
+    return getEventPhase(now, start, end);
   }, [now, schedule]);
 
   // 메시지 순환
@@ -224,7 +223,7 @@ export default function DisplayPage() {
 
   const slotPositions = useMemo(() => {
     return visibleMessages.map(() => {
-      const top = 10 + Math.random() * 70; // 더 아래까지 사용
+      const top = 5 + Math.random() * 80; // 아래까지 더 넓게 사용
       const left = 5 + Math.random() * 70;
       return { top: `${top}%`, left: `${left}%` };
     });
@@ -232,23 +231,23 @@ export default function DisplayPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-pink-100 via-pink-50 to-white">
-      {/* 상단 QR 영역 */}
-      <main className="flex-1 flex flex-col items-center pt-6 pb-4 px-4">
+      <main className="flex-1 flex flex-col items-center pt-4 pb-4 px-4">
+        {/* 상단 QR 블럭 */}
         <div className="w-full max-w-4xl bg-white/95 rounded-[32px] shadow-xl border border-white/70 backdrop-blur px-6 md:px-10 pt-8 pb-6">
           <div className="text-center">
-            <p className="text-2xl md:text-3xl font-bold text-gray-900">
+            <p className="text-4xl md:text-5xl font-extrabold text-gray-900">
               축하 메시지 전하기
             </p>
           </div>
 
           <div className="mt-6 flex items-center justify-center gap-10 md:gap-16">
-            <div className="text-right min-w-[110px]">
+            <div className="text-right min-w-[130px]">
               {groomName && (
                 <>
-                  <p className="text-base md:text-lg text-gray-500 mb-1">
+                  <p className="text-2xl md:text-3xl text-gray-500 mb-1">
                     신랑
                   </p>
-                  <p className="text-xl md:text-2xl font-semibold text-gray-800">
+                  <p className="text-4xl md:text-5xl font-bold text-gray-800">
                     {groomName}
                   </p>
                 </>
@@ -256,7 +255,7 @@ export default function DisplayPage() {
             </div>
 
             <div>
-              <div className="w-[160px] h-[200px] md:w-[190px] md:h-[240px] bg-gray-50 rounded-[32px] flex items-center justify-center overflow-hidden shadow-inner">
+              <div className="w-[180px] h-[220px] md:w-[210px] md:h-[260px] bg-gray-50 rounded-[32px] flex items-center justify-center overflow-hidden shadow-inner">
                 <img
                   src="/preic_qr.png"
                   alt="축하 메세지 QR"
@@ -265,13 +264,13 @@ export default function DisplayPage() {
               </div>
             </div>
 
-            <div className="text-left min-w-[110px]">
+            <div className="text-left min-w-[130px]">
               {brideName && (
                 <>
-                  <p className="text-base md:text-lg text-gray-500 mb-1">
+                  <p className="text-2xl md:text-3xl text-gray-500 mb-1">
                     신부
                   </p>
-                  <p className="text-xl md:text-2xl font-semibold text-gray-800">
+                  <p className="text-4xl md:text-5xl font-bold text-gray-800">
                     {brideName}
                   </p>
                 </>
@@ -280,22 +279,23 @@ export default function DisplayPage() {
           </div>
 
           <div className="mt-4 text-center space-y-1">
-            <p className="text-base md:text-lg text-gray-600">
+            <p className="text-2xl md:text-3xl text-gray-600">
               {lowerMessage}
             </p>
             {dateText && (
-              <p className="text-sm md:text-base text-gray-400">{dateText}</p>
+              <p className="text-lg md:text-xl text-gray-400">{dateText}</p>
             )}
           </div>
         </div>
 
-        {/* 메시지 영역 */}
-        <div className="mt-6 w-full max-w-4xl bg-white/95 rounded-[32px] shadow-xl border border-white/70 backdrop-blur flex-1 flex flex-col">
+        {/* 메시지 블럭 */}
+        <div className="mt-6 w-full max-w-4xl bg-white/95 rounded-[32px] shadow-xl border border-white/70 backdrop-blur flex-1 flex flex-col min-h-[520px]">
+          {/* 타이틀 */}
           <div className="pt-6 pb-4 text-center">
             <p className="text-sm md:text-base tracking-[0.35em] text-pink-400 font-semibold uppercase">
               WEDDING MESSAGES
             </p>
-            <p className="mt-3 text-lg md:text-2xl text-gray-600">
+            <p className="mt-3 text-2xl md:text-3xl text-gray-600">
               {phase === "before_wait"
                 ? "잠시 후 축하 메세지 접수가 시작됩니다."
                 : phase === "closed"
@@ -304,11 +304,12 @@ export default function DisplayPage() {
             </p>
           </div>
 
-          <div className="relative px-6 md:px-10 pb-6 pt-2 flex-1 min-h-[420px]">
+          {/* 내용 + 하단 정보 전체를 flex-col로 구성 */}
+          <div className="px-6 md:px-10 pb-6 pt-2 flex-1 flex flex-col">
+            {/* 메시지가 실제로 뜨는 공간: 카드 안에서 위~아래 전부 사용 */}
             {phase !== "open" ? (
-              // 예식 전/후: 안내 문구만
-              <div className="flex items-center justify-center h-full">
-                <p className="text-lg md:text-xl text-gray-500 text-center whitespace-pre-line leading-relaxed">
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-2xl md:text-3xl text-gray-500 text-center whitespace-pre-line leading-relaxed">
                   {phase === "before_wait"
                     ? "예식 1시간 전부터 축하 메세지 접수가 시작됩니다.\n잠시만 기다려주세요."
                     : "오늘 남겨진 모든 축하 메세지는\n신랑·신부에게 바로 전달됩니다.\n축하의 마음을 전해주셔서 감사합니다."}
@@ -317,8 +318,8 @@ export default function DisplayPage() {
             ) : (
               <>
                 {visibleMessages.length === 0 && (
-                  <div className="flex items-center justify-center h-full">
-                    <p className="text-lg md:text-xl text-gray-400 text-center leading-relaxed">
+                  <div className="flex-1 flex items-center justify-center">
+                    <p className="text-2xl md:text-3xl text-gray-400 text-center leading-relaxed">
                       아직 등록된 축하메세지가 없습니다.
                       <br />
                       상단 QR을 찍고 첫 번째 메세지를 남겨주세요 ✨
@@ -326,52 +327,55 @@ export default function DisplayPage() {
                   </div>
                 )}
 
-                <div className="relative h-[420px] md:h-[480px]">
-                  {visibleMessages.map((msg, index) => {
-                    const pos =
-                      slotPositions[index] || { top: "50%", left: "50%" };
-                    const delaySec = (index * 3) % 20;
+                {visibleMessages.length > 0 && (
+                  <div className="relative flex-1">
+                    {visibleMessages.map((msg, index) => {
+                      const pos =
+                        slotPositions[index] || { top: "50%", left: "50%" };
+                      const delaySec = (index * 3) % 20;
 
-                    return (
-                      <div
-                        key={msg.id}
-                        className="absolute max-w-sm bg-white/95 rounded-3xl shadow-lg px-7 py-5
-                               text-center text-gray-800 text-lg leading-relaxed
-                               animate-[fadeInOut_20s_ease-in-out_infinite]
-                               border border-pink-50"
-                        style={{
-                          ...pos,
-                          animationDelay: `${delaySec}s`,
-                        }}
-                      >
-                        <p className="whitespace-pre-wrap break-keep">
-                          {msg.body}
-                        </p>
-                        {msg.nickname && (
-                          <p className="mt-4 text-base md:text-lg text-pink-400 font-semibold">
-                            {msg.nickname}
+                      return (
+                        <div
+                          key={msg.id}
+                          className="absolute max-w-md bg-white/95 rounded-3xl shadow-lg px-8 py-6
+                                 text-center text-gray-800 text-2xl leading-relaxed
+                                 animate-[fadeInOut_20s_ease-in-out_infinite]
+                                 border border-pink-50"
+                          style={{
+                            ...pos,
+                            animationDelay: `${delaySec}s`,
+                          }}
+                        >
+                          <p className="whitespace-pre-wrap break-keep">
+                            {msg.body}
                           </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-4 flex items-center justify-between text-sm md:text-base text-gray-400">
-                  <span>메세지 개수: {messageCount}개</span>
-                  <span>마지막 업데이트: {lastUpdatedText}</span>
-                </div>
+                          {msg.nickname && (
+                            <p className="mt-4 text-xl md:text-2xl text-pink-400 font-semibold">
+                              {msg.nickname}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </>
             )}
+
+            {/* 하단 상태 정보: 항상 카드 가장 아래에 붙도록 */}
+            <div className="mt-4 flex items-center justify-between text-lg md:text-xl text-gray-400">
+              <span>메세지 개수: {messageCount}개</span>
+              <span>마지막 업데이트: {lastUpdatedText}</span>
+            </div>
           </div>
         </div>
 
         {/* 인스타 핸들 */}
-        <div className="mt-3 w-full max-w-4xl flex justify-end items-center gap-2 text-sm md:text-base text-gray-400">
+        <div className="mt-3 w-full max-w-4xl flex justify-end items-center gap-2 text-lg md:text-xl text-gray-400">
           <img
             src="/instagram-logo.jpg"
             alt="Instagram"
-            className="w-5 h-5 opacity-70"
+            className="w-6 h-6 opacity-70"
           />
           <span>@digital_guestbook</span>
         </div>
