@@ -15,7 +15,7 @@ const MESSAGE_MAX = 80;
 
 type Schedule = {
   start: string; // ISO 문자열
-  end: string;
+  end: string;    
 };
 
 export default function GuestPage() {
