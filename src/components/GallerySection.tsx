@@ -1,21 +1,18 @@
 import React from "react";
 import { Card } from "@/components/ui/card";
-import venueChurch1 from "@/assets/venue-church-1.jpg";
-import venueChurch2 from "@/assets/venue-church-2.jpg";
-import venueHotel1 from "@/assets/venue-hotel-1.jpg";
-import venueHotel2 from "@/assets/venue-hotel-2.jpg";
-import venueHall1 from "@/assets/venue-hall-1.jpg";
-import venueHall2 from "@/assets/venue-hall-2.jpg";
-import venueOutdoor from "@/assets/venue-outdoor.jpg";
+import galleryHall from "@/assets/gallery-hall.jpg";
+import galleryChurch from "@/assets/gallery-church.jpg";
+import galleryParty from "@/assets/gallery-party.jpg";
+import galleryLobby from "@/assets/gallery-lobby.jpg";
+import galleryGarden from "@/assets/gallery-garden.jpg";
 
 const venues = [
-  { title: "성당 웨딩", description: "고급스럽고 클래식한 분위기", image: venueChurch1 },
-  { title: "성당 웨딩", description: "촛불이나 스테인드글라스 포인트", image: venueChurch2 },
-  { title: "호텔 예식", description: "현대적이고 밝은 조명", image: venueHotel1 },
-  { title: "호텔 예식", description: "플라워월 배경", image: venueHotel2 },
-  { title: "예식장 홀", description: "일반 웨딩홀", image: venueHall1 },
-  { title: "예식장 홀", description: "플라워 아치가 있는 장면", image: venueHall2 },
-  { title: "야외 파티 웨딩", description: "잔디밭, 자연광, 자유로운 분위기", image: venueOutdoor },
+  { title: "야외 가든 웨딩", description: "야외 웨딩에서도 스크린과 함께 축하의 순간을 더 선명하게", image: galleryGarden }
+  { title: "성당 웨딩", description: "성당입구 디지털 방명록", image: galleryChurch },
+  { title: "예식장 홀", description: "예식장 홀에 비치된 축하메세지", image: galleryHall },
+  { title: "피로연", description: "피로연 자리에서도 스크린으로 축하 메세지를 볼 수 있어요", image: galleryParty },
+  { title: "예식장 로비", description: "입장 전, 로비에서 QR을 찍고 메시지를 남기는 하객들", image: galleryLobby },
+  ,
 ];
 
 export const GallerySection = () => {

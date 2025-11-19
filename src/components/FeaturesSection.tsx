@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { QrCode, Mail, Coins } from "lucide-react";
-import receptionScreens from "@/assets/reception-screens.jpg";
+import featureImage from "@/assets/feature-display.jpg";   // ← 여기만 교체
 
 const features = [
   {
@@ -51,14 +51,14 @@ export const FeaturesSection = () => {
 
         <div className="relative rounded-3xl overflow-hidden shadow-2xl max-w-4xl mx-auto">
           <img 
-            src={receptionScreens} 
-            alt="하객들이 대형 스크린으로 축하 메시지를 즐기는 연회장 풍경"
-            className="w-full h-auto"
+            src={featureImage}       // ← 여기만 교체
+            alt="디지털 방명록이 실제 예식장에서 사용되는 모습"
+            className="w-full h-auto object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-6 text-white text-center">
             <p className="text-sm md:text-base font-medium">
-              연회장 대형 스크린에 실시간으로 표시되는 축하 메시지
+              하객과 함께 하는 축하메세지 이벤트
             </p>
           </div>
         </div>
