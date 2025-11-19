@@ -7,12 +7,31 @@ import galleryLobby from "@/assets/gallery-lobby.png";
 import galleryGarden from "@/assets/gallery-garden.png";
 
 const venues = [
-  { title: "야외 가든 웨딩", description: "야외 웨딩에서도 스크린과 함께 축하의 순간을 더 선명하게", image: galleryGarden }
-  { title: "성당 웨딩", description: "성당입구 디지털 방명록", image: galleryChurch },
-  { title: "예식장 홀", description: "예식장 홀에 비치된 축하메세지", image: galleryHall },
-  { title: "피로연", description: "피로연 자리에서도 스크린으로 축하 메세지를 볼 수 있어요", image: galleryParty },
-  { title: "예식장 로비", description: "입장 전, 로비에서 QR을 찍고 메시지를 남기는 하객들", image: galleryLobby },
-  ,
+  {
+    title: "야외 가든 웨딩",
+    description: "야외 웨딩에서도 스크린과 함께 축하의 순간을 더 선명하게",
+    image: galleryGarden,
+  },
+  {
+    title: "성당 웨딩",
+    description: "성당 입구 디지털 방명록",
+    image: galleryChurch,
+  },
+  {
+    title: "예식장 홀",
+    description: "예식장 홀에 비치된 축하 메세지",
+    image: galleryHall,
+  },
+  {
+    title: "피로연",
+    description: "피로연 자리에서도 스크린으로 축하 메세지를 볼 수 있어요",
+    image: galleryParty,
+  },
+  {
+    title: "예식장 로비",
+    description: "입장 전, 로비에서 QR을 찍고 메시지를 남기는 하객들",
+    image: galleryLobby,
+  },
 ];
 
 export const GallerySection = () => {
@@ -27,14 +46,10 @@ export const GallerySection = () => {
           결혼식 공간마다 따뜻한 장면으로 피어납니다.
         </p>
 
-        {/* ✅ 자동 흐름: 터치해도 멈추지 않음 */}
         <div className="marquee touch-pan-y">
           <div className="marquee-track">
             {[...venues, ...venues].map((venue, index) => (
-              <Card
-                key={index}
-                className="card-item"
-              >
+              <Card key={index} className="card-item">
                 <div className="relative h-[280px] sm:h-[350px] pointer-events-none select-none">
                   <img
                     src={venue.image}
@@ -44,8 +59,12 @@ export const GallerySection = () => {
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                   <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6 text-white">
-                    <h3 className="text-xl sm:text-2xl font-bold mb-1.5 sm:mb-2">{venue.title}</h3>
-                    <p className="text-xs sm:text-sm opacity-90 mb-2 sm:mb-3">{venue.description}</p>
+                    <h3 className="text-xl sm:text-2xl font-bold mb-1.5 sm:mb-2">
+                      {venue.title}
+                    </h3>
+                    <p className="text-xs sm:text-sm opacity-90 mb-2 sm:mb-3">
+                      {venue.description}
+                    </p>
                     <p className="text-[10px] sm:text-xs italic opacity-75">
                       하객들의 축하 메시지가 실시간으로 띄워지는 장면입니다.
                     </p>
@@ -57,19 +76,17 @@ export const GallerySection = () => {
         </div>
       </div>
 
-      {/* 내부 스타일: 마키 애니메이션 (중복 X, 터치 중단 X) */}
       <style>{`
         .marquee {
           overflow: hidden;
           position: relative;
-          /* 모바일에서 세로 스크롤 우선 -> 터치해도 가로 애니메이션 중단 안 됨 */
         }
         .touch-pan-y {
           touch-action: pan-y;
         }
         .marquee-track {
           display: flex;
-          gap: 1rem; /* 모바일 간격 */
+          gap: 1rem;
           width: max-content;
           will-change: transform;
           animation: marqueeX 30s linear infinite;
@@ -77,19 +94,17 @@ export const GallerySection = () => {
         @media (min-width: 640px) {
           .marquee-track { gap: 1.5rem; animation-duration: 38s; }
         }
-
         @keyframes marqueeX {
           0%   { transform: translateX(0); }
           100% { transform: translateX(-50%); }
         }
-
         .card-item {
-          min-width: 260px; /* 모바일 카드 폭 */
+          min-width: 260px;
           flex-shrink: 0;
           overflow: hidden;
           background: hsl(var(--card));
           transition: transform .25s ease, box-shadow .25s ease;
-          border-radius: 1rem; /* Tailwind rounded-2xl에 해당 */
+          border-radius: 1rem;
           box-shadow: 0 6px 18px rgba(0,0,0,.08);
         }
         @media (min-width: 640px) {
