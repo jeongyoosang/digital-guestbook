@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { QrCode, Mail, Coins } from "lucide-react";
-import featureImage from "@/assets/feature-display.jpg";   // ← 여기만 교체
+import featureImage from "@/assets/feature-display.png";   // ← 여기만 교체
 
 const features = [
   {

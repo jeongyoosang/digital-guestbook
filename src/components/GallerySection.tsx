@@ -1,10 +1,10 @@
 import React from "react";
 import { Card } from "@/components/ui/card";
-import galleryHall from "@/assets/gallery-hall.jpg";
-import galleryChurch from "@/assets/gallery-church.jpg";
-import galleryParty from "@/assets/gallery-party.jpg";
-import galleryLobby from "@/assets/gallery-lobby.jpg";
-import galleryGarden from "@/assets/gallery-garden.jpg";
+import galleryHall from "@/assets/gallery-hall.png";
+import galleryChurch from "@/assets/gallery-church.png";
+import galleryParty from "@/assets/gallery-party.png";
+import galleryLobby from "@/assets/gallery-lobby.png";
+import galleryGarden from "@/assets/gallery-garden.png";
 
 const venues = [
   { title: "야외 가든 웨딩", description: "야외 웨딩에서도 스크린과 함께 축하의 순간을 더 선명하게", image: galleryGarden }
