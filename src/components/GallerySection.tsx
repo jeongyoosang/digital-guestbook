@@ -51,7 +51,6 @@ export const GallerySection = () => {
             {[...venues, ...venues].map((venue, index) => (
               <Card key={index} className="card-item">
                 <div className="relative h-[280px] sm:h-[350px] pointer-events-none select-none">
-
                   {/* 이미지 */}
                   <img
                     src={venue.image}
@@ -60,14 +59,18 @@ export const GallerySection = () => {
                     draggable={false}
                   />
 
-                  {/* 위쪽을 어둡게 해서 글씨 보이게 */}
-                  <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-transparent" />
+                  {/* 아래쪽 어둡게 (설명용) */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
 
-                  {/* 제목/설명 = 왼쪽 상단 위치 */}
-                  <div className="absolute top-0 left-0 p-5 sm:p-6 text-white z-10">
-                    <h3 className="text-xl sm:text-2xl font-bold mb-1.5 sm:mb-2">
+                  {/* 타이틀만 왼쪽 상단 */}
+                  <div className="absolute top-0 left-0 p-4 sm:p-5">
+                    <h3 className="text-xl sm:text-2xl font-bold text-white drop-shadow-md">
                       {venue.title}
                     </h3>
+                  </div>
+
+                  {/* 기존 설명 + 하단 멘트 그대로 유지 */}
+                  <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6 text-white">
                     <p className="text-xs sm:text-sm opacity-90 mb-2 sm:mb-3">
                       {venue.description}
                     </p>
@@ -75,7 +78,6 @@ export const GallerySection = () => {
                       하객들의 축하 메시지가 실시간으로 띄워지는 장면입니다.
                     </p>
                   </div>
-
                 </div>
               </Card>
             ))}
@@ -108,23 +110,4 @@ export const GallerySection = () => {
         .card-item {
           min-width: 260px;
           flex-shrink: 0;
-          overflow: hidden;
-          background: hsl(var(--card));
-          transition: transform .25s ease, box-shadow .25s ease;
-          border-radius: 1rem;
-          box-shadow: 0 6px 18px rgba(0,0,0,.08);
-        }
-        @media (min-width: 640px) {
-          .card-item { min-width: 360px; }
-        }
-        @media (min-width: 768px) {
-          .card-item { min-width: 420px; }
-        }
-        .card-item:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 10px 28px rgba(0,0,0,.12);
-        }
-      `}</style>
-    </section>
-  );
-};
+          overflow: hid
