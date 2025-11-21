@@ -51,14 +51,20 @@ export const GallerySection = () => {
             {[...venues, ...venues].map((venue, index) => (
               <Card key={index} className="card-item">
                 <div className="relative h-[280px] sm:h-[350px] pointer-events-none select-none">
+
+                  {/* 이미지 */}
                   <img
                     src={venue.image}
                     alt={`${venue.title} - ${venue.description}`}
                     className="w-full h-full object-cover"
                     draggable={false}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6 text-white">
+
+                  {/* 위쪽을 어둡게 해서 글씨 보이게 */}
+                  <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-transparent" />
+
+                  {/* 제목/설명 = 왼쪽 상단 위치 */}
+                  <div className="absolute top-0 left-0 p-5 sm:p-6 text-white z-10">
                     <h3 className="text-xl sm:text-2xl font-bold mb-1.5 sm:mb-2">
                       {venue.title}
                     </h3>
@@ -69,6 +75,7 @@ export const GallerySection = () => {
                       하객들의 축하 메시지가 실시간으로 띄워지는 장면입니다.
                     </p>
                   </div>
+
                 </div>
               </Card>
             ))}
