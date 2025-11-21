@@ -59,17 +59,17 @@ export const GallerySection = () => {
                     draggable={false}
                   />
 
-                  {/* 아래쪽 어둡게 (설명용) */}
+                  {/* 아래쪽 그라데이션 (원래 있던 것 그대로) */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
 
-                  {/* 타이틀만 왼쪽 상단 */}
+                  {/* 타이틀: 왼쪽 상단, 흰색 */}
                   <div className="absolute top-0 left-0 p-4 sm:p-5">
                     <h3 className="text-xl sm:text-2xl font-bold text-white drop-shadow-md">
                       {venue.title}
                     </h3>
                   </div>
 
-                  {/* 기존 설명 + 하단 멘트 그대로 유지 */}
+                  {/* 설명 + 하단 멘트: 기존 위치 그대로 */}
                   <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6 text-white">
                     <p className="text-xs sm:text-sm opacity-90 mb-2 sm:mb-3">
                       {venue.description}
@@ -110,4 +110,23 @@ export const GallerySection = () => {
         .card-item {
           min-width: 260px;
           flex-shrink: 0;
-          overflow: hid
+          overflow: hidden;
+          background: hsl(var(--card));
+          transition: transform .25s ease, box-shadow .25s ease;
+          border-radius: 1rem;
+          box-shadow: 0 6px 18px rgba(0,0,0,.08);
+        }
+        @media (min-width: 640px) {
+          .card-item { min-width: 360px; }
+        }
+        @media (min-width: 768px) {
+          .card-item { min-width: 420px; }
+        }
+        .card-item:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 28px rgba(0,0,0,.12);
+        }
+      `}</style>
+    </section>
+  );
+};
