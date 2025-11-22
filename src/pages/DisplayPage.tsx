@@ -168,7 +168,7 @@ export default function DisplayPage() {
     return getEventPhase(now, start, end);
   }, [now, schedule]);
 
-  // 메시지 순환
+  // 메시지 순환 (리스트 구성만 담당)
   useEffect(() => {
     if (allMessages.length === 0) {
       setVisibleMessages([]);
@@ -231,8 +231,32 @@ export default function DisplayPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-pink-100 via-pink-50 to-white">
+      {/* ✅ 개별 메시지용 페이드 인/아웃 애니메이션 정의 */}
+      <style>
+        {`
+          @keyframes fadeInOutSingle {
+            0% {
+              opacity: 0;
+              transform: scale(0.95);
+            }
+            15% {
+              opacity: 1;
+              transform: scale(1);
+            }
+            75% {
+              opacity: 1;
+              transform: scale(1);
+            }
+            100% {
+              opacity: 0;
+              transform: scale(0.95);
+            }
+          }
+        `}
+      </style>
+
       {/* 자동 재생되는 배경 음악 */}
-      <audio src="/bgm.m4a" autoPlay loop />
+      <audio src="/bgm.m4a" autoPlay loop preload="auto" />
 
       <main className="flex-1 flex flex-col items-center pt-4 pb-4 px-4">
         {/* QR + 신랑/신부 */}
@@ -332,18 +356,19 @@ export default function DisplayPage() {
                     {visibleMessages.map((msg, index) => {
                       const pos =
                         slotPositions[index] || { top: "50%", left: "50%" };
-                      const delaySec = (index * 3) % 20;
+                      // B 옵션: 살짝 활발한 느낌 (랜덤 딜레이)
+                      const delaySec = Math.random() * 5; // 0~5초 랜덤
+                      const durationSec = 6; // 1s fade-in, 4s 유지, 1s fade-out
 
                       return (
                         <div
                           key={msg.id}
                           className="absolute max-w-md bg-white/95 rounded-3xl shadow-lg px-8 py-6
                                  text-center text-gray-800 text-2xl leading-relaxed
-                                 animate-[fadeInOut_20s_ease-in-out_infinite]
                                  border border-pink-50"
                           style={{
                             ...pos,
-                            animationDelay: `${delaySec}s`,
+                            animation: `fadeInOutSingle ${durationSec}s ease-in-out ${delaySec}s infinite`,
                           }}
                         >
                           <p className="whitespace-pre-wrap break-keep">
@@ -369,7 +394,7 @@ export default function DisplayPage() {
           </div>
         </div>
 
-        {/* 인스타그램 홍보 */}
+        {/* 인스타그램 홍보 (1단계 줄인 버전) */}
         <div className="mt-4 w-full max-w-4xl flex justify-end items-center gap-3 text-xl md:text-2xl text-gray-500">
           <img
             src="/instagram-logo.jpg"
