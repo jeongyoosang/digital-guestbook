@@ -32,6 +32,9 @@ const ROTATION_INTERVAL_MS = 5000;
 const MAX_VISIBLE = 10;
 const PAGE_SIZE = 10;
 
+// 🔹 다시보기용 영상 URL (지금은 업로드된 mp4 경로를 사용)
+const REPLAY_VIDEO_URL = "/mnt/data/KakaoTalk_20251122_180123048.mp4";
+
 export default function ResultPage() {
   const { eventId } = useParams<RouteParams>();
 
@@ -169,20 +172,14 @@ export default function ResultPage() {
     return { groom, bride };
   })();
 
-  // 디스플레이 페이지 URL (영상 링크)
-  const replayUrl =
-    eventId && typeof window !== "undefined"
-      ? `${window.location.origin}/display/${eventId}`
-      : `/display/${eventId || ""}`;
-
-  // "영상 링크 복사"
+  // 🔹 "영상 링크 복사"
   const handleCopyReplayLink = async () => {
     try {
-      if (navigator.clipboard && replayUrl) {
-        await navigator.clipboard.writeText(replayUrl);
-        alert("영상 링크가 복사되었습니다.\n카카오톡으로 붙여넣어 보내주세요.");
+      if (navigator.clipboard && REPLAY_VIDEO_URL) {
+        await navigator.clipboard.writeText(REPLAY_VIDEO_URL);
+        alert("영상 링크가 복사되었습니다.\n카카오톡 등으로 붙여넣어 보내주세요.");
       } else {
-        window.prompt("아래 링크를 복사해 주세요.", replayUrl);
+        window.prompt("아래 링크를 복사해 주세요.", REPLAY_VIDEO_URL);
       }
     } catch (err) {
       console.error(err);
@@ -190,7 +187,16 @@ export default function ResultPage() {
     }
   };
 
-    // CSV 다운로드 (모바일 + 카카오 인앱 고려)
+  // 🔹 "새 창에서 크게 보기" → 영상 URL 새창 열기
+  const handleOpenReplayInNewTab = () => {
+    if (!REPLAY_VIDEO_URL) {
+      alert("아직 영상 링크가 준비되지 않았습니다.");
+      return;
+    }
+    window.open(REPLAY_VIDEO_URL, "_blank");
+  };
+
+  // CSV 다운로드 (모바일 + 카카오 인앱 고려)
   const handleDownloadCsv = () => {
     if (!messages.length) {
       alert("다운로드할 메세지가 없습니다.");
@@ -252,7 +258,6 @@ export default function ResultPage() {
     const fileName = `디지털방명록_${fileDate}.csv`;
 
     const ua = navigator.userAgent || "";
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(ua);
     const isKakao = /KAKAOTALK/i.test(ua);
 
     if (isKakao) {
@@ -264,20 +269,16 @@ export default function ResultPage() {
       );
     }
 
-    // 👉 모바일/PC 구분하지 말고 동일하게 <a download> 방식으로 처리
     const a = document.createElement("a");
     a.href = url;
     a.download = fileName;
 
-    // iOS에서 보이도록 body에 붙였다가 제거
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
 
-    // URL 해제
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   };
-
 
   // 페이지네이션 계산
   const totalPages = Math.max(1, Math.ceil(messages.length / PAGE_SIZE));
@@ -343,16 +344,16 @@ export default function ResultPage() {
           </div>
         </header>
 
-        {/* ✅ 디지털 방명록 다시보기 (Display 상단 카드만 재구성, QR 영역 없음) */}
+        {/* ✅ 디지털 방명록 다시보기 (메세지 영역만) */}
         <section className="mb-8">
           <h2 className="text-lg font-semibold mb-2">디지털 방명록 다시보기</h2>
           <p className="text-xs text-gray-500 mb-3">
-            예식장에서 보였던 디지털 방명록 화면을 다시 볼 수 있습니다.
+            예식장에서 보였던 디지털 방명록의 메세지 영역만 다시 볼 수 있습니다.
             <br />
-            영상 링크를 복사하여 다운로드 등에 활용할 수 있습니다.
+            영상 링크를 복사해 두셨다가, 원하실 때 열어보시거나 저장해 두시면 됩니다.
           </p>
 
-          {/* DisplayPage 상단 카드 구조만 복원 */}
+          {/* 메시지 영역만을 위한 미니 디스플레이 */}
           <div className="w-full max-w-3xl mx-auto bg-gradient-to-b from-pink-100 via-pink-50 to-white rounded-[32px] shadow-md border border-white/70 backdrop-blur px-4 py-6">
             <div className="bg-white/95 rounded-[28px] shadow-xl border border-white/70 relative overflow-hidden">
               <div className="pt-6 pb-4 text-center">
@@ -412,11 +413,11 @@ export default function ResultPage() {
             </div>
           </div>
 
-          {/* 영상 관련 버튼 */}
+          {/* 🔘 버튼 2개: 새창보기 + 영상 링크 복사 */}
           <div className="mt-3 flex flex-wrap gap-2 justify-end">
             <button
               type="button"
-              onClick={() => window.open(replayUrl, "_blank")}
+              onClick={handleOpenReplayInNewTab}
               className="px-3 py-1.5 rounded-full border border-gray-300 text-xs md:text-sm text-gray-700 bg-white"
             >
               새 창에서 크게 보기
