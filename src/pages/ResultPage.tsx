@@ -32,9 +32,6 @@ const ROTATION_INTERVAL_MS = 5000;
 const MAX_VISIBLE = 10;
 const PAGE_SIZE = 10;
 
-// 🔹 다시보기용 영상 URL (지금은 업로드된 mp4 경로를 사용)
-const REPLAY_VIDEO_URL = "/mnt/data/KakaoTalk_20251122_180123048.mp4";
-
 export default function ResultPage() {
   const { eventId } = useParams<RouteParams>();
 
@@ -43,13 +40,11 @@ export default function ResultPage() {
   const [settings, setSettings] = useState<EventSettingsLite | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // 리플레이용 메시지 순환
   const [allReplayMessages, setAllReplayMessages] = useState<MessageRow[]>([]);
   const [visibleReplayMessages, setVisibleReplayMessages] = useState<
     MessageRow[]
   >([]);
 
-  // 리스트용 페이지네이션
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -64,7 +59,6 @@ export default function ResultPage() {
       setError(null);
 
       try {
-        // 1) 메시지 전체 조회
         const { data: msgData, error: msgError } = await supabase
           .from("messages")
           .select(
@@ -78,7 +72,6 @@ export default function ResultPage() {
         setMessages(list);
         setAllReplayMessages(list);
 
-        // 2) event_settings 일부 조회 (신랑/신부, 날짜용)
         const { data: settingsData, error: setErrorRes } = await supabase
           .from("event_settings")
           .select("ceremony_date, recipients")
@@ -103,7 +96,6 @@ export default function ResultPage() {
     fetchAll();
   }, [eventId]);
 
-  // 리플레이 영역: DisplayPage와 비슷한 순환 로직
   useEffect(() => {
     const all = allReplayMessages;
     if (!all || all.length === 0) {
@@ -172,14 +164,20 @@ export default function ResultPage() {
     return { groom, bride };
   })();
 
-  // 🔹 "영상 링크 복사"
+  const replayUrl =
+    eventId && typeof window !== "undefined"
+      ? `${window.location.origin}/replay/${eventId}`
+      : `/replay/${eventId || ""}`;
+
   const handleCopyReplayLink = async () => {
+    if (!replayUrl) return;
+
     try {
-      if (navigator.clipboard && REPLAY_VIDEO_URL) {
-        await navigator.clipboard.writeText(REPLAY_VIDEO_URL);
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(replayUrl);
         alert("영상 링크가 복사되었습니다.\n카카오톡 등으로 붙여넣어 보내주세요.");
       } else {
-        window.prompt("아래 링크를 복사해 주세요.", REPLAY_VIDEO_URL);
+        window.prompt("아래 링크를 복사해 주세요.", replayUrl);
       }
     } catch (err) {
       console.error(err);
@@ -187,16 +185,14 @@ export default function ResultPage() {
     }
   };
 
-  // 🔹 "새 창에서 크게 보기" → 영상 URL 새창 열기
-  const handleOpenReplayInNewTab = () => {
-    if (!REPLAY_VIDEO_URL) {
-      alert("아직 영상 링크가 준비되지 않았습니다.");
+  const handleOpenReplayFullscreen = () => {
+    if (!replayUrl) {
+      alert("영상 페이지 링크가 아직 준비되지 않았습니다.");
       return;
     }
-    window.open(REPLAY_VIDEO_URL, "_blank");
+    window.location.href = replayUrl;
   };
 
-  // CSV 다운로드 (모바일 + 카카오 인앱 고려)
   const handleDownloadCsv = () => {
     if (!messages.length) {
       alert("다운로드할 메세지가 없습니다.");
@@ -246,7 +242,6 @@ export default function ResultPage() {
         )
         .join("\r\n") + "\r\n";
 
-    // UTF-8 BOM
     const csvWithBom = "\uFEFF" + csvContent;
 
     const blob = new Blob([csvWithBom], {
@@ -261,7 +256,6 @@ export default function ResultPage() {
     const isKakao = /KAKAOTALK/i.test(ua);
 
     if (isKakao) {
-      // 카카오 인앱 브라우저 특수 안내
       alert(
         "카카오톡 안에서는 파일 다운로드가 잘 되지 않을 수 있어요.\n" +
           "오른쪽 상단 ··· 버튼을 눌러 '기본 브라우저(Chrome/Safari)에서 열기'를 선택한 뒤,\n" +
@@ -280,7 +274,6 @@ export default function ResultPage() {
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   };
 
-  // 페이지네이션 계산
   const totalPages = Math.max(1, Math.ceil(messages.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const pagedMessages = messages.slice(
@@ -294,7 +287,7 @@ export default function ResultPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <p className="text-lg">결과를 불러오는 중입니다...</p>
+        <p>결과를 불러오는 중입니다...</p>
       </div>
     );
   }
@@ -302,7 +295,7 @@ export default function ResultPage() {
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <p className="text-sm text-red-500">{error}</p>
+        <p className="text-red-500">{error}</p>
       </div>
     );
   }
@@ -310,7 +303,7 @@ export default function ResultPage() {
   if (!eventId) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <p className="text-sm">잘못된 접근입니다.</p>
+        <p>잘못된 접근입니다.</p>
       </div>
     );
   }
@@ -318,7 +311,6 @@ export default function ResultPage() {
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8">
       <div className="max-w-4xl mx-auto bg-white rounded-3xl shadow-md p-6 md:p-8">
-        {/* 상단 요약 */}
         <header className="mb-6 border-b pb-4">
           <h1 className="text-2xl font-semibold mb-1">디지털 방명록 결과</h1>
           {mainRecipients && (
@@ -344,16 +336,14 @@ export default function ResultPage() {
           </div>
         </header>
 
-        {/* ✅ 디지털 방명록 다시보기 (메세지 영역만) */}
         <section className="mb-8">
           <h2 className="text-lg font-semibold mb-2">디지털 방명록 다시보기</h2>
           <p className="text-xs text-gray-500 mb-3">
             예식장에서 보였던 디지털 방명록의 메세지 영역만 다시 볼 수 있습니다.
             <br />
-            영상 링크를 복사해 두셨다가, 원하실 때 열어보시거나 저장해 두시면 됩니다.
+            "크게 보기"를 누르고 휴대폰을 가로로 돌리시면, 영상처럼 화면 전체로 보실 수 있습니다.
           </p>
 
-          {/* 메시지 영역만을 위한 미니 디스플레이 */}
           <div className="w-full max-w-3xl mx-auto bg-gradient-to-b from-pink-100 via-pink-50 to-white rounded-[32px] shadow-md border border-white/70 backdrop-blur px-4 py-6">
             <div className="bg-white/95 rounded-[28px] shadow-xl border border-white/70 relative overflow-hidden">
               <div className="pt-6 pb-4 text-center">
@@ -413,14 +403,13 @@ export default function ResultPage() {
             </div>
           </div>
 
-          {/* 🔘 버튼 2개: 새창보기 + 영상 링크 복사 */}
           <div className="mt-3 flex flex-wrap gap-2 justify-end">
             <button
               type="button"
-              onClick={handleOpenReplayInNewTab}
+              onClick={handleOpenReplayFullscreen}
               className="px-3 py-1.5 rounded-full border border-gray-300 text-xs md:text-sm text-gray-700 bg-white"
             >
-              새 창에서 크게 보기
+              크게 보기
             </button>
             <button
               type="button"
@@ -432,7 +421,6 @@ export default function ResultPage() {
           </div>
         </section>
 
-        {/* ✅ 엑셀 다운로드 버튼: 첫 번째 메세지 칸 바로 위, 왼쪽 정렬 */}
         <div className="mb-3 flex justify-between items-center">
           <h2 className="text-sm font-semibold text-gray-800">
             축하 메세지 목록
@@ -446,7 +434,6 @@ export default function ResultPage() {
           </button>
         </div>
 
-        {/* 메세지 목록 + 페이지네이션 */}
         {messages.length === 0 ? (
           <p className="text-sm text-gray-500">
             아직 수집된 축하 메세지가 없습니다.
@@ -510,7 +497,6 @@ export default function ResultPage() {
               })}
             </div>
 
-            {/* 페이지네이션 컨트롤 */}
             <div className="mt-4 flex items-center justify-center gap-4 text-xs">
               <button
                 type="button"
