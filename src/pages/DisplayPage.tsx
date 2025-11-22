@@ -370,7 +370,7 @@ export default function DisplayPage() {
         </div>
 
         {/* 인스타그램 홍보 */}
-        <div className="mt-4 w-full max-w-4xl flex justify-end items-center gap-3 text-2xl md:text-3xl text-gray-500">
+        <div className="mt-4 w-full max-w-4xl flex justify-end items-center gap-3 text-xl md:text-2xl text-gray-500">
           <img
             src="/instagram-logo.jpg"
             alt="Instagram"
