@@ -223,7 +223,7 @@ export default function DisplayPage() {
 
   const slotPositions = useMemo(() => {
     return visibleMessages.map(() => {
-      const top = 5 + Math.random() * 80; // 아래까지 더 넓게 사용
+      const top = 5 + Math.random() * 80;
       const left = 5 + Math.random() * 70;
       return { top: `${top}%`, left: `${left}%` };
     });
@@ -231,8 +231,11 @@ export default function DisplayPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-pink-100 via-pink-50 to-white">
+      {/* 자동 재생되는 배경 음악 */}
+      <audio src="/bgm.m4a" autoPlay loop />
+
       <main className="flex-1 flex flex-col items-center pt-4 pb-4 px-4">
-        {/* 상단 QR 블럭 */}
+        {/* QR + 신랑/신부 */}
         <div className="w-full max-w-4xl bg-white/95 rounded-[32px] shadow-xl border border-white/70 backdrop-blur px-6 md:px-10 pt-8 pb-6">
           <div className="text-center">
             <p className="text-4xl md:text-5xl font-extrabold text-gray-900">
@@ -241,13 +244,13 @@ export default function DisplayPage() {
           </div>
 
           <div className="mt-6 flex items-center justify-center gap-10 md:gap-16">
-            <div className="text-right min-w-[130px]">
+            <div className="text-right min-w-[150px]">
               {groomName && (
                 <>
-                  <p className="text-2xl md:text-3xl text-gray-500 mb-1">
+                  <p className="text-3xl md:text-4xl text-gray-500 mb-2">
                     신랑
                   </p>
-                  <p className="text-4xl md:text-5xl font-bold text-gray-800">
+                  <p className="text-5xl md:text-6xl font-extrabold text-gray-800">
                     {groomName}
                   </p>
                 </>
@@ -255,7 +258,7 @@ export default function DisplayPage() {
             </div>
 
             <div>
-              <div className="w-[180px] h-[220px] md:w-[210px] md:h-[260px] bg-gray-50 rounded-[32px] flex items-center justify-center overflow-hidden shadow-inner">
+              <div className="w-[260px] h-[260px] md:w-[320px] md:h-[320px] bg-gray-50 rounded-[40px] flex items-center justify-center overflow-hidden shadow-inner">
                 <img
                   src="/preic_qr.png"
                   alt="축하 메세지 QR"
@@ -264,13 +267,13 @@ export default function DisplayPage() {
               </div>
             </div>
 
-            <div className="text-left min-w-[130px]">
+            <div className="text-left min-w-[150px]">
               {brideName && (
                 <>
-                  <p className="text-2xl md:text-3xl text-gray-500 mb-1">
+                  <p className="text-3xl md:text-4xl text-gray-500 mb-2">
                     신부
                   </p>
-                  <p className="text-4xl md:text-5xl font-bold text-gray-800">
+                  <p className="text-5xl md:text-6xl font-extrabold text-gray-800">
                     {brideName}
                   </p>
                 </>
@@ -278,8 +281,8 @@ export default function DisplayPage() {
             </div>
           </div>
 
-          <div className="mt-4 text-center space-y-1">
-            <p className="text-2xl md:text-3xl text-gray-600">
+          <div className="mt-5 text-center space-y-1">
+            <p className="text-3xl md:text-4xl font-extrabold text-gray-700">
               {lowerMessage}
             </p>
             {dateText && (
@@ -290,7 +293,6 @@ export default function DisplayPage() {
 
         {/* 메시지 블럭 */}
         <div className="mt-6 w-full max-w-4xl bg-white/95 rounded-[32px] shadow-xl border border-white/70 backdrop-blur flex-1 flex flex-col min-h-[520px]">
-          {/* 타이틀 */}
           <div className="pt-6 pb-4 text-center">
             <p className="text-sm md:text-base tracking-[0.35em] text-pink-400 font-semibold uppercase">
               WEDDING MESSAGES
@@ -304,9 +306,7 @@ export default function DisplayPage() {
             </p>
           </div>
 
-          {/* 내용 + 하단 정보 전체를 flex-col로 구성 */}
           <div className="px-6 md:px-10 pb-6 pt-2 flex-1 flex flex-col">
-            {/* 메시지가 실제로 뜨는 공간: 카드 안에서 위~아래 전부 사용 */}
             {phase !== "open" ? (
               <div className="flex-1 flex items-center justify-center">
                 <p className="text-2xl md:text-3xl text-gray-500 text-center whitespace-pre-line leading-relaxed">
@@ -362,7 +362,6 @@ export default function DisplayPage() {
               </>
             )}
 
-            {/* 하단 상태 정보: 항상 카드 가장 아래에 붙도록 */}
             <div className="mt-4 flex items-center justify-between text-lg md:text-xl text-gray-400">
               <span>메세지 개수: {messageCount}개</span>
               <span>마지막 업데이트: {lastUpdatedText}</span>
@@ -370,14 +369,14 @@ export default function DisplayPage() {
           </div>
         </div>
 
-        {/* 인스타 핸들 */}
-        <div className="mt-3 w-full max-w-4xl flex justify-end items-center gap-2 text-lg md:text-xl text-gray-400">
+        {/* 인스타그램 홍보 */}
+        <div className="mt-4 w-full max-w-4xl flex justify-end items-center gap-3 text-2xl md:text-3xl text-gray-500">
           <img
             src="/instagram-logo.jpg"
             alt="Instagram"
-            className="w-6 h-6 opacity-70"
+            className="w-10 h-10 opacity-80"
           />
-          <span>@digital_guestbook</span>
+          <span className="font-semibold">@digital_guestbook</span>
         </div>
       </main>
     </div>
