@@ -231,25 +231,25 @@ export default function DisplayPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-pink-100 via-pink-50 to-white">
-      {/* ✅ 개별 메시지용 페이드 인/아웃 애니메이션 정의 */}
+      {/* ✨ 개별 메시지용 은은한 페이드 인/아웃 애니메이션 정의 (A안) */}
       <style>
         {`
           @keyframes fadeInOutSingle {
             0% {
               opacity: 0;
-              transform: scale(0.95);
+              transform: scale(0.96);
             }
             15% {
               opacity: 1;
               transform: scale(1);
             }
-            75% {
+            85% {
               opacity: 1;
               transform: scale(1);
             }
             100% {
               opacity: 0;
-              transform: scale(0.95);
+              transform: scale(0.96);
             }
           }
         `}
@@ -356,9 +356,9 @@ export default function DisplayPage() {
                     {visibleMessages.map((msg, index) => {
                       const pos =
                         slotPositions[index] || { top: "50%", left: "50%" };
-                      // B 옵션: 살짝 활발한 느낌 (랜덤 딜레이)
-                      const delaySec = Math.random() * 5; // 0~5초 랜덤
-                      const durationSec = 6; // 1s fade-in, 4s 유지, 1s fade-out
+                      // A안: 은은한 템포 – 1초 정도 등장, 5초 유지, 1초 사라짐 (총 7초)
+                      const durationSec = 7;
+                      const delaySec = Math.random() * 3; // 0~3초 랜덤 딜레이 (너무 빠르지 않게)
 
                       return (
                         <div
