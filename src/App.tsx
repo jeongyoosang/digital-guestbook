@@ -11,7 +11,8 @@ import GuestPage from "./pages/GuestPage";
 import DisplayPage from "./pages/DisplayPage";
 import ConfirmPage from "./pages/ConfirmPage";
 import ResultPage from "./pages/ResultPage";
-import ReplayPage from "./pages/ReplayPage"; // ✅ 새로 추가된 풀스크린 메세지 페이지
+import ReplayPage from "./pages/ReplayPage"; // ✅ 신랑·신부용 메세지 다시보기
+import { AdminPage } from "./pages/AdminPage"; // ✅ 어드민 대시보드
 
 const queryClient = new QueryClient();
 
@@ -35,11 +36,14 @@ const App = () => (
           {/* 예식 전날/당일 설정 확정 페이지 */}
           <Route path="/confirm/:eventId" element={<ConfirmPage />} />
 
-          {/* ✅ 예식 종료 후 결과/엑셀 다운로드 페이지 */}
+          {/* 예식 종료 후 결과/엑셀 다운로드 페이지 */}
           <Route path="/result/:eventId" element={<ResultPage />} />
 
-          {/* ✅ 신랑·신부용 메세지 전체화면 다시보기 페이지 (가로화면용) */}
+          {/* 신랑·신부용 메세지 전체화면 다시보기 페이지 (가로화면용) */}
           <Route path="/replay/:eventId" element={<ReplayPage />} />
+
+          {/* ✅ Admin 대시보드 (예약 목록/상세) */}
+          <Route path="/admin" element={<AdminPage />} />
 
           {/* 404 */}
           <Route path="*" element={<NotFound />} />
