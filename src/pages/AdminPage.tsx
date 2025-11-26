@@ -5,6 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+type ReservationStatus = "new" | "in_progress" | "done";
+
 type ReservationRow = {
   id: string;
   created_at: string;
@@ -25,13 +27,14 @@ type ReservationRow = {
   mobile_invitation_link: string | null;
   message: string | null;
 
-  status: string | null;
+  status: ReservationStatus | null;
 };
 
 export const AdminPage = () => {
   const [reservations, setReservations] = useState<ReservationRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [statusChanging, setStatusChanging] = useState(false);
 
   const selected = reservations.find((r) => r.id === selectedId) ?? null;
 
@@ -55,6 +58,34 @@ export const AdminPage = () => {
       alert("예약 목록을 불러오는 중 오류가 발생했습니다.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 상태 변경 (신규 → 진행 중 → 완료 → 신규)
+  const updateStatus = async (row: ReservationRow) => {
+    if (!row.id) return;
+    setStatusChanging(true);
+    try {
+      const current: ReservationStatus = (row.status ?? "new") as ReservationStatus;
+      const next: ReservationStatus =
+        current === "new" ? "in_progress" : current === "in_progress" ? "done" : "new";
+
+      const { error } = await supabase
+        .from("reservations")
+        .update({ status: next })
+        .eq("id", row.id);
+
+      if (error) throw error;
+
+      // 로컬 state 동기화
+      setReservations((prev) =>
+        prev.map((r) => (r.id === row.id ? { ...r, status: next } : r))
+      );
+    } catch (e) {
+      console.error("상태 변경 오류:", e);
+      alert("상태를 변경하는 중 오류가 발생했습니다.");
+    } finally {
+      setStatusChanging(false);
     }
   };
 
@@ -130,6 +161,13 @@ export const AdminPage = () => {
                           ? r.wedding_time.slice(0, 5)
                           : "";
 
+                      const statusLabel =
+                        r.status === "done"
+                          ? "완료"
+                          : r.status === "in_progress"
+                          ? "진행 중"
+                          : "신규";
+
                       return (
                         <li key={r.id}>
                           <button
@@ -159,11 +197,7 @@ export const AdminPage = () => {
                                     : "bg-slate-50 text-slate-600 border-slate-200"
                                 )}
                               >
-                                {r.status === "done"
-                                  ? "완료"
-                                  : r.status === "in_progress"
-                                  ? "진행 중"
-                                  : "신규"}
+                                {statusLabel}
                               </span>
                             </div>
 
@@ -246,6 +280,20 @@ export const AdminPage = () => {
                           ? "진행 중"
                           : "신규"}
                       </span>
+                    </div>
+
+                    {/* 상태 변경 버튼 */}
+                    <div className="mt-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={statusChanging}
+                        className="border-leafLight text-ink hover:bg-ivory/70"
+                        onClick={() => updateStatus(selected)}
+                      >
+                        {statusChanging ? "변경 중..." : "상태 바꾸기 (신규 → 진행 → 완료)"}
+                      </Button>
                     </div>
                   </section>
 
