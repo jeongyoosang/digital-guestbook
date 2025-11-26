@@ -263,7 +263,11 @@ function KakaoPlacePicker({ open, onClose, onSelect }: KakaoPickerProps) {
               }}
               className="bg-ivory/60 border-leafLight focus-visible:ring-leaf"
             />
-            <Button type="submit" disabled={!ready || !KAKAO_APP_KEY} className="bg-leaf text-white hover:bg-leaf/90">
+            <Button
+              type="submit"
+              disabled={!ready || !KAKAO_APP_KEY}
+              className="bg-leaf text-white hover:bg-leaf/90"
+            >
               검색
             </Button>
           </form>
@@ -306,7 +310,12 @@ function KakaoPlacePicker({ open, onClose, onSelect }: KakaoPickerProps) {
 
         <div className="p-4 sm:p-5 border-t border-leafLight/40 bg-white/70">
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={onClose} className="border-leafLight text-ink hover:bg-ivory/60">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              className="border-leafLight text-ink hover:bg-ivory/60"
+            >
               닫기
             </Button>
           </div>
@@ -384,7 +393,8 @@ export const ReservationForm = () => {
             : null,
         wedding_time: data.weddingTime || null,
         date_status: data.dateStatus,
-        tentative_date: data.dateStatus === "tentative" ? (data.tentativeDate || null) : null,
+        tentative_date:
+          data.dateStatus === "tentative" ? (data.tentativeDate || null) : null,
 
         // 장소 정보
         venue_name: data.venueName || null,
@@ -404,13 +414,16 @@ export const ReservationForm = () => {
 
       if (error) throw error;
 
-      toast.success("예약 문의가 접수되었습니다. 빠르게 연락드릴게요 💌");
+      toast.success("예약 문의가 접수되었습니다 💌");
       setShowSuccess(true);
       reset();
       setDate(undefined);
 
       // 보강: 성공 섹션으로 부드럽게 스크롤
-      setTimeout(() => successRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+      setTimeout(
+        () => successRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+        50
+      );
       (document.activeElement as HTMLElement)?.blur?.(); // 모바일 키보드 닫힘
     } catch (e) {
       console.error(e);
@@ -429,16 +442,21 @@ export const ReservationForm = () => {
     }
   }, [showSuccess]);
 
+  // ✅ 성공 화면
   if (showSuccess) {
     return (
       <section id="reservation-success" ref={successRef} className="py-20 px-4 bg-ivory">
         <div className="container mx-auto max-w-2xl text-center">
           <div className="bg-white/80 backdrop-blur-xl border border-leafLight/40 shadow-soft p-10 sm:p-12 rounded-3xl">
             <h2 className="font-display text-4xl mb-4 text-ink/90">감사합니다 💐</h2>
-            <p className="text-lg text-ink/70">
+            <p className="text-lg text-ink/70 leading-relaxed">
               문의가 정상 접수되었습니다.
               <br />
-              순차적으로 연락드리겠습니다.
+              예약 확정 안내와 디지털 방명록 링크는
+              <br />
+              <span className="font-semibold">디지털방명록 공식 카카오톡 채널</span>로 발송됩니다.
+              <br />
+              아래에서 채널을 꼭 추가해 주세요.
             </p>
           </div>
         </div>
@@ -446,12 +464,19 @@ export const ReservationForm = () => {
     );
   }
 
+  // ✅ 폼 화면
   return (
     <section id="reservation" className="py-20 px-4 bg-ivory">
       <div className="container mx-auto max-w-2xl">
-        <h2 className="font-display text-4xl md:text-5xl text-center mb-4 text-ink/90">예약 문의</h2>
-        <p className="text-center text-ink/70 mb-10">
-          예약문의가 확인되면 카카오톡 공식채널로 순차적으로 연락드립니다.
+        <h2 className="font-display text-4xl md:text-5xl text-center mb-4 text-ink/90">
+          예약 문의
+        </h2>
+        <p className="text-center text-ink/70 mb-10 leading-relaxed">
+          예약 문의가 접수되면{" "}
+          <span className="font-semibold">디지털방명록 공식 카카오톡 채널</span>로 안내드립니다.
+          <br />
+          예약 확정을 받으시려면 아래에서{" "}
+          <span className="font-semibold">카카오톡 공식채널을 꼭 추가</span>해 주세요.
         </p>
 
         <form
@@ -460,9 +485,17 @@ export const ReservationForm = () => {
         >
           {/* 이름 + 역할 + (기타시 관계) */}
           <div>
-            <Label htmlFor="name" className="text-ink/80">이름</Label>
-            <Input id="name" {...register("name")} className="mt-2 bg-ivory/60 border-leafLight focus-visible:ring-leaf" />
-            {errors.name && <p className="text-sm text-destructive mt-1">{errors.name.message}</p>}
+            <Label htmlFor="name" className="text-ink/80">
+              이름
+            </Label>
+            <Input
+              id="name"
+              {...register("name")}
+              className="mt-2 bg-ivory/60 border-leafLight focus-visible:ring-leaf"
+            />
+            {errors.name && (
+              <p className="text-sm text-destructive mt-1">{errors.name.message}</p>
+            )}
 
             <div className="flex gap-6 mt-3 text-sm">
               {["신랑", "신부", "기타"].map((r) => (
@@ -475,7 +508,9 @@ export const ReservationForm = () => {
 
             {role === "기타" && (
               <div className="mt-3">
-                <Label htmlFor="relation" className="text-ink/80">관계</Label>
+                <Label htmlFor="relation" className="text-ink/80">
+                  관계
+                </Label>
                 <Input
                   id="relation"
                   placeholder="예: 신랑 친구 / 신부 사촌 / 웨딩플래너"
@@ -483,7 +518,9 @@ export const ReservationForm = () => {
                   className="mt-2 bg-ivory/60 border-leafLight focus-visible:ring-leaf"
                 />
                 {errors.relation && (
-                  <p className="text-sm text-destructive mt-1">{errors.relation.message}</p>
+                  <p className="text-sm text-destructive mt-1">
+                    {errors.relation.message}
+                  </p>
                 )}
               </div>
             )}
@@ -491,7 +528,9 @@ export const ReservationForm = () => {
 
           {/* 연락처 */}
           <div>
-            <Label htmlFor="phone" className="text-ink/80">연락처</Label>
+            <Label htmlFor="phone" className="text-ink/80">
+              연락처
+            </Label>
             <Input
               id="phone"
               type="tel"
@@ -501,7 +540,9 @@ export const ReservationForm = () => {
               className="mt-2 bg-ivory/60 border-leafLight focus-visible:ring-leaf"
             />
             <p className="text-sm text-ink/60 mt-1">하이픈(-) 없이 숫자만 입력해주세요.</p>
-            {errors.phone && <p className="text-sm text-destructive mt-1">{errors.phone.message}</p>}
+            {errors.phone && (
+              <p className="text-sm text-destructive mt-1">{errors.phone.message}</p>
+            )}
           </div>
 
           {/* 날짜 확정 여부 */}
@@ -523,13 +564,19 @@ export const ReservationForm = () => {
             >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="confirmed" id="confirmed" className="border-leaf" />
-                <Label htmlFor="confirmed" className="font-normal cursor-pointer text-ink/80">
+                <Label
+                  htmlFor="confirmed"
+                  className="font-normal cursor-pointer text-ink/80"
+                >
                   날짜 확정
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="tentative" id="tentative" className="border-leaf" />
-                <Label htmlFor="tentative" className="font-normal cursor-pointer text-ink/80">
+                <Label
+                  htmlFor="tentative"
+                  className="font-normal cursor-pointer text-ink/80"
+                >
                   미정
                 </Label>
               </div>
@@ -578,7 +625,9 @@ export const ReservationForm = () => {
                     </PopoverContent>
                   </Popover>
                   {errors.weddingDate && (
-                    <p className="text-sm text-destructive mt-1">{errors.weddingDate.message}</p>
+                    <p className="text-sm text-destructive mt-1">
+                      {errors.weddingDate.message}
+                    </p>
                   )}
                 </div>
 
@@ -620,7 +669,10 @@ export const ReservationForm = () => {
                     {venueName && (
                       <div className="w-full md:flex-1 md:min-w-0 rounded-lg border border-leafLight/60 p-3 text-sm bg-white/70 overflow-hidden">
                         <div className="font-medium text-ink truncate">{venueName}</div>
-                        <div className="text-ink/70 text-xs truncate" title={venueAddress}>
+                        <div
+                          className="text-ink/70 text-xs truncate"
+                          title={venueAddress}
+                        >
                           {venueAddress}
                         </div>
                       </div>
@@ -628,23 +680,37 @@ export const ReservationForm = () => {
                   </div>
 
                   {/* 검증 메시지 */}
-                  {errors.venueName && <p className="text-sm text-destructive">{errors.venueName.message}</p>}
-                  {errors.venueAddress && <p className="text-sm text-destructive">{errors.venueAddress.message}</p>}
+                  {errors.venueName && (
+                    <p className="text-sm text-destructive">
+                      {errors.venueName.message}
+                    </p>
+                  )}
+                  {errors.venueAddress && (
+                    <p className="text-sm text-destructive">
+                      {errors.venueAddress.message}
+                    </p>
+                  )}
                 </div>
               </div>
 
               {/* 모바일 청첩장 링크 (선택) */}
               <div className="mt-4">
-                <Label htmlFor="mobileInvitationLink" className="text-ink/80">모바일 청첩장 링크 (선택)</Label>
+                <Label htmlFor="mobileInvitationLink" className="text-ink/80">
+                  모바일 청첩장 링크 (선택)
+                </Label>
                 <Input
                   id="mobileInvitationLink"
                   placeholder="예: https://m-card.com/your-link"
                   {...register("mobileInvitationLink")}
                   className="mt-2 bg-ivory/60 border-leafLight focus-visible:ring-leaf"
                 />
-                <p className="text-sm text-ink/60 mt-1">아직 없으시면 비워두셔도 됩니다.</p>
+                <p className="text-sm text-ink/60 mt-1">
+                  아직 없으시면 비워두셔도 됩니다.
+                </p>
                 {errors.mobileInvitationLink && (
-                  <p className="text-sm text-destructive mt-1">{errors.mobileInvitationLink.message}</p>
+                  <p className="text-sm text-destructive mt-1">
+                    {errors.mobileInvitationLink.message}
+                  </p>
                 )}
               </div>
             </>
@@ -653,7 +719,9 @@ export const ReservationForm = () => {
           {/* 미정일 때: 예상 시기 */}
           {dateStatus === "tentative" && (
             <div>
-              <Label htmlFor="tentativeDate" className="text-ink/80">예상 시기 (선택)</Label>
+              <Label htmlFor="tentativeDate" className="text-ink/80">
+                예상 시기 (선택)
+              </Label>
               <Input
                 id="tentativeDate"
                 placeholder="예: 2026년 봄 / 내년 하반기 / 미정"
@@ -665,7 +733,9 @@ export const ReservationForm = () => {
 
           {/* 문의내용 (선택) */}
           <div>
-            <Label htmlFor="inquiry" className="text-ink/80">문의내용 (선택)</Label>
+            <Label htmlFor="inquiry" className="text-ink/80">
+              문의내용 (선택)
+            </Label>
             <Textarea
               id="inquiry"
               placeholder="간단히 궁금한 점을 남겨주세요."
@@ -678,7 +748,11 @@ export const ReservationForm = () => {
           {/* 동의 (필수) */}
           <div className="rounded-xl bg-white/70 border border-leafLight/60 p-4">
             <label className="flex items-start gap-3">
-              <input type="checkbox" {...register("agree")} className="mt-1 h-4 w-4 accent-leaf" />
+              <input
+                type="checkbox"
+                {...register("agree")}
+                className="mt-1 h-4 w-4 accent-leaf"
+              />
               <span className="text-sm leading-6 text-ink/80">
                 <span className="inline-flex items-center gap-2 font-medium">
                   <Lock className="w-4 h-4" aria-hidden="true" />
@@ -686,12 +760,17 @@ export const ReservationForm = () => {
                 </span>
                 <br />
                 <span className="text-ink/60">
-                  입력하신 정보와 얼굴 이미지는 예약 상담 및 서비스 제공 목적 외에는 사용하지 않으며, 외부 공유나 마케팅에
-                  활용하지 않습니다. 동의 철회 요청 시 지체 없이 삭제합니다.
+                  입력하신 정보와 얼굴 이미지는 예약 상담 및 서비스 제공 목적 외에는
+                  사용하지 않으며, 외부 공유나 마케팅에 활용하지 않습니다. 동의 철회
+                  요청 시 지체 없이 삭제합니다.
                 </span>
               </span>
             </label>
-            {errors.agree && <p className="text-sm text-destructive mt-2">{errors.agree.message}</p>}
+            {errors.agree && (
+              <p className="text-sm text-destructive mt-2">
+                {errors.agree.message}
+              </p>
+            )}
           </div>
 
           {/* 제출 */}

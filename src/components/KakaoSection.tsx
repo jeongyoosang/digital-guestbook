@@ -3,10 +3,7 @@ import { MessageCircle } from "lucide-react";
 
 export const KakaoSection = () => {
   const handleKakaoClick = () => {
-    const channelId = "_YOUR_CHANNEL_ID_"; // ✅ 카카오 채널 ID로 교체 (예: "_xkxnTxb")
-    const kakaoLink = `http://pf.kakao.com/_UyaHn/chat`; // ✅ 채널 채팅 바로가기 주소
-
-    // 모바일 브라우저에서 카톡앱으로 직접 이동
+    const kakaoLink = "http://pf.kakao.com/_UyaHn/chat"; // 네 공식채널 링크
     window.location.href = kakaoLink;
   };
 
@@ -14,13 +11,21 @@ export const KakaoSection = () => {
     <section className="py-20 px-4 bg-white">
       <div className="container mx-auto max-w-3xl text-center">
         <h2 className="text-4xl md:text-5xl font-bold mb-6">
-          빠른 상담
+          디지털방명록 카카오톡 공식채널
         </h2>
 
         <p className="text-lg text-muted-foreground mb-10 leading-relaxed">
-          예식 일정이 아직 미정이신가요? <br />
-          간단한 질문은 <strong>카카오톡 공식채널 1:1 상담</strong>으로 빠르게 답변드립니다.<br />
-          톡으로 편하게 문의해주세요.
+          예약 문의를 남겨주신 분들은 꼭{" "}
+          <strong>디지털방명록 공식 카카오톡 채널</strong>을 추가해 주세요.
+          <br />
+          예약 확정 안내, 디지털 방명록 링크, 서비스 관련 안내는
+          <br />
+          모두 이 채널을 통해 발송됩니다.
+          <br />
+          <br />
+          예식 일정이 미정이거나 간단한 질문이 있으시다면
+          <br />
+          <strong>1:1 채팅</strong>으로 편하게 상담받으실 수 있어요.
         </p>
 
         <div className="flex justify-center">
@@ -40,7 +45,7 @@ export const KakaoSection = () => {
             "
           >
             <MessageCircle className="mr-2 w-5 h-5 shrink-0" />
-            카카오톡 공식채널로 문의하기 💬
+            카카오톡 공식채널 추가 및 문의하기 💬
           </Button>
         </div>
       </div>
