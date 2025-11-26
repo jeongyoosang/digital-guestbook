@@ -5,8 +5,15 @@ import galleryChurch from "@/assets/gallery-church.png";
 import galleryParty from "@/assets/gallery-party.png";
 import galleryLobby from "@/assets/gallery-lobby.png";
 import galleryGarden from "@/assets/gallery-garden.png";
+// ⬇ 한옥 웨딩 PoC 사진 추가
+import galleryHanok from "@/assets/gallery-hanok.jpg";
 
 const venues = [
+  {
+    title: "한옥 웨딩",
+    description: "한옥 마당 입구에서도 자연스럽게",
+    image: galleryHanok,
+  },
   {
     title: "야외 가든 웨딩",
     description: "야외 웨딩에서도 스크린과 함께 축하의 순간을 더 선명하게",
@@ -51,7 +58,6 @@ export const GallerySection = () => {
             {[...venues, ...venues].map((venue, index) => (
               <Card key={index} className="card-item">
                 <div className="relative h-[280px] sm:h-[350px] pointer-events-none select-none">
-                  {/* 이미지 */}
                   <img
                     src={venue.image}
                     alt={`${venue.title} - ${venue.description}`}
@@ -59,17 +65,14 @@ export const GallerySection = () => {
                     draggable={false}
                   />
 
-                  {/* 아래쪽 그라데이션 (원래 있던 것 그대로) */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
 
-                  {/* 타이틀: 왼쪽 상단, 흰색 */}
                   <div className="absolute top-0 left-0 p-4 sm:p-5">
                     <h3 className="text-xl sm:text-2xl font-bold text-white drop-shadow-md">
                       {venue.title}
                     </h3>
                   </div>
 
-                  {/* 설명 + 하단 멘트: 기존 위치 그대로 */}
                   <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6 text-white">
                     <p className="text-xs sm:text-sm opacity-90 mb-2 sm:mb-3">
                       {venue.description}
@@ -82,6 +85,25 @@ export const GallerySection = () => {
               </Card>
             ))}
           </div>
+        </div>
+
+        {/* 인스타그램 CTA */}
+        <div className="w-full mt-10 flex justify-center">
+          <a
+            href="https://www.instagram.com/digital_guestbook"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-white shadow-sm hover:shadow-md transition border"
+          >
+            <img
+              src="/instagram-logo.jpg"
+              alt="Instagram"
+              className="w-5 h-5 object-contain"
+            />
+            <span className="text-sm font-medium text-gray-700">
+              @digital_guestbook
+            </span>
+          </a>
         </div>
       </div>
 
