@@ -14,7 +14,6 @@ type EventRow = {
   bride_name?: string | null;
   ceremony_date?: string | null;
   venue_name?: string | null;
-  // (예식장 주소/좌표는 나중에 붙일 수 있게 여유로 남겨둠)
   venue_address?: string | null;
   venue_lat?: number | null;
   venue_lng?: number | null;
@@ -97,10 +96,13 @@ export default function ConfirmPage() {
   const [settings, setSettings] = useState<EventSettingsRow | null>(null);
   const [accounts, setAccounts] = useState<AccountForm[]>([]);
 
-  // ✅ 기본 정보 (신랑 / 신부 / 예식장) – 이제 이걸 편집해서 저장
+  // ✅ 기본 정보 (신랑 / 신부 / 예식장)
   const [groomName, setGroomName] = useState("");
   const [brideName, setBrideName] = useState("");
   const [venueName, setVenueName] = useState("");
+  const [venueAddress, setVenueAddress] = useState("");
+  const [venueLat, setVenueLat] = useState<number | null>(null);
+  const [venueLng, setVenueLng] = useState<number | null>(null);
 
   const [ceremonyDate, setCeremonyDate] = useState("");
   const [ceremonyStartTime, setCeremonyStartTime] = useState("");
@@ -109,6 +111,12 @@ export default function ConfirmPage() {
   const [displaySubtitle, setDisplaySubtitle] = useState(DEFAULT_SUBTITLE);
   const [themePrompt, setThemePrompt] = useState(DEFAULT_THEME_PROMPT);
   const [lowerMessage, setLowerMessage] = useState(DEFAULT_LOWER_MESSAGE);
+
+  // 🔍 예식장 검색 모달 상태
+  const [venueSearchOpen, setVenueSearchOpen] = useState(false);
+  const [venueSearchKeyword, setVenueSearchKeyword] = useState("");
+  const [venueSearchResults, setVenueSearchResults] = useState<any[]>([]);
+  const [venueSearchLoading, setVenueSearchLoading] = useState(false);
 
   useEffect(() => {
     if (!eventId) return;
@@ -147,6 +155,9 @@ export default function ConfirmPage() {
           bride_name: null,
           ceremony_date: null,
           venue_name: null,
+          venue_address: null,
+          venue_lat: null,
+          venue_lng: null,
         };
       } else {
         e = eventData as EventRow;
@@ -154,10 +165,13 @@ export default function ConfirmPage() {
 
       setEvent(e);
 
-      // 🔹 기본 정보 상태에 세팅
+      // 🔹 기본 정보 상태 세팅
       setGroomName(e.groom_name ?? "");
       setBrideName(e.bride_name ?? "");
       setVenueName(e.venue_name ?? "");
+      setVenueAddress(e.venue_address ?? "");
+      setVenueLat(e.venue_lat ?? null);
+      setVenueLng(e.venue_lng ?? null);
 
       // 2) event_settings
       const { data: settingsData, error: settingsError } = await supabase
@@ -308,6 +322,42 @@ export default function ConfirmPage() {
     );
   }
 
+  // 🔍 카카오 예식장 검색 실행
+  const runVenueSearch = () => {
+    if (!venueSearchKeyword.trim()) return;
+
+    const kakao = (window as any).kakao;
+    if (!kakao || !kakao.maps || !kakao.maps.services) {
+      alert("카카오 지도 스크립트가 아직 로드되지 않았습니다.");
+      return;
+    }
+
+    setVenueSearchLoading(true);
+    setVenueSearchResults([]);
+
+    const ps = new kakao.maps.services.Places();
+    ps.keywordSearch(venueSearchKeyword, (data: any[], status: string) => {
+      setVenueSearchLoading(false);
+      if (status === kakao.maps.services.Status.OK) {
+        setVenueSearchResults(data);
+      } else {
+        setVenueSearchResults([]);
+      }
+    });
+  };
+
+  const handleSelectVenue = (place: any) => {
+    setVenueName(place.place_name || "");
+    setVenueAddress(
+      place.road_address_name || place.address_name || venueAddress
+    );
+    if (place.y && place.x) {
+      setVenueLat(Number(place.y));
+      setVenueLng(Number(place.x));
+    }
+    setVenueSearchOpen(false);
+  };
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!eventId) return;
@@ -325,6 +375,9 @@ export default function ConfirmPage() {
         groom_name: groomName || null,
         bride_name: brideName || null,
         venue_name: venueName || null,
+        venue_address: venueAddress || null,
+        venue_lat: venueLat,
+        venue_lng: venueLng,
       };
 
       const { error: eventUpdateError } = await supabase
@@ -452,7 +505,7 @@ export default function ConfirmPage() {
       </header>
 
       <form onSubmit={handleSave} className="space-y-6">
-        {/* ✅ 기본 정보 – 이제 직접 입력 가능 */}
+        {/* ✅ 기본 정보 – 신랑/신부/예식장 + 카카오 검색 */}
         <section className="border rounded-xl p-4 space-y-3 bg-gray-50">
           <h2 className="text-lg font-semibold">기본 정보</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -480,25 +533,45 @@ export default function ConfirmPage() {
                 onChange={(e) => setBrideName(e.target.value)}
               />
             </div>
-            <div className="md:col-span-2">
+
+
+            <div className="md:col-span-2 space-y-2">
               <label className="block text-xs font-medium text-gray-500 mb-1">
-                예식장 이름
+                예식장
               </label>
-              <input
-                type="text"
-                className="w-full border rounded-md px-3 py-2 text-sm"
-                placeholder="예: 더 라움, ○○웨딩홀"
-                value={venueName}
-                onChange={(e) => setVenueName(e.target.value)}
-              />
-              <p className="text-[10px] text-gray-500 mt-1">
-                예식장 검색·지도 연동은 예약 페이지에서 사용 중인 카카오 지도
-                컴포넌트를 나중에 공용으로 분리해서 붙일 수 있습니다.
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  className="flex-1 border rounded-md px-3 py-2 text-sm bg-white"
+                  placeholder="예: 더 라움, ○○웨딩홀"
+                  value={venueName}
+                  readOnly
+                />
+                <button
+                  type="button"
+                  className="sm:w-auto w-full px-3 py-2 text-sm border border-green-300 rounded-full flex items-center justify-center gap-1 bg-white hover:bg-green-50"
+                  onClick={() => setVenueSearchOpen(true)}
+                >
+                  <span>📍</span>
+                  <span>예식장 검색하기</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-500">
+                선택된 예식장:{" "}
+                <span className="font-medium">
+                  {venueName || "아직 선택하지 않았습니다."}
+                </span>
               </p>
+              {venueAddress && (
+                <p className="text-[11px] text-gray-500">
+                  주소: <span className="font-medium">{venueAddress}</span>
+                </p>
+              )}
+              
             </div>
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            여기에서 입력한 신랑/신부 이름과 예식장명이 최종 디지털 방명록과
+            입력한 신랑/신부 이름은 디지털 방명록과
             리포트에 사용됩니다.
           </p>
         </section>
@@ -708,9 +781,14 @@ export default function ConfirmPage() {
           <div className="space-y-4">
             {accounts.map((acct, index) => {
               const isKnownBank = BANK_OPTIONS.includes(acct.bank_name);
-              const selectValue = isKnownBank
-                ? acct.bank_name
-                : "기타(직접 입력)";
+
+              // 기본값: "" → "은행 선택" 옵션
+              let selectValue = "";
+              if (acct.bank_name) {
+                selectValue = isKnownBank
+                  ? acct.bank_name
+                  : "기타(직접 입력)";
+              }
 
               return (
                 <div
@@ -778,6 +856,13 @@ export default function ConfirmPage() {
                         value={selectValue}
                         onChange={(e) => {
                           const v = e.target.value;
+
+                          if (v === "") {
+                            // "은행 선택"으로 되돌리기
+                            handleAccountChange(index, "bank_name", "");
+                            return;
+                          }
+
                           if (v === "기타(직접 입력)") {
                             handleAccountChange(
                               index,
@@ -860,6 +945,82 @@ export default function ConfirmPage() {
           </div>
         </div>
       </form>
+
+      {/* 🔍 예식장 검색 모달 */}
+      {venueSearchOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl p-4 space-y-3">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-base font-semibold">예식장 검색</h3>
+              <button
+                type="button"
+                className="text-sm text-gray-500"
+                onClick={() => setVenueSearchOpen(false)}
+              >
+                닫기
+              </button>
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                className="flex-1 border rounded-md px-3 py-2 text-sm"
+                placeholder="예: ○○웨딩홀, ○○성당"
+                value={venueSearchKeyword}
+                onChange={(e) => setVenueSearchKeyword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    runVenueSearch();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="px-3 py-2 text-sm rounded-md bg-black text-white"
+                onClick={runVenueSearch}
+                disabled={venueSearchLoading}
+              >
+                {venueSearchLoading ? "검색 중..." : "검색"}
+              </button>
+            </div>
+
+            <div className="max-h-72 overflow-auto border rounded-lg">
+              {venueSearchLoading ? (
+                <div className="py-8 text-center text-sm text-gray-500">
+                  검색 중입니다…
+                </div>
+              ) : venueSearchResults.length === 0 ? (
+                <div className="py-8 text-center text-sm text-gray-500">
+                  검색 결과가 없습니다. 이름을 조금 다르게 입력해 보세요.
+                </div>
+              ) : (
+                <ul className="divide-y">
+                  {venueSearchResults.map((place) => (
+                    <li key={place.id}>
+                      <button
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                        onClick={() => handleSelectVenue(place)}
+                      >
+                        <div className="font-medium">{place.place_name}</div>
+                        <div className="text-xs text-gray-600">
+                          {place.road_address_name || place.address_name}
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <p className="text-[11px] text-gray-400">
+              카카오 지도 장소 검색을 이용합니다. 검색 결과는 Kakao에서
+              제공하는 정보에 따라 달라질 수 있습니다.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
