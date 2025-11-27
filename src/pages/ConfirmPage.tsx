@@ -323,28 +323,43 @@ export default function ConfirmPage() {
   }
 
   // 🔍 카카오 예식장 검색 실행
-  const runVenueSearch = () => {
-    if (!venueSearchKeyword.trim()) return;
+      const runVenueSearch = () => {
+        if (!venueSearchKeyword.trim()) return;
 
-    const kakao = (window as any).kakao;
-    if (!kakao || !kakao.maps || !kakao.maps.services) {
-      alert("카카오 지도 스크립트가 아직 로드되지 않았습니다.");
-      return;
-    }
+        const w = window as any;
+        const kakao = w.kakao;
 
-    setVenueSearchLoading(true);
-    setVenueSearchResults([]);
+        if (!kakao || !kakao.maps) {
+          alert("카카오 지도 스크립트가 아직 로드되지 않았습니다.");
+          return;
+        }
 
-    const ps = new kakao.maps.services.Places();
-    ps.keywordSearch(venueSearchKeyword, (data: any[], status: string) => {
-      setVenueSearchLoading(false);
-      if (status === kakao.maps.services.Status.OK) {
-        setVenueSearchResults(data);
-      } else {
-        setVenueSearchResults([]);
-      }
-    });
-  };
+        const doSearch = () => {
+          setVenueSearchLoading(true);
+          setVenueSearchResults([]);
+
+          const ps = new kakao.maps.services.Places();
+          ps.keywordSearch(venueSearchKeyword, (data: any[], status: string) => {
+            setVenueSearchLoading(false);
+            if (status === kakao.maps.services.Status.OK) {
+              setVenueSearchResults(data);
+            } else {
+              setVenueSearchResults([]);
+            }
+          });
+        };
+
+        // services가 이미 준비되어 있으면 바로 검색
+        if (kakao.maps.services) {
+          doSearch();
+        } else {
+          // autoload=false 환경에서 최초 1회 로드
+          kakao.maps.load(() => {
+            doSearch();
+          });
+        }
+      };
+
 
   const handleSelectVenue = (place: any) => {
     setVenueName(place.place_name || "");
