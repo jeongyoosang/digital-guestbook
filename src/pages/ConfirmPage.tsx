@@ -112,70 +112,12 @@ export default function ConfirmPage() {
   const [themePrompt, setThemePrompt] = useState(DEFAULT_THEME_PROMPT);
   const [lowerMessage, setLowerMessage] = useState(DEFAULT_LOWER_MESSAGE);
 
-  // 🔍 예식장 검색 모달 상태 + 카카오 준비 상태
+  // 🔍 예식장 검색 모달 상태
   const [venueSearchOpen, setVenueSearchOpen] = useState(false);
   const [venueSearchKeyword, setVenueSearchKeyword] = useState("");
   const [venueSearchResults, setVenueSearchResults] = useState<any[]>([]);
   const [venueSearchLoading, setVenueSearchLoading] = useState(false);
-  const [kakaoReady, setKakaoReady] = useState(false);
 
-  // 0) 카카오 지도 SDK 로더 (예약 페이지와 동일한 키 사용)
-  useEffect(() => {
-    const w = window as any;
-
-    if (w.kakao && w.kakao.maps && w.kakao.maps.services) {
-      // 이미 다른 페이지에서 로드된 경우
-      setKakaoReady(true);
-      return;
-    }
-
-    const existing = document.getElementById("kakao-map-sdk");
-    if (existing) {
-      // 이미 script 태그가 있는 경우 load 이벤트만 기다림
-      existing.addEventListener("load", () => {
-        const ww = window as any;
-        if (ww.kakao && ww.kakao.maps) {
-          ww.kakao.maps.load(() => {
-            setKakaoReady(true);
-          });
-        }
-      });
-      return;
-    }
-
-    const appKey =
-      import.meta.env.VITE_KAKAO_MAP_APP_KEY ||
-      import.meta.env.VITE_KAKAO_JAVASCRIPT_KEY;
-
-    if (!appKey) {
-      console.error(
-        "[ConfirmPage] Kakao app key is missing. Check your .env (VITE_KAKAO_MAP_APP_KEY)."
-      );
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.id = "kakao-map-sdk";
-    script.async = true;
-    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${appKey}&autoload=false&libraries=services`;
-
-    script.onload = () => {
-      const ww = window as any;
-      if (ww.kakao && ww.kakao.maps) {
-        ww.kakao.maps.load(() => {
-          setKakaoReady(true);
-        });
-      }
-    };
-
-    script.onerror = () => {
-      console.error("[ConfirmPage] Kakao Map SDK script failed to load");
-    };
-
-    document.head.appendChild(script);
-  }, []);
-
-  // 1) 이벤트/세팅/계좌 데이터 fetch
   useEffect(() => {
     if (!eventId) return;
     void fetchData(eventId);
@@ -380,20 +322,15 @@ export default function ConfirmPage() {
     );
   }
 
-  // 🔍 카카오 예식장 검색 실행
+  // 🔍 카카오 예식장 검색 실행 (단순 버전 – 스크립트는 index.html 에서 로드)
   const runVenueSearch = () => {
     if (!venueSearchKeyword.trim()) return;
 
-    if (!kakaoReady) {
-      alert("카카오 지도를 준비 중입니다.\n잠시 후 다시 시도해주세요.");
-      return;
-    }
-
-    const w = window as any;
-    const kakao = w.kakao;
-
+    const kakao = (window as any).kakao;
     if (!kakao || !kakao.maps || !kakao.maps.services) {
-      alert("카카오 지도 로딩에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      alert(
+        "카카오 지도 스크립트가 아직 로드되지 않았습니다.\n잠시 후 새로고침 후 다시 시도해주세요."
+      );
       return;
     }
 
@@ -599,6 +536,7 @@ export default function ConfirmPage() {
               />
             </div>
 
+            {/* 예식장 : 예약페이지 스타일처럼 버튼 + 선택결과만 표시 */}
             <div className="md:col-span-2 space-y-2">
               <label className="block text-xs font-medium text-gray-500 mb-1">
                 예식장
@@ -612,19 +550,19 @@ export default function ConfirmPage() {
                   <span>📍</span>
                   <span>예식장 검색하기</span>
                 </button>
-                <div className="flex-1 border rounded-md px-3 py-2 text-sm bg-white">
+                <div className="flex-1 min-h-[40px] border rounded-md px-3 py-2 text-xs bg-white flex flex-col justify-center">
                   {venueName ? (
                     <>
-                      <div className="font-medium">{venueName}</div>
+                      <span className="font-medium">{venueName}</span>
                       {venueAddress && (
-                        <div className="text-[11px] text-gray-500">
+                        <span className="text-[11px] text-gray-500">
                           {venueAddress}
-                        </div>
+                        </span>
                       )}
                     </>
                   ) : (
-                    <span className="text-gray-400 text-sm">
-                      예식장을 선택해주세요.
+                    <span className="text-[11px] text-gray-400">
+                      아직 선택한 예식장이 없습니다.
                     </span>
                   )}
                 </div>
@@ -632,8 +570,8 @@ export default function ConfirmPage() {
             </div>
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            입력한 신랑/신부 이름과 예식장 정보는 디지털 방명록과 리포트에
-            사용됩니다.
+            여기에서 입력한 신랑/신부 이름과 예식장 이름은 최종 디지털 방명록과
+            리포트에 사용됩니다.
           </p>
         </section>
 
@@ -643,8 +581,8 @@ export default function ConfirmPage() {
 
           <p className="text-xs text-gray-500">
             예식 시작 <span className="font-semibold">1시간 전</span>부터 종료{" "}
-            <span className="font-semibold">10분 전</span>
-            까지 디지털 방명록 디스플레이가 재생됩니다.
+            <span className="font-semibold">10분 전</span>까지 디지털 방명록
+            디스플레이가 재생됩니다.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

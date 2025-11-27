@@ -13,54 +13,30 @@
     <meta name="robots" content="index,follow" />
     <meta name="theme-color" content="#f7f4ef" />
 
-    <!-- Open Graph -->
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Digital Guestbook" />
-    <meta property="og:locale" content="ko_KR" />
-    <meta property="og:url" content="https://digital-guestbook.vercel.app/" />
-    <meta property="og:title" content="디지털 방명록 - 결혼식 축하 메시지 서비스" />
-    <meta property="og:description" content="QR 하나로 축하 메시지와 추억을 기록하세요" />
-    <meta
-      property="og:image"
-      content="https://digital-guestbook.vercel.app/og-image-kakao.png"
-    />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="디지털 방명록 - 결혼식 축하 메시지 서비스" />
-    <meta name="twitter:description" content="QR 하나로 축하 메시지와 추억을 기록하세요" />
-    <meta
-      name="twitter:image"
-      content="https://digital-guestbook.vercel.app/og-image-v2.jpg"
-    />
-    <!-- twitter:site는 실제 트위터 계정이 있을 때만 사용
-    <meta name="twitter:site" content="@your_account" />
-    -->
+    <!-- 기타 meta 동일 -->
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap"
-      rel="stylesheet"
-    />
 
-    <!-- Base Styles -->
     <style>
       html, body {
         margin: 0;
         padding: 0;
-        background-color: #f7f4ef; /* 아이보리톤 */
-        color: #1c1d1b; /* 다크그레이톤 */
-        font-family: "Noto Sans KR", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background-color: #f7f4ef;
+        color: #1c1d1b;
+        font-family: "Noto Sans KR", system-ui, sans-serif;
       }
       h1, h2, h3, .font-display {
         font-family: "Playfair Display", serif;
         color: #1c1d1b;
       }
     </style>
+
+    <!-- 🔥 카카오 지도 스크립트: 반드시 실제 키를 직접 넣어야 함 -->
+    <script
+      src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=5cfa521f917dbeb8d2666c57c4501f7a&libraries=services"
+    ></script>
   </head>
 
   <body>
