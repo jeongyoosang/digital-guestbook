@@ -119,16 +119,20 @@ export default function ConfirmPage() {
   const [venueSearchResults, setVenueSearchResults] = useState<any[]>([]);
   const [venueSearchLoading, setVenueSearchLoading] = useState(false);
 
-  // 🔹 카카오 지도 SDK 로더 (ConfirmPage 전용)
+  // 🔹 카카오 지도 SDK 로더 (자동 로드 버전)
   useEffect(() => {
     const w = window as any;
+
+    // 이미 kakao가 준비돼 있으면 패스
     if (w.kakao && w.kakao.maps && w.kakao.maps.services) {
-      // 이미 로드되어 있으면 아무것도 안 함
+      console.log("[ConfirmPage] Kakao Map SDK already loaded");
       return;
     }
 
+    // 이미 script 태그가 있으면 패스 (다른 페이지에서 로드한 경우)
     const existingScript = document.getElementById("kakao-map-sdk");
     if (existingScript) {
+      console.log("[ConfirmPage] Kakao script tag already exists");
       return;
     }
 
@@ -137,9 +141,12 @@ export default function ConfirmPage() {
     script.async = true;
     script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${
       import.meta.env.VITE_KAKAO_MAP_API_KEY
-    }&libraries=services&autoload=false`;
+    }&libraries=services`; // autoload=true (기본값)
     script.onload = () => {
       console.log("[ConfirmPage] Kakao Map SDK script loaded");
+    };
+    script.onerror = () => {
+      console.error("[ConfirmPage] Kakao Map SDK script failed to load");
     };
     document.head.appendChild(script);
   }, []);
@@ -348,42 +355,31 @@ export default function ConfirmPage() {
     );
   }
 
-  // 🔍 카카오 예식장 검색 실행
+  // 🔍 카카오 예식장 검색 실행 (자동 로드 버전)
   const runVenueSearch = () => {
     if (!venueSearchKeyword.trim()) return;
 
     const w = window as any;
     const kakao = w.kakao;
 
-    if (!kakao || !kakao.maps) {
-      alert("카카오 지도 스크립트가 아직 로드되지 않았습니다.");
+    // 아직 스크립트가 다 안 올라온 경우
+    if (!kakao || !kakao.maps || !kakao.maps.services) {
+      alert("카카오 지도를 준비 중입니다. 1~2초 뒤에 다시 검색해 주세요.");
       return;
     }
 
-    const doSearch = () => {
-      setVenueSearchLoading(true);
-      setVenueSearchResults([]);
+    setVenueSearchLoading(true);
+    setVenueSearchResults([]);
 
-      const ps = new kakao.maps.services.Places();
-      ps.keywordSearch(venueSearchKeyword, (data: any[], status: string) => {
-        setVenueSearchLoading(false);
-        if (status === kakao.maps.services.Status.OK) {
-          setVenueSearchResults(data);
-        } else {
-          setVenueSearchResults([]);
-        }
-      });
-    };
-
-    // services가 이미 준비되어 있으면 바로 검색
-    if (kakao.maps.services) {
-      doSearch();
-    } else {
-      // autoload=false 환경에서 최초 1회 로드
-      kakao.maps.load(() => {
-        doSearch();
-      });
-    }
+    const ps = new kakao.maps.services.Places();
+    ps.keywordSearch(venueSearchKeyword, (data: any[], status: string) => {
+      setVenueSearchLoading(false);
+      if (status === kakao.maps.services.Status.OK) {
+        setVenueSearchResults(data);
+      } else {
+        setVenueSearchResults([]);
+      }
+    });
   };
 
   const handleSelectVenue = (place: any) => {
@@ -832,7 +828,7 @@ export default function ConfirmPage() {
                   key={index}
                   className="border rounded-lg p-3 bg-gray-50 space-y-2"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify_between">
                     <div className="text-xs font-semibold text-gray-600">
                       계좌 #{index + 1}
                     </div>
