@@ -14,6 +14,10 @@ type EventRow = {
   bride_name?: string | null;
   ceremony_date?: string | null;
   venue_name?: string | null;
+  // (예식장 주소/좌표는 나중에 붙일 수 있게 여유로 남겨둠)
+  venue_address?: string | null;
+  venue_lat?: number | null;
+  venue_lng?: number | null;
   [key: string]: any;
 };
 
@@ -93,6 +97,11 @@ export default function ConfirmPage() {
   const [settings, setSettings] = useState<EventSettingsRow | null>(null);
   const [accounts, setAccounts] = useState<AccountForm[]>([]);
 
+  // ✅ 기본 정보 (신랑 / 신부 / 예식장) – 이제 이걸 편집해서 저장
+  const [groomName, setGroomName] = useState("");
+  const [brideName, setBrideName] = useState("");
+  const [venueName, setVenueName] = useState("");
+
   const [ceremonyDate, setCeremonyDate] = useState("");
   const [ceremonyStartTime, setCeremonyStartTime] = useState("");
   const [ceremonyEndTime, setCeremonyEndTime] = useState("");
@@ -144,6 +153,11 @@ export default function ConfirmPage() {
       }
 
       setEvent(e);
+
+      // 🔹 기본 정보 상태에 세팅
+      setGroomName(e.groom_name ?? "");
+      setBrideName(e.bride_name ?? "");
+      setVenueName(e.venue_name ?? "");
 
       // 2) event_settings
       const { data: settingsData, error: settingsError } = await supabase
@@ -233,6 +247,7 @@ export default function ConfirmPage() {
           }))
         );
       } else {
+        // 기본: 신랑/신부 계좌 두 개 생성
         setAccounts([
           {
             label: "신랑",
@@ -305,6 +320,21 @@ export default function ConfirmPage() {
       const startOffsetNum = DEFAULT_START_OFFSET;
       const endOffsetNum = DEFAULT_END_OFFSET;
 
+      // ✅ 1) events 테이블에 기본 정보 업데이트
+      const eventPayload = {
+        groom_name: groomName || null,
+        bride_name: brideName || null,
+        venue_name: venueName || null,
+      };
+
+      const { error: eventUpdateError } = await supabase
+        .from("events")
+        .update(eventPayload)
+        .eq("id", eventId);
+
+      if (eventUpdateError) throw eventUpdateError;
+
+      // 2) event_settings 저장
       const payload = {
         event_id: eventId,
         ceremony_date: ceremonyDate || null,
@@ -334,6 +364,7 @@ export default function ConfirmPage() {
         if (inserted) setSettings(inserted as EventSettingsRow);
       }
 
+      // 3) 축의금 계좌 저장 (전체 삭제 후 재삽입)
       const validAccounts = accounts
         .filter(
           (a) =>
@@ -420,35 +451,58 @@ export default function ConfirmPage() {
         </p>
       </header>
 
-      {/* 기본 정보 */}
-      <section className="border rounded-xl p-4 space-y-3 bg-gray-50">
-        <h2 className="text-lg font-semibold">기본 정보</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
-              신랑
-            </label>
-            <div className="font-semibold">{event.groom_name || "-"}</div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
-              신부
-            </label>
-            <div className="font-semibold">{event.bride_name || "-"}</div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
-              예식장
-            </label>
-            <div>{event.venue_name || "-"}</div>
-          </div>
-        </div>
-        <p className="text-xs text-gray-500 mt-2">
-          신랑/신부 이름은 예약 단계에서 확정되며, 여기서는 수정할 수 없습니다.
-        </p>
-      </section>
-
       <form onSubmit={handleSave} className="space-y-6">
+        {/* ✅ 기본 정보 – 이제 직접 입력 가능 */}
+        <section className="border rounded-xl p-4 space-y-3 bg-gray-50">
+          <h2 className="text-lg font-semibold">기본 정보</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                신랑 이름
+              </label>
+              <input
+                type="text"
+                className="w-full border rounded-md px-3 py-2 text-sm"
+                placeholder="예: 김우빈"
+                value={groomName}
+                onChange={(e) => setGroomName(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                신부 이름
+              </label>
+              <input
+                type="text"
+                className="w-full border rounded-md px-3 py-2 text-sm"
+                placeholder="예: 신민아"
+                value={brideName}
+                onChange={(e) => setBrideName(e.target.value)}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                예식장 이름
+              </label>
+              <input
+                type="text"
+                className="w-full border rounded-md px-3 py-2 text-sm"
+                placeholder="예: 더 라움, ○○웨딩홀"
+                value={venueName}
+                onChange={(e) => setVenueName(e.target.value)}
+              />
+              <p className="text-[10px] text-gray-500 mt-1">
+                예식장 검색·지도 연동은 예약 페이지에서 사용 중인 카카오 지도
+                컴포넌트를 나중에 공용으로 분리해서 붙일 수 있습니다.
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            여기에서 입력한 신랑/신부 이름과 예식장명이 최종 디지털 방명록과
+            리포트에 사용됩니다.
+          </p>
+        </section>
+
         {/* 예식 시간 */}
         <section className="border rounded-xl p-4 space-y-4">
           <h2 className="text-lg font-semibold">예식 시간</h2>
@@ -653,7 +707,6 @@ export default function ConfirmPage() {
 
           <div className="space-y-4">
             {accounts.map((acct, index) => {
-              // 현재 bank_name이 목록 안에 있는지 체크
               const isKnownBank = BANK_OPTIONS.includes(acct.bank_name);
               const selectValue = isKnownBank
                 ? acct.bank_name
@@ -726,14 +779,12 @@ export default function ConfirmPage() {
                         onChange={(e) => {
                           const v = e.target.value;
                           if (v === "기타(직접 입력)") {
-                            // 기타 선택 시, 기존 커스텀 값 유지 (없으면 빈 문자열)
                             handleAccountChange(
                               index,
                               "bank_name",
                               isKnownBank ? "" : acct.bank_name
                             );
                           } else {
-                            // 정해진 은행 선택 시, 해당 값으로 바로 저장
                             handleAccountChange(index, "bank_name", v);
                           }
                         }}
@@ -745,7 +796,6 @@ export default function ConfirmPage() {
                           </option>
                         ))}
                       </select>
-                      {/* 기타(직접 입력)일 때만 텍스트 입력 노출 */}
                       {selectValue === "기타(직접 입력)" && (
                         <input
                           type="text"
