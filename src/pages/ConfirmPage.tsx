@@ -54,13 +54,21 @@ const DEFAULT_THEME_PROMPT =
   "따뜻한 결혼식, 은은한 조명, 크리스마스 분위기, 부드러운 움직임의 배경 애니메이션 등";
 
 const DEFAULT_START_OFFSET = -60; // 예식 시작 1시간 전
-const DEFAULT_END_OFFSET = -10; // 예식 종료 10분 전
+const DEFAULT_END_OFFSET = -10; // 예식 종료 10분 전;
 
 // 시/분 선택용 옵션
 const HOURS: string[] = Array.from({ length: 24 }, (_, i) =>
   String(i).padStart(2, "0")
 );
 const MINUTES_10: string[] = ["00", "10", "20", "30", "40", "50"];
+
+// 디스플레이 레이아웃 옵션 (추후 실제 템플릿과 연결 예정)
+const DISPLAY_STYLE_OPTIONS = [
+  { value: "classic", label: "클래식 화이트 (기본)" },
+  { value: "romantic", label: "로맨틱 핑크" },
+  { value: "garden", label: "야외 가든 웨딩" },
+  { value: "dark", label: "클래식 다크" },
+];
 
 // ✅ 한국 주요 은행 리스트 + 기타
 const BANK_OPTIONS = [
@@ -111,6 +119,9 @@ export default function ConfirmPage() {
   const [displaySubtitle, setDisplaySubtitle] = useState(DEFAULT_SUBTITLE);
   const [themePrompt, setThemePrompt] = useState(DEFAULT_THEME_PROMPT);
   const [lowerMessage, setLowerMessage] = useState(DEFAULT_LOWER_MESSAGE);
+
+  // 디스플레이 레이아웃 (현재는 UI 전용, 추후 템플릿/DB 연동 예정)
+  const [displayStyle, setDisplayStyle] = useState("classic");
 
   // 🔍 예식장 검색 모달 상태
   const [venueSearchOpen, setVenueSearchOpen] = useState(false);
@@ -224,6 +235,9 @@ export default function ConfirmPage() {
         setLowerMessage(DEFAULT_LOWER_MESSAGE);
       }
 
+      // 디스플레이 스타일은 일단 기본값 사용 (추후 DB 연동 시 여기서 복원)
+      setDisplayStyle("classic");
+
       // 3) event_accounts
       const { data: accountData, error: accountError } = await supabase
         .from("event_accounts")
@@ -322,7 +336,7 @@ export default function ConfirmPage() {
     );
   }
 
-  // 🔍 카카오 예식장 검색 실행 (단순 버전 – 스크립트는 index.html 에서 로드)
+  // 🔍 카카오 예식장 검색 실행 (스크립트는 index.html 에서 로드)
   const runVenueSearch = () => {
     if (!venueSearchKeyword.trim()) return;
 
@@ -401,6 +415,7 @@ export default function ConfirmPage() {
         lower_message: lowerMessage || null,
         display_start_offset_minutes: startOffsetNum,
         display_end_offset_minutes: endOffsetNum,
+        // TODO: displayStyle을 DB에 저장할 컬럼 추가 후 여기에 포함
       };
 
       if (settings?.id) {
@@ -615,7 +630,7 @@ export default function ConfirmPage() {
                     }
                   }}
                 >
-                  <option value="">시 선택</option>
+                  <option value="">시</option>
                   {HOURS.map((h) => (
                     <option key={h} value={h}>
                       {h}시
@@ -635,7 +650,7 @@ export default function ConfirmPage() {
                     }
                   }}
                 >
-                  <option value="">분 선택</option>
+                  <option value="">분</option>
                   {MINUTES_10.map((m) => (
                     <option key={m} value={m}>
                       {m}분
@@ -665,7 +680,7 @@ export default function ConfirmPage() {
                     }
                   }}
                 >
-                  <option value="">시 선택</option>
+                  <option value="">시</option>
                   {HOURS.map((h) => (
                     <option key={h} value={h}>
                       {h}시
@@ -685,7 +700,7 @@ export default function ConfirmPage() {
                     }
                   }}
                 >
-                  <option value="">분 선택</option>
+                  <option value="">분</option>
                   {MINUTES_10.map((m) => (
                     <option key={m} value={m}>
                       {m}분
@@ -701,48 +716,33 @@ export default function ConfirmPage() {
           </div>
         </section>
 
-        {/* 디스플레이 문구 */}
+        {/* 디스플레이 디자인 */}
         <section className="border rounded-xl p-4 space-y-4">
-          <h2 className="text-lg font-semibold">디스플레이 문구 설정</h2>
+          <h2 className="text-lg font-semibold">디스플레이 디자인</h2>
 
+          {/* 레이아웃 선택 */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
-              상단 타이틀 (title)
+              디스플레이 레이아웃
             </label>
-            <input
-              type="text"
-              className="w-full border rounded-md px-3 py-2 text-sm bg-gray-50 text-gray-600 cursor-not-allowed"
-              value={displayTitle}
-              readOnly
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              상단 서브 타이틀 (subtitle)
-            </label>
-            <input
-              type="text"
-              className="w-full border rounded-md px-3 py-2 text-sm bg-gray-50 text-gray-600 cursor-not-allowed"
-              value={displaySubtitle}
-              readOnly
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              하단 문구 (lower_message)
-            </label>
-            <textarea
-              className="w-full border rounded-md px-3 py-2 text-sm min-h-[60px] bg-gray-50 text-gray-600 cursor-not-allowed"
-              value={lowerMessage}
-              readOnly
-            />
+            <select
+              className="w-full border rounded-md px-3 py-2 text-sm"
+              value={displayStyle}
+              onChange={(e) => setDisplayStyle(e.target.value)}
+            >
+              {DISPLAY_STYLE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
             <p className="text-[10px] text-gray-500 mt-1">
-              디스플레이 하단에 고정으로 깔릴 감사 인사 문구입니다.
+              전체적인 폰트와 색감, 메시지 박스 스타일이 결정됩니다. (추후
+              디스플레이 템플릿과 연동 예정)
             </p>
           </div>
 
+          {/* 배경 분위기 프롬프트 */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
               디스플레이 배경 분위기
@@ -751,9 +751,11 @@ export default function ConfirmPage() {
               className="w-full border rounded-md px-3 py-2 text-sm min-h-[60px]"
               value={themePrompt}
               onChange={(e) => setThemePrompt(e.target.value)}
+              placeholder="예: 따뜻한 벚꽃이 피는 야외 가든 웨딩, 은은한 조명, 봄 느낌"
             />
             <p className="text-[10px] text-gray-500 mt-1">
-              AI가 자동으로 디스플레이 배경을 생성합니다.
+              디스플레이 바깥 배경의 분위기를 자유롭게 적어주세요. AI가 이
+              설명을 바탕으로 움직이는 배경을 생성합니다.
             </p>
           </div>
         </section>
@@ -1014,8 +1016,8 @@ export default function ConfirmPage() {
             </div>
 
             <p className="text-[11px] text-gray-400">
-              카카오 지도 장소 검색을 이용합니다. 검색 결과는 Kakao에서
-              제공하는 정보에 따라 달라질 수 있습니다.
+              카카오 지도 장소 검색을 이용합니다. 검색 결과는 Kakao에서 제공하는
+              정보에 따라 달라질 수 있습니다.
             </p>
           </div>
         </div>
