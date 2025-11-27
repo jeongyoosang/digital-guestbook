@@ -1,5 +1,4 @@
 // src/pages/ConfirmPage.tsx
-import type React from "react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -113,44 +112,70 @@ export default function ConfirmPage() {
   const [themePrompt, setThemePrompt] = useState(DEFAULT_THEME_PROMPT);
   const [lowerMessage, setLowerMessage] = useState(DEFAULT_LOWER_MESSAGE);
 
-  // 🔍 예식장 검색 모달 상태
+  // 🔍 예식장 검색 모달 상태 + 카카오 준비 상태
   const [venueSearchOpen, setVenueSearchOpen] = useState(false);
   const [venueSearchKeyword, setVenueSearchKeyword] = useState("");
   const [venueSearchResults, setVenueSearchResults] = useState<any[]>([]);
   const [venueSearchLoading, setVenueSearchLoading] = useState(false);
+  const [kakaoReady, setKakaoReady] = useState(false);
 
-  // 🔹 카카오 지도 SDK 로더 (자동 로드 버전)
+  // 0) 카카오 지도 SDK 로더 (예약 페이지와 동일한 키 사용)
   useEffect(() => {
     const w = window as any;
 
-    // 이미 kakao가 준비돼 있으면 패스
     if (w.kakao && w.kakao.maps && w.kakao.maps.services) {
-      console.log("[ConfirmPage] Kakao Map SDK already loaded");
+      // 이미 다른 페이지에서 로드된 경우
+      setKakaoReady(true);
       return;
     }
 
-    // 이미 script 태그가 있으면 패스 (다른 페이지에서 로드한 경우)
-    const existingScript = document.getElementById("kakao-map-sdk");
-    if (existingScript) {
-      console.log("[ConfirmPage] Kakao script tag already exists");
+    const existing = document.getElementById("kakao-map-sdk");
+    if (existing) {
+      // 이미 script 태그가 있는 경우 load 이벤트만 기다림
+      existing.addEventListener("load", () => {
+        const ww = window as any;
+        if (ww.kakao && ww.kakao.maps) {
+          ww.kakao.maps.load(() => {
+            setKakaoReady(true);
+          });
+        }
+      });
+      return;
+    }
+
+    const appKey =
+      import.meta.env.VITE_KAKAO_MAP_APP_KEY ||
+      import.meta.env.VITE_KAKAO_JAVASCRIPT_KEY;
+
+    if (!appKey) {
+      console.error(
+        "[ConfirmPage] Kakao app key is missing. Check your .env (VITE_KAKAO_MAP_APP_KEY)."
+      );
       return;
     }
 
     const script = document.createElement("script");
     script.id = "kakao-map-sdk";
     script.async = true;
-    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${
-      import.meta.env.VITE_KAKAO_MAP_API_KEY
-    }&libraries=services`; // autoload=true (기본값)
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${appKey}&autoload=false&libraries=services`;
+
     script.onload = () => {
-      console.log("[ConfirmPage] Kakao Map SDK script loaded");
+      const ww = window as any;
+      if (ww.kakao && ww.kakao.maps) {
+        ww.kakao.maps.load(() => {
+          setKakaoReady(true);
+        });
+      }
     };
+
     script.onerror = () => {
       console.error("[ConfirmPage] Kakao Map SDK script failed to load");
     };
+
     document.head.appendChild(script);
   }, []);
 
+  // 1) 이벤트/세팅/계좌 데이터 fetch
   useEffect(() => {
     if (!eventId) return;
     void fetchData(eventId);
@@ -355,16 +380,20 @@ export default function ConfirmPage() {
     );
   }
 
-  // 🔍 카카오 예식장 검색 실행 (자동 로드 버전)
+  // 🔍 카카오 예식장 검색 실행
   const runVenueSearch = () => {
     if (!venueSearchKeyword.trim()) return;
+
+    if (!kakaoReady) {
+      alert("카카오 지도를 준비 중입니다.\n잠시 후 다시 시도해주세요.");
+      return;
+    }
 
     const w = window as any;
     const kakao = w.kakao;
 
-    // 아직 스크립트가 다 안 올라온 경우
     if (!kakao || !kakao.maps || !kakao.maps.services) {
-      alert("카카오 지도를 준비 중입니다. 1~2초 뒤에 다시 검색해 주세요.");
+      alert("카카오 지도 로딩에 실패했습니다. 잠시 후 다시 시도해주세요.");
       return;
     }
 
@@ -575,13 +604,6 @@ export default function ConfirmPage() {
                 예식장
               </label>
               <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="text"
-                  className="flex-1 border rounded-md px-3 py-2 text-sm bg-white"
-                  placeholder="예: 더 라움, ○○웨딩홀"
-                  value={venueName}
-                  readOnly
-                />
                 <button
                   type="button"
                   className="sm:w-auto w-full px-3 py-2 text-sm border border-green-300 rounded-full flex items-center justify-center gap-1 bg-white hover:bg-green-50"
@@ -590,22 +612,28 @@ export default function ConfirmPage() {
                   <span>📍</span>
                   <span>예식장 검색하기</span>
                 </button>
+                <div className="flex-1 border rounded-md px-3 py-2 text-sm bg-white">
+                  {venueName ? (
+                    <>
+                      <div className="font-medium">{venueName}</div>
+                      {venueAddress && (
+                        <div className="text-[11px] text-gray-500">
+                          {venueAddress}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-gray-400 text-sm">
+                      예식장을 선택해주세요.
+                    </span>
+                  )}
+                </div>
               </div>
-              <p className="text-[11px] text-gray-500">
-                선택된 예식장:{" "}
-                <span className="font-medium">
-                  {venueName || "아직 선택하지 않았습니다."}
-                </span>
-              </p>
-              {venueAddress && (
-                <p className="text-[11px] text-gray-500">
-                  주소: <span className="font-medium">{venueAddress}</span>
-                </p>
-              )}
             </div>
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            입력한 신랑/신부 이름은 디지털 방명록과 리포트에 사용됩니다.
+            입력한 신랑/신부 이름과 예식장 정보는 디지털 방명록과 리포트에
+            사용됩니다.
           </p>
         </section>
 
@@ -615,8 +643,8 @@ export default function ConfirmPage() {
 
           <p className="text-xs text-gray-500">
             예식 시작 <span className="font-semibold">1시간 전</span>부터 종료{" "}
-            <span className="font-semibold">10분 전</span>까지 디지털 방명록
-            디스플레이가 재생됩니다.
+            <span className="font-semibold">10분 전</span>
+            까지 디지털 방명록 디스플레이가 재생됩니다.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -828,7 +856,7 @@ export default function ConfirmPage() {
                   key={index}
                   className="border rounded-lg p-3 bg-gray-50 space-y-2"
                 >
-                  <div className="flex items-center justify_between">
+                  <div className="flex items-center justify-between">
                     <div className="text-xs font-semibold text-gray-600">
                       계좌 #{index + 1}
                     </div>
