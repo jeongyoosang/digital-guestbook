@@ -1,4 +1,5 @@
 // src/pages/ConfirmPage.tsx
+import type React from "react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -117,6 +118,31 @@ export default function ConfirmPage() {
   const [venueSearchKeyword, setVenueSearchKeyword] = useState("");
   const [venueSearchResults, setVenueSearchResults] = useState<any[]>([]);
   const [venueSearchLoading, setVenueSearchLoading] = useState(false);
+
+  // 🔹 카카오 지도 SDK 로더 (ConfirmPage 전용)
+  useEffect(() => {
+    const w = window as any;
+    if (w.kakao && w.kakao.maps && w.kakao.maps.services) {
+      // 이미 로드되어 있으면 아무것도 안 함
+      return;
+    }
+
+    const existingScript = document.getElementById("kakao-map-sdk");
+    if (existingScript) {
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = "kakao-map-sdk";
+    script.async = true;
+    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${
+      import.meta.env.VITE_KAKAO_MAP_API_KEY
+    }&libraries=services&autoload=false`;
+    script.onload = () => {
+      console.log("[ConfirmPage] Kakao Map SDK script loaded");
+    };
+    document.head.appendChild(script);
+  }, []);
 
   useEffect(() => {
     if (!eventId) return;
@@ -323,43 +349,42 @@ export default function ConfirmPage() {
   }
 
   // 🔍 카카오 예식장 검색 실행
-      const runVenueSearch = () => {
-        if (!venueSearchKeyword.trim()) return;
+  const runVenueSearch = () => {
+    if (!venueSearchKeyword.trim()) return;
 
-        const w = window as any;
-        const kakao = w.kakao;
+    const w = window as any;
+    const kakao = w.kakao;
 
-        if (!kakao || !kakao.maps) {
-          alert("카카오 지도 스크립트가 아직 로드되지 않았습니다.");
-          return;
-        }
+    if (!kakao || !kakao.maps) {
+      alert("카카오 지도 스크립트가 아직 로드되지 않았습니다.");
+      return;
+    }
 
-        const doSearch = () => {
-          setVenueSearchLoading(true);
-          setVenueSearchResults([]);
+    const doSearch = () => {
+      setVenueSearchLoading(true);
+      setVenueSearchResults([]);
 
-          const ps = new kakao.maps.services.Places();
-          ps.keywordSearch(venueSearchKeyword, (data: any[], status: string) => {
-            setVenueSearchLoading(false);
-            if (status === kakao.maps.services.Status.OK) {
-              setVenueSearchResults(data);
-            } else {
-              setVenueSearchResults([]);
-            }
-          });
-        };
-
-        // services가 이미 준비되어 있으면 바로 검색
-        if (kakao.maps.services) {
-          doSearch();
+      const ps = new kakao.maps.services.Places();
+      ps.keywordSearch(venueSearchKeyword, (data: any[], status: string) => {
+        setVenueSearchLoading(false);
+        if (status === kakao.maps.services.Status.OK) {
+          setVenueSearchResults(data);
         } else {
-          // autoload=false 환경에서 최초 1회 로드
-          kakao.maps.load(() => {
-            doSearch();
-          });
+          setVenueSearchResults([]);
         }
-      };
+      });
+    };
 
+    // services가 이미 준비되어 있으면 바로 검색
+    if (kakao.maps.services) {
+      doSearch();
+    } else {
+      // autoload=false 환경에서 최초 1회 로드
+      kakao.maps.load(() => {
+        doSearch();
+      });
+    }
+  };
 
   const handleSelectVenue = (place: any) => {
     setVenueName(place.place_name || "");
@@ -549,7 +574,6 @@ export default function ConfirmPage() {
               />
             </div>
 
-
             <div className="md:col-span-2 space-y-2">
               <label className="block text-xs font-medium text-gray-500 mb-1">
                 예식장
@@ -582,12 +606,10 @@ export default function ConfirmPage() {
                   주소: <span className="font-medium">{venueAddress}</span>
                 </p>
               )}
-              
             </div>
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            입력한 신랑/신부 이름은 디지털 방명록과
-            리포트에 사용됩니다.
+            입력한 신랑/신부 이름은 디지털 방명록과 리포트에 사용됩니다.
           </p>
         </section>
 
