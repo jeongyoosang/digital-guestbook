@@ -30,13 +30,54 @@ type ReservationRow = {
   status: ReservationStatus | null;
 };
 
+type EventRowForMap = {
+  id: string;
+  reservation_id: string | null;
+};
+
 export const AdminPage = () => {
   const [reservations, setReservations] = useState<ReservationRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusChanging, setStatusChanging] = useState(false);
 
+  // reservation_id -> event_id 매핑
+  const [eventIdMap, setEventIdMap] = useState<Record<string, string | undefined>>(
+    {}
+  );
+  const [creatingEvent, setCreatingEvent] = useState(false);
+
   const selected = reservations.find((r) => r.id === selectedId) ?? null;
+
+  // reservations에 해당하는 events를 한 번에 가져와 맵으로 저장
+  const fetchEventsForReservations = async (rows: ReservationRow[]) => {
+    const ids = rows.map((r) => r.id);
+    if (ids.length === 0) {
+      setEventIdMap({});
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("events")
+        .select("id, reservation_id")
+        .in("reservation_id", ids);
+
+      if (error) throw error;
+
+      const map: Record<string, string> = {};
+      (data as EventRowForMap[]).forEach((row) => {
+        if (row.reservation_id) {
+          map[row.reservation_id] = row.id;
+        }
+      });
+
+      setEventIdMap(map);
+    } catch (e) {
+      console.error("이벤트 매핑 조회 오류:", e);
+      // 치명적인 건 아니라서 alert 까진 안 띄움
+    }
+  };
 
   const fetchReservations = async () => {
     setLoading(true);
@@ -47,11 +88,15 @@ export const AdminPage = () => {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setReservations((data || []) as ReservationRow[]);
+      const rows = (data || []) as ReservationRow[];
+      setReservations(rows);
+
+      // 이벤트 매핑도 함께 로드
+      void fetchEventsForReservations(rows);
 
       // 첫 로드 시 맨 위 예약 자동 선택
-      if (!selectedId && data && data.length > 0) {
-        setSelectedId(data[0].id);
+      if (!selectedId && rows.length > 0) {
+        setSelectedId(rows[0].id);
       }
     } catch (e) {
       console.error("예약 조회 오류:", e);
@@ -89,6 +134,67 @@ export const AdminPage = () => {
     }
   };
 
+  // 선택된 예약에 대한 이벤트 생성 또는 Confirm 페이지 열기
+  const handleCreateOrOpenEvent = async (row: ReservationRow) => {
+    if (!row.id) return;
+
+    const existingEventId = eventIdMap[row.id];
+
+    // 이미 이벤트가 있는 경우 → 새로 만들지 않고 Confirm 페이지만 열기
+    if (existingEventId) {
+      const confirmUrl = `${window.location.origin}/confirm/${existingEventId}`;
+      const openNow = window.confirm(
+        `이미 이 예약에 연결된 이벤트가 있습니다.\n\nConfirm 페이지를 새 창에서 여시겠습니까?\n\n${confirmUrl}`
+      );
+      if (openNow) {
+        window.open(confirmUrl, "_blank", "noopener,noreferrer");
+      }
+      return;
+    }
+
+    // 아직 이벤트가 없는 경우 → 새로 생성
+    setCreatingEvent(true);
+    try {
+      const { data, error } = await supabase
+        .from("events")
+        .insert({
+          reservation_id: row.id,
+        })
+        .select("id")
+        .single();
+
+      if (error) throw error;
+
+      const newEventId = (data as { id: string }).id;
+
+      // 매핑 업데이트
+      setEventIdMap((prev) => ({ ...prev, [row.id]: newEventId }));
+
+      const confirmUrl = `${window.location.origin}/confirm/${newEventId}`;
+
+      const openNow = window.confirm(
+        `이벤트가 생성되었습니다.\n\nConfirm 페이지를 새 창에서 여시겠습니까?\n\n${confirmUrl}`
+      );
+
+      if (openNow) {
+        window.open(confirmUrl, "_blank", "noopener,noreferrer");
+      } else {
+        // 안 연다고 하면 링크를 클립보드에 복사 시도
+        try {
+          await navigator.clipboard.writeText(confirmUrl);
+          alert("Confirm 링크가 클립보드에 복사되었습니다.");
+        } catch {
+          // 클립보드 권한 없으면 그냥 무시
+        }
+      }
+    } catch (e) {
+      console.error("이벤트 생성 오류:", e);
+      alert("이벤트를 생성하는 중 오류가 발생했습니다.");
+    } finally {
+      setCreatingEvent(false);
+    }
+  };
+
   useEffect(() => {
     fetchReservations();
     // 간단한 auto-refresh (30초마다)
@@ -107,7 +213,8 @@ export const AdminPage = () => {
               Admin 대시보드
             </h1>
             <p className="text-sm text-ink/60 mt-1">
-              현재는 <strong>예약 관리</strong>만 활성화된 상태입니다.
+              현재는 <strong>예약 관리</strong>와 <strong>이벤트 생성</strong> 기능만
+              활성화된 상태입니다.
               <br className="hidden sm:block" />
               추후 이 화면에서 이벤트(결혼식), 디스플레이 템플릿, 데이터 리포트까지
               한 번에 확인할 수 있게 확장할 예정입니다.
@@ -130,9 +237,7 @@ export const AdminPage = () => {
           <Card className="bg-white/80 backdrop-blur border-leafLight/60">
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-ink/90">
-                  예약 목록
-                </h2>
+                <h2 className="text-lg font-semibold text-ink/90">예약 목록</h2>
                 <span className="text-xs text-ink/50">
                   총 {reservations.length}건
                 </span>
@@ -149,6 +254,8 @@ export const AdminPage = () => {
                   <ul className="divide-y divide-leafLight/40 overflow-auto max-h-[520px]">
                     {reservations.map((r) => {
                       const isSelected = r.id === selectedId;
+
+                      const hasEvent = !!eventIdMap[r.id];
 
                       // 날짜/시간 텍스트
                       const dateText =
@@ -187,18 +294,25 @@ export const AdminPage = () => {
                                   </span>
                                 )}
                               </div>
-                              <span
-                                className={cn(
-                                  "text-[11px] px-2 py-0.5 rounded-full border",
-                                  r.status === "done"
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                                    : r.status === "in_progress"
-                                    ? "bg-amber-50 text-amber-700 border-amber-100"
-                                    : "bg-slate-50 text-slate-600 border-slate-200"
+                              <div className="flex items-center gap-1">
+                                {hasEvent && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                                    이벤트 있음
+                                  </span>
                                 )}
-                              >
-                                {statusLabel}
-                              </span>
+                                <span
+                                  className={cn(
+                                    "text-[11px] px-2 py-0.5 rounded-full border",
+                                    r.status === "done"
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                      : r.status === "in_progress"
+                                      ? "bg-amber-50 text-amber-700 border-amber-100"
+                                      : "bg-slate-50 text-slate-600 border-slate-200"
+                                  )}
+                                >
+                                  {statusLabel}
+                                </span>
+                              </div>
                             </div>
 
                             <div className="text-xs text-ink/60 flex flex-wrap gap-x-2 gap-y-0.5">
@@ -282,8 +396,8 @@ export const AdminPage = () => {
                       </span>
                     </div>
 
-                    {/* 상태 변경 버튼 */}
-                    <div className="mt-3">
+                    {/* 상태 변경 버튼 + 이벤트 생성/열기 버튼 */}
+                    <div className="mt-3 flex flex-wrap gap-2">
                       <Button
                         type="button"
                         variant="outline"
@@ -292,7 +406,26 @@ export const AdminPage = () => {
                         className="border-leafLight text-ink hover:bg-ivory/70"
                         onClick={() => updateStatus(selected)}
                       >
-                        {statusChanging ? "변경 중..." : "상태 바꾸기 (신규 → 진행 → 완료)"}
+                        {statusChanging
+                          ? "변경 중..."
+                          : "상태 바꾸기 (신규 → 진행 → 완료)"}
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={creatingEvent}
+                        className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                        onClick={() => handleCreateOrOpenEvent(selected)}
+                      >
+                        {eventIdMap[selected.id]
+                          ? creatingEvent
+                            ? "열기..."
+                            : "Confirm 페이지 열기"
+                          : creatingEvent
+                          ? "이벤트 생성 중..."
+                          : "이벤트 생성 & Confirm 링크"}
                       </Button>
                     </div>
                   </section>
@@ -373,9 +506,9 @@ export const AdminPage = () => {
                       드리면 돼요.
                     </p>
                     <p>
-                      • 추후에는 이 Admin 페이지에서{" "}
-                      <strong>상태(신규/진행/완료) 변경, 이벤트 생성</strong>
-                      등도 직접 할 수 있도록 확장할 예정입니다.
+                      • 예약금 입금 확인 후{" "}
+                      <strong>이벤트 생성 & Confirm 링크</strong> 버튼으로
+                      각 예식에 맞는 설정 페이지를 열 수 있습니다.
                     </p>
                   </section>
                 </div>
