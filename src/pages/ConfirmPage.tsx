@@ -64,11 +64,12 @@ const MINUTES_10: string[] = ["00", "10", "20", "30", "40", "50"];
 
 // 디스플레이 레이아웃 옵션 (추후 실제 템플릿과 연결 예정)
 const DISPLAY_STYLE_OPTIONS = [
-  { value: "classic", label: "클래식 화이트 (기본)" },
-  { value: "romantic", label: "로맨틱 핑크" },
+  { value: "basic", label: "베이직 (기본)" },
+  { value: "christmas", label: "크리스마스 에디션" },
   { value: "garden", label: "야외 가든 웨딩" },
-  { value: "dark", label: "클래식 다크" },
+  { value: "luxury", label: "럭셔리 호텔 스타일" },
 ];
+
 
 // ✅ 한국 주요 은행 리스트 + 기타
 const BANK_OPTIONS = [
@@ -415,7 +416,7 @@ export default function ConfirmPage() {
         lower_message: lowerMessage || null,
         display_start_offset_minutes: startOffsetNum,
         display_end_offset_minutes: endOffsetNum,
-        // TODO: displayStyle을 DB에 저장할 컬럼 추가 후 여기에 포함
+        display_style: displayStyle || "basic",        
       };
 
       if (settings?.id) {
