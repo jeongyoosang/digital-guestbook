@@ -574,19 +574,25 @@ export default function GuestPage() {
             )}
           </section>
 
-          {/* 6. 축의금 계좌 선택 (선택만, 복사 없음) */}
+          {/* 6. 축의금 계좌 선택 */}
           <section>
             <label className="block text-sm font-semibold">
-              축의금 받으실 분 
+              축의금 받으실 분
             </label>
             <p className="mt-1 text-[11px] text-gray-500">
               메세지를 남기면 다음 단계에서 선택하신 계좌번호로
               <br className="sm:hidden" /> 축의금을 보내실 수 있어요.
             </p>
 
-            {filteredAccounts.length === 0 ? (
-              <p className="mt-2 text-xs text-gray-400">
-                아직 등록된 축의금 계좌가 없습니다.
+            {/* ✅ 쪽 선택 전에는 계좌 리스트 숨기기 */}
+            {!side ? (
+              <p className="mt-3 text-xs text-gray-400">
+                먼저 위에서 <span className="font-semibold">어느 쪽 하객인지</span>{" "}
+                선택해 주세요. 선택 후 축의금 계좌가 보여집니다.
+              </p>
+            ) : filteredAccounts.length === 0 ? (
+              <p className="mt-3 text-xs text-gray-400">
+                선택하신 쪽에 등록된 축의금 계좌가 없습니다.
               </p>
             ) : (
               <div className="mt-3 space-y-2">

@@ -15,12 +15,6 @@ type MessageRow = {
   created_at: string;
 };
 
-type Recipient = {
-  name: string;
-  role: string;
-  contact: string;
-};
-
 type Schedule = {
   start: string;
   end: string;
@@ -30,7 +24,7 @@ const POLL_INTERVAL_MS = 5000;
 const ROTATION_INTERVAL_MS = 5000;
 const MAX_VISIBLE = 10;
 
-// display_style 기본값
+// display_style 타입
 type DisplayStyle = "basic" | "christmas" | "garden" | "luxury";
 
 export default function DisplayPage() {
@@ -44,6 +38,8 @@ export default function DisplayPage() {
     "친히 오셔서 축복해주셔서 감사합니다."
   );
   const [dateText, setDateText] = useState<string>("");
+
+  // ✅ 신랑 / 신부 이름
   const [groomName, setGroomName] = useState<string>("");
   const [brideName, setBrideName] = useState<string>("");
 
@@ -67,7 +63,7 @@ export default function DisplayPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // 메시지 폴링
+  // ✅ 메시지 폴링
   useEffect(() => {
     let cancelled = false;
 
@@ -100,7 +96,7 @@ export default function DisplayPage() {
     };
   }, [eventId]);
 
-  // event_settings 가져오기 (display_style 포함)
+  // ✅ event_settings (날짜, 문구, display_style)
   useEffect(() => {
     let cancelled = false;
 
@@ -108,7 +104,7 @@ export default function DisplayPage() {
       const { data, error } = await supabase
         .from("event_settings")
         .select(
-          "lower_message, ceremony_date, recipients, ceremony_start_time, ceremony_end_time, display_style"
+          "lower_message, ceremony_date, ceremony_start_time, ceremony_end_time, display_style"
         )
         .eq("event_id", eventId)
         .maybeSingle();
@@ -130,15 +126,6 @@ export default function DisplayPage() {
         }
       }
 
-      if (Array.isArray(data.recipients)) {
-        const recipients = data.recipients as Recipient[];
-        const groom = recipients.find((r) => r.role?.includes("신랑"));
-        const bride = recipients.find((r) => r.role?.includes("신부"));
-
-        if (groom?.name) setGroomName(groom.name);
-        if (bride?.name) setBrideName(bride.name);
-      }
-
       if (data.ceremony_start_time && data.ceremony_end_time) {
         const dateStr = (data.ceremony_date as string) ?? "";
         const startTime = data.ceremony_start_time as string;
@@ -155,7 +142,7 @@ export default function DisplayPage() {
         });
       }
 
-      // ✅ display_style → 상태에 반영 (없으면 basic)
+      // ✅ display_style 상태 반영
       if (data.display_style) {
         const value = data.display_style as DisplayStyle;
         if (["basic", "christmas", "garden", "luxury"].includes(value)) {
@@ -177,6 +164,35 @@ export default function DisplayPage() {
     };
   }, [eventId]);
 
+  // ✅ events 테이블에서 신랑/신부 이름 가져오기 (ConfirmPage에서 저장된 값)
+  useEffect(() => {
+    if (!eventId) return;
+    let cancelled = false;
+
+    const fetchEventNames = async () => {
+      const { data, error } = await supabase
+        .from("events")
+        .select("groom_name, bride_name")
+        .eq("id", eventId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("[Display] fetchEventNames error", error);
+        return;
+      }
+      if (!data || cancelled) return;
+
+      setGroomName(data.groom_name ?? "");
+      setBrideName(data.bride_name ?? "");
+    };
+
+    fetchEventNames();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId]);
+
   // phase 계산
   const phase: EventPhase = useMemo(() => {
     if (!schedule) return "open";
@@ -186,7 +202,7 @@ export default function DisplayPage() {
     return getEventPhase(now, start, end);
   }, [now, schedule]);
 
-  // 메시지 순환 (리스트 구성만 담당)
+  // 메시지 순환
   useEffect(() => {
     if (allMessages.length === 0) {
       setVisibleMessages([]);
@@ -247,7 +263,7 @@ export default function DisplayPage() {
     });
   }, [visibleMessages]);
 
-  // ✅ 선택된 템플릿에 맞는 배경 이미지 경로
+  // ✅ 선택된 템플릿에 맞는 배경 이미지
   const backgroundUrl = useMemo(
     () => `/display-templates/${displayStyle}/background.jpg`,
     [displayStyle]
@@ -263,9 +279,9 @@ export default function DisplayPage() {
         backgroundRepeat: "no-repeat",
       }}
     >
-      {/* 살짝 어두운 오버레이로 가독성 확보 */}
+      {/* 살짝 어두운 오버레이 */}
       <div className="min-h-screen flex flex-col bg-black/35">
-        {/* ✨ 개별 메시지용 은은한 페이드 인/아웃 애니메이션 정의 */}
+        {/* ✨ 메시지 애니메이션 키프레임 */}
         <style>
           {`
           @keyframes fadeInOutSingle {
@@ -289,7 +305,7 @@ export default function DisplayPage() {
         `}
         </style>
 
-        {/* 자동 재생되는 배경 음악 */}
+        {/* 배경 음악 */}
         <audio src="/bgm.m4a" autoPlay loop preload="auto" />
 
         <main className="flex-1 flex flex-col items-center pt-4 pb-4 px-4">
