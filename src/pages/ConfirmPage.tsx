@@ -340,7 +340,7 @@ export default function ConfirmPage() {
     );
   }
 
-  // ✅ 사진 업로드 핸들러 (ConfirmPage 안에서 바로 업로드)
+  // ✅ 사진 업로드 핸들러
   async function handleFilesSelected(
     e: React.ChangeEvent<HTMLInputElement>
   ) {
@@ -550,6 +550,19 @@ export default function ConfirmPage() {
       }
 
       setSuccess("모든 설정이 저장되었습니다.");
+
+      // ✅ 저장 성공 후 모바일 창 자동 닫기 시도
+      setTimeout(() => {
+        try {
+          if (window.history.length > 1) {
+            window.history.back();
+          } else {
+            window.close();
+          }
+        } catch {
+          // 아무 것도 안 함 – 최소 한 번은 시도만
+        }
+      }, 600);
     } catch (e: any) {
       console.error("[ConfirmPage] handleSave error:", e);
       setError(e.message ?? "저장 중 오류가 발생했습니다.");
@@ -806,7 +819,7 @@ export default function ConfirmPage() {
             </select>
           </div>
 
-          {/* 배경 방식 + 업로드 UI */}
+          {/* 배경 방식 */}
           <div className="space-y-2">
             <label className="block text-[11px] font-medium text-gray-600 mb-1">
               배경 방식
@@ -839,77 +852,87 @@ export default function ConfirmPage() {
             </p>
           </div>
 
-          {/* 실제 파일 업로드 박스 */}
-          <div className="space-y-2">
-            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-              신랑·신부 사진 올리기 (선택)
-            </label>
-            <label className="block">
-              <div className="w-full border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-center bg-white active:scale-[0.99] transition">
-                <span className="text-3xl mb-1">📷</span>
-                <p className="text-sm font-medium text-gray-800">
-                  핸드폰 앨범에서 사진 선택하기
-                </p>
-                <p className="mt-1 text-[11px] text-gray-500">
-                  여러 장을 한 번에 선택해 업로드할 수 있고, 최대 8장까지
-                  사용됩니다.
-                </p>
-              </div>
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleFilesSelected}
-                className="hidden"
-              />
-            </label>
-            {uploadStatus && (
-              <p className="text-[11px] text-gray-500">{uploadStatus}</p>
-            )}
-          </div>
-
-          {/* 업로드된 사진 미리보기 */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-gray-700">
-                업로드된 사진 ({photoUrls.length}/8)
-              </span>
-              <span className="text-[11px] text-gray-500">
-                왼쪽부터 순서대로 슬라이드 재생됩니다.
-              </span>
-            </div>
-            {photoUrls.length === 0 ? (
-              <div className="border border-dashed border-gray-300 rounded-xl py-4 text-center text-[11px] text-gray-400 bg-white">
-                아직 업로드된 사진이 없습니다. 원하시면 위 버튼으로 사진을
-                추가해주세요.
-              </div>
-            ) : (
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {photoUrls.map((url, idx) => (
-                  <div
-                    key={idx}
-                    className="flex-shrink-0 w-20 h-28 rounded-lg overflow-hidden border bg-gray-100"
-                  >
-                    {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                    <img src={url} className="w-full h-full object-cover" />
+          {/* 사진 업로드 / 미리보기: 사진 모드일 때만 */}
+          {backgroundMode === "photo" && (
+            <>
+              {/* 실제 파일 업로드 박스 */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">
+                  신랑·신부 사진 올리기 (선택)
+                </label>
+                <label className="block">
+                  <div className="w-full border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-center bg-white active:scale-[0.99] transition">
+                    <span className="text-3xl mb-1">📷</span>
+                    <p className="text-sm font-medium text-gray-800">
+                      핸드폰 앨범에서 사진 선택하기
+                    </p>
+                    <p className="mt-1 text-[11px] text-gray-500">
+                      여러 장을 한 번에 선택해 업로드할 수 있고, 최대 8장까지
+                      사용됩니다.
+                    </p>
                   </div>
-                ))}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleFilesSelected}
+                    className="hidden"
+                  />
+                </label>
+                {uploadStatus && (
+                  <p className="text-[11px] text-gray-500">{uploadStatus}</p>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* 배경 분위기 메모 */}
-          <div>
-            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-              디스플레이 전체 분위기 메모
-            </label>
-            <textarea
-              className="w-full border rounded-md px-3 py-2 text-sm min-h-[60px]"
-              value={themePrompt}
-              onChange={(e) => setThemePrompt(e.target.value)}
-              placeholder="예: 따뜻한 한옥 스몰웨딩, 노을이 지는 저녁, 촛불과 전통 조명"
-            />
-          </div>
+              {/* 업로드된 사진 미리보기 */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gray-700">
+                    업로드된 사진 ({photoUrls.length}/8)
+                  </span>
+                  <span className="text-[11px] text-gray-500">
+                    왼쪽부터 순서대로 슬라이드 재생됩니다.
+                  </span>
+                </div>
+                {photoUrls.length === 0 ? (
+                  <div className="border border-dashed border-gray-300 rounded-xl py-4 text-center text-[11px] text-gray-400 bg-white">
+                    아직 업로드된 사진이 없습니다. 원하시면 위 버튼으로 사진을
+                    추가해주세요.
+                  </div>
+                ) : (
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {photoUrls.map((url, idx) => (
+                      <div
+                        key={idx}
+                        className="flex-shrink-0 w-20 h-28 rounded-lg overflow-hidden border bg-gray-100"
+                      >
+                        {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                        <img src={url} className="w-full h-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* 디스플레이 분위기 메모: 템플릿 모드일 때만 */}
+          {backgroundMode === "template" && (
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">
+                디스플레이 전체 분위기 메모 (선택)
+              </label>
+              <textarea
+                className="w-full border rounded-md px-3 py-2 text-sm min-h-[60px]"
+                value={themePrompt}
+                onChange={(e) => setThemePrompt(e.target.value)}
+                placeholder="예: 따뜻한 한옥 스몰웨딩, 노을이 지는 저녁, 촛불과 전통 조명"
+              />
+              <p className="mt-1 text-[10px] text-gray-400">
+                추후 AI 기반 템플릿/배경 자동 생성에 참고될 수 있는 메모입니다.
+              </p>
+            </div>
+          )}
         </section>
 
         {/* 축의금 계좌 */}
