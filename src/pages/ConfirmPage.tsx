@@ -53,6 +53,7 @@ const MAX_ACCOUNTS = 6;
 const DEFAULT_TITLE = "WEDDING MESSAGES";
 const DEFAULT_SUBTITLE = "하객 분들의 마음이 전해지고 있어요 💐";
 const DEFAULT_LOWER_MESSAGE = "친히 오셔서 축복해주시어 감사합니다.";
+// 👉 예시 문구(placeholder 용)
 const DEFAULT_THEME_PROMPT =
   "따뜻한 결혼식, 은은한 조명, 크리스마스 분위기, 부드러운 움직임의 배경 애니메이션 등";
 
@@ -118,7 +119,8 @@ export default function ConfirmPage() {
   const [ceremonyEndTime, setCeremonyEndTime] = useState("");
   const [displayTitle, setDisplayTitle] = useState(DEFAULT_TITLE);
   const [displaySubtitle, setDisplaySubtitle] = useState(DEFAULT_SUBTITLE);
-  const [themePrompt, setThemePrompt] = useState(DEFAULT_THEME_PROMPT);
+  // 👉 실제 값은 기본적으로 비워두고 placeholder 로만 예시 보여줌
+  const [themePrompt, setThemePrompt] = useState("");
   const [lowerMessage, setLowerMessage] = useState(DEFAULT_LOWER_MESSAGE);
 
   const [displayStyle, setDisplayStyle] = useState("basic");
@@ -219,7 +221,7 @@ export default function ConfirmPage() {
 
         setDisplayTitle(s.title ?? DEFAULT_TITLE);
         setDisplaySubtitle(s.subtitle ?? DEFAULT_SUBTITLE);
-        setThemePrompt(s.theme_prompt ?? DEFAULT_THEME_PROMPT);
+        setThemePrompt(s.theme_prompt ?? ""); // 저장된 값 없으면 비워두기
         setLowerMessage(s.lower_message ?? DEFAULT_LOWER_MESSAGE);
 
         setDisplayStyle(s.display_style || "basic");
@@ -241,7 +243,7 @@ export default function ConfirmPage() {
         setCeremonyEndTime("");
         setDisplayTitle(DEFAULT_TITLE);
         setDisplaySubtitle(DEFAULT_SUBTITLE);
-        setThemePrompt(DEFAULT_THEME_PROMPT);
+        setThemePrompt(""); // 기본은 빈 값
         setLowerMessage(DEFAULT_LOWER_MESSAGE);
         setDisplayStyle("basic");
         setBackgroundMode("template");
@@ -340,7 +342,12 @@ export default function ConfirmPage() {
     );
   }
 
-  // ✅ 사진 업로드 핸들러
+  // ✅ 업로드된 사진 개별 삭제
+  function removePhoto(index: number) {
+    setPhotoUrls((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  // ✅ 사진 업로드 핸들러 (ConfirmPage 안에서 바로 업로드)
   async function handleFilesSelected(
     e: React.ChangeEvent<HTMLInputElement>
   ) {
@@ -550,19 +557,6 @@ export default function ConfirmPage() {
       }
 
       setSuccess("모든 설정이 저장되었습니다.");
-
-      // ✅ 저장 성공 후 모바일 창 자동 닫기 시도
-      setTimeout(() => {
-        try {
-          if (window.history.length > 1) {
-            window.history.back();
-          } else {
-            window.close();
-          }
-        } catch {
-          // 아무 것도 안 함 – 최소 한 번은 시도만
-        }
-      }, 600);
     } catch (e: any) {
       console.error("[ConfirmPage] handleSave error:", e);
       setError(e.message ?? "저장 중 오류가 발생했습니다.");
@@ -819,7 +813,7 @@ export default function ConfirmPage() {
             </select>
           </div>
 
-          {/* 배경 방식 */}
+          {/* 배경 방식 + 업로드 UI */}
           <div className="space-y-2">
             <label className="block text-[11px] font-medium text-gray-600 mb-1">
               배경 방식
@@ -852,7 +846,7 @@ export default function ConfirmPage() {
             </p>
           </div>
 
-          {/* 사진 업로드 / 미리보기: 사진 모드일 때만 */}
+          {/* 사진 업로드 & 미리보기 : 사진 슬라이드 모드에서만 노출 */}
           {backgroundMode === "photo" && (
             <>
               {/* 실제 파일 업로드 박스 */}
@@ -884,14 +878,15 @@ export default function ConfirmPage() {
                 )}
               </div>
 
-              {/* 업로드된 사진 미리보기 */}
+              {/* 업로드된 사진 미리보기 + 삭제 */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-gray-700">
                     업로드된 사진 ({photoUrls.length}/8)
                   </span>
                   <span className="text-[11px] text-gray-500">
-                    왼쪽부터 순서대로 슬라이드 재생됩니다.
+                    왼쪽부터 순서대로 슬라이드 재생됩니다. (썸네일의 ✕ 버튼으로
+                    삭제할 수 있습니다.)
                   </span>
                 </div>
                 {photoUrls.length === 0 ? (
@@ -904,10 +899,17 @@ export default function ConfirmPage() {
                     {photoUrls.map((url, idx) => (
                       <div
                         key={idx}
-                        className="flex-shrink-0 w-20 h-28 rounded-lg overflow-hidden border bg-gray-100"
+                        className="relative flex-shrink-0 w-20 h-28 rounded-lg overflow-hidden border bg-gray-100"
                       >
                         {/* eslint-disable-next-line jsx-a11y/alt-text */}
                         <img src={url} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(idx)}
+                          className="absolute -top-2 -right-2 bg-black/70 text-white text-[10px] rounded-full px-1 py-[1px]"
+                        >
+                          ✕
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -916,23 +918,20 @@ export default function ConfirmPage() {
             </>
           )}
 
-          {/* 디스플레이 분위기 메모: 템플릿 모드일 때만 */}
-          {backgroundMode === "template" && (
-            <div>
-              <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                디스플레이 전체 분위기 메모 (선택)
-              </label>
-              <textarea
-                className="w-full border rounded-md px-3 py-2 text-sm min-h-[60px]"
-                value={themePrompt}
-                onChange={(e) => setThemePrompt(e.target.value)}
-                placeholder="예: 따뜻한 한옥 스몰웨딩, 노을이 지는 저녁, 촛불과 전통 조명"
-              />
-              <p className="mt-1 text-[10px] text-gray-400">
-                추후 AI 기반 템플릿/배경 자동 생성에 참고될 수 있는 메모입니다.
-              </p>
-            </div>
-          )}
+          {/* 배경 분위기 메모 */}
+          <div>
+            <label className="block text-[11px] font-medium text-gray-600 mb-1">
+              디스플레이 전체 분위기 메모
+            </label>
+            <textarea
+              className={`w-full border rounded-md px-3 py-2 text-sm min-h-[60px] ${
+                themePrompt ? "text-gray-800" : "text-gray-400"
+              }`}
+              value={themePrompt}
+              onChange={(e) => setThemePrompt(e.target.value)}
+              placeholder={DEFAULT_THEME_PROMPT}
+            />
+          </div>
         </section>
 
         {/* 축의금 계좌 */}
