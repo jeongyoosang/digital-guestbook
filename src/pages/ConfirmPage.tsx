@@ -906,7 +906,7 @@ export default function ConfirmPage() {
                         <button
                           type="button"
                           onClick={() => removePhoto(idx)}
-                          className="absolute -top-2 -right-2 bg-black/70 text-white text-[10px] rounded-full px-1 py-[1px]"
+                          className="absolute top-1 right-1 bg-black/75 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center shadow"
                         >
                           ✕
                         </button>
