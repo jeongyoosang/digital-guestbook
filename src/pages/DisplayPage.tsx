@@ -33,6 +33,9 @@ const MAX_VISIBLE = 10;
 // 사진 슬라이드 한 장당 노출 시간
 const SLIDE_DURATION_MS = 6000;
 
+// 상단 바 높이(스탠바이미 세로 기준 안정적으로)
+const TOP_BAR_HEIGHT = "26vh"; // 필요하면 22~30vh 사이로 조절
+
 export default function DisplayPage() {
   const { eventId } = useParams<RouteParams>();
 
@@ -230,13 +233,12 @@ export default function DisplayPage() {
   // phase 계산
   const phase: EventPhase = useMemo(() => {
     if (!schedule) return "open";
-
     const start = new Date(schedule.start);
     const end = new Date(schedule.end);
     return getEventPhase(now, start, end);
   }, [now, schedule]);
 
-  // 메시지 순환
+  // 메시지 순환(현재 로직 유지)
   useEffect(() => {
     if (allMessages.length === 0) {
       setVisibleMessages([]);
@@ -287,17 +289,7 @@ export default function DisplayPage() {
     });
   }, [lastUpdated]);
 
-  const messageCount = allMessages.length;
-
-  const slotPositions = useMemo(() => {
-    return visibleMessages.map(() => {
-      const top = 5 + Math.random() * 80;
-      const left = 5 + Math.random() * 70;
-      return { top: `${top}%`, left: `${left}%` };
-    });
-  }, [visibleMessages]);
-
-  // ✅ 템플릿 배경 이미지 (background_mode = template 일 때 사용)
+  // ✅ 템플릿 배경 이미지 (template 모드일 때 사용)
   const templateBackgroundUrl = useMemo(
     () => `/display-templates/${displayStyle}/background.jpg`,
     [displayStyle]
@@ -321,213 +313,229 @@ export default function DisplayPage() {
     return () => clearInterval(timer);
   }, [usePhotoBackground, mediaUrls]);
 
+  /**
+   * ✅ 메시지 카드 랜덤 위치
+   * - 사진(또는 템플릿)을 너무 가리지 않도록, 하단 영역 위주로 배치
+   * - 기존과 "느낌"은 같되, top 범위를 아래로 내림
+   */
+  const slotPositions = useMemo(() => {
+    // 하단 중심 배치: top 52%~88%, left 6%~74%
+    // (너무 아래로 가면 하단 업데이트 pill과 겹칠 수 있어 88%로 컷)
+    return visibleMessages.map(() => {
+      const top = 52 + Math.random() * 36; // 52~88
+      const left = 6 + Math.random() * 68; // 6~74
+      return { top: `${top}%`, left: `${left}%` };
+    });
+  }, [visibleMessages]);
+
   return (
-    <div className="relative min-h-screen bg-black">
-      {/* 📷 배경: 사진 슬라이드 (photo 모드일 때만) */}
-      {usePhotoBackground && (
-        <div className="absolute inset-0 overflow-hidden">
-          {mediaUrls.map((url, index) => (
-            <img
-              key={`${url}-${index}`}
-              src={url}
-              alt={`wedding-bg-${index}`}
-              className="absolute inset-0 w-full h-full object-cover transition-opacity duration-[2000ms] ease-in-out"
-              style={{
-                opacity: index === currentSlide ? 1 : 0,
-              }}
-            />
-          ))}
-          {/* 어두운 오버레이 */}
-          <div className="absolute inset-0 bg-black/35" />
-        </div>
-      )}
-
-      {/* 템플릿 배경 (template 모드일 때만) */}
-      {!usePhotoBackground && (
-        <div
-          className="absolute inset-0 bg-center bg-cover bg-no-repeat"
-          style={{
-            backgroundImage: `url(${templateBackgroundUrl})`,
-          }}
-        >
-          <div className="absolute inset-0 bg-black/35" />
-        </div>
-      )}
-
-      {/* 메인 컨텐츠(항상 최상단) */}
-      <div className="relative min-h-screen flex flex-col">
-        {/* ✨ 메시지 애니메이션 키프레임 */}
-        <style>
-          {`
+    <div className="relative min-h-screen bg-black overflow-hidden">
+      {/* ✨ 메시지 애니메이션 키프레임 */}
+      <style>
+        {`
           @keyframes fadeInOutSingle {
-            0% {
-              opacity: 0;
-              transform: scale(0.96);
-            }
-            15% {
-              opacity: 1;
-              transform: scale(1);
-            }
-            85% {
-              opacity: 1;
-              transform: scale(1);
-            }
-            100% {
-              opacity: 0;
-              transform: scale(0.96);
-            }
+            0% { opacity: 0; transform: scale(0.96); }
+            15% { opacity: 1; transform: scale(1); }
+            85% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(0.96); }
           }
         `}
-        </style>
+      </style>
 
-        {/* 배경 음악 */}
-        <audio src="/bgm.m4a" autoPlay loop preload="auto" />
+      {/* 배경 음악 */}
+      <audio src="/bgm.m4a" autoPlay loop preload="auto" />
 
-        <main className="flex-1 flex flex-col items-center pt-4 pb-4 px-4">
-          {/* QR + 신랑/신부 */}
-          <div className="w-full max-w-4xl bg-white/95 rounded-[32px] shadow-xl border border-white/70 backdrop-blur px-6 md:px-10 pt-8 pb-6">
-            <div className="text-center">
-              <p className="text-4xl md:text-5xl font-extrabold text-gray-900">
-                축하 메시지 전하기
-              </p>
-            </div>
+      <div className="relative min-h-screen flex flex-col">
+        {/* =======================
+            TOP BAR (사진과 분리)
+            ======================= */}
+        <header
+          className="relative w-full flex items-center justify-center px-4"
+          style={{ height: TOP_BAR_HEIGHT }}
+        >
+          {/* 상단 바 배경(살짝 투명) */}
+          <div className="absolute inset-0 bg-black/35" />
 
-            <div className="mt-6 flex items-center justify-center gap-10 md:gap-16">
-              <div className="text-right min-w-[150px]">
-                {groomName && (
+          <div className="relative w-full max-w-5xl">
+            <div className="flex items-center justify-between gap-4">
+              {/* 좌: 신랑 */}
+              <div className="min-w-[160px] text-right">
+                {groomName ? (
                   <>
-                    <p className="text-3xl md:text-4xl text-gray-500 mb-2">
+                    <p className="text-xl md:text-2xl text-white/70 mb-1">
                       신랑
                     </p>
-                    <p className="text-5xl md:text-6xl font-extrabold text-gray-800">
+                    <p className="text-3xl md:text-4xl font-extrabold text-white">
                       {groomName}
                     </p>
                   </>
+                ) : (
+                  <div />
                 )}
               </div>
 
-              <div>
-                <div className="w-[260px] h-[260px] md:w-[320px] md:h-[320px] bg-gray-50 rounded-[40px] flex items-center justify-center overflow-hidden shadow-inner">
+              {/* 중앙: 타이틀 + QR */}
+              <div className="flex flex-col items-center">
+                <p className="text-2xl md:text-3xl font-extrabold text-white drop-shadow">
+                  축하 메시지 전하기
+                </p>
+
+                <div className="mt-3 w-[160px] h-[160px] md:w-[190px] md:h-[190px] bg-white/90 rounded-3xl flex items-center justify-center overflow-hidden shadow-lg">
                   <img
                     src="/preic_qr.png"
                     alt="축하 메세지 QR"
                     className="w-full h-full object-contain"
                   />
                 </div>
+
+                <div className="mt-3 text-center space-y-1">
+                  <p className="text-xl md:text-2xl font-extrabold text-white/95 drop-shadow">
+                    {lowerMessage}
+                  </p>
+                  {dateText && (
+                    <p className="text-sm md:text-base text-white/70">
+                      {dateText}
+                    </p>
+                  )}
+                </div>
               </div>
 
-              <div className="text-left min-w-[150px]">
-                {brideName && (
+              {/* 우: 신부 */}
+              <div className="min-w-[160px] text-left">
+                {brideName ? (
                   <>
-                    <p className="text-3xl md:text-4xl text-gray-500 mb-2">
+                    <p className="text-xl md:text-2xl text-white/70 mb-1">
                       신부
                     </p>
-                    <p className="text-5xl md:text-6xl font-extrabold text-gray-800">
+                    <p className="text-3xl md:text-4xl font-extrabold text-white">
                       {brideName}
                     </p>
                   </>
+                ) : (
+                  <div />
                 )}
               </div>
             </div>
-
-            <div className="mt-5 text-center space-y-1">
-              <p className="text-3xl md:text-4xl font-extrabold text-gray-700">
-                {lowerMessage}
-              </p>
-              {dateText && (
-                <p className="text-lg md:text-xl text-gray-400">{dateText}</p>
-              )}
-            </div>
           </div>
+        </header>
 
-          {/* 메시지 블럭 */}
-          <div className="mt-6 w-full max-w-4xl bg-white/95 rounded-[32px] shadow-xl border border-white/70 backdrop-blur flex-1 flex flex-col min-h-[520px]">
-            <div className="pt-6 pb-4 text-center">
-              <p className="text-sm md:text-base tracking-[0.35em] text-pink-400 font-semibold uppercase">
-                WEDDING MESSAGES
-              </p>
-              <p className="mt-3 text-2xl md:text-3xl text-gray-600">
-                {phase === "before_wait"
-                  ? "잠시 후 축하 메세지 접수가 시작됩니다."
-                  : phase === "closed"
-                  ? "메시지 접수가 모두 종료되었습니다."
-                  : "하객 분들의 마음이 전해지고 있어요 💐"}
-              </p>
+        {/* =======================
+            BOTTOM AREA (배경 + 메시지)
+            ======================= */}
+        <section className="relative flex-1">
+          {/* 배경 */}
+          {usePhotoBackground ? (
+            <div className="absolute inset-0 overflow-hidden">
+              {mediaUrls.map((url, index) => (
+                <img
+                  key={`${url}-${index}`}
+                  src={url}
+                  alt={`wedding-bg-${index}`}
+                  className="absolute inset-0 w-full h-full object-cover transition-opacity duration-[2000ms] ease-in-out"
+                  style={{
+                    opacity: index === currentSlide ? 1 : 0,
+                    // 얼굴이 위쪽에 있는 웨딩 사진이 많아서 약간 위로 포커스
+                    objectPosition: "50% 35%",
+                  }}
+                />
+              ))}
+              {/* 어두운 오버레이 */}
+              <div className="absolute inset-0 bg-black/28" />
+              {/* 하단 그라데이션(텍스트 가독성 + 고급감) */}
+              <div className="absolute inset-x-0 bottom-0 h-[38%] bg-gradient-to-t from-black/55 via-black/18 to-transparent" />
             </div>
+          ) : (
+            <div
+              className="absolute inset-0 bg-center bg-cover bg-no-repeat"
+              style={{ backgroundImage: `url(${templateBackgroundUrl})` }}
+            >
+              <div className="absolute inset-0 bg-black/28" />
+              <div className="absolute inset-x-0 bottom-0 h-[38%] bg-gradient-to-t from-black/55 via-black/18 to-transparent" />
+            </div>
+          )}
 
-            <div className="px-6 md:px-10 pb-6 pt-2 flex-1 flex flex-col">
-              {phase !== "open" ? (
-                <div className="flex-1 flex items-center justify-center">
-                  <p className="text-2xl md:text-3xl text-gray-500 text-center whitespace-pre-line leading-relaxed">
-                    {phase === "before_wait"
-                      ? "예식 1시간 전부터 축하 메세지 접수가 시작됩니다.\n잠시만 기다려주세요."
-                      : "오늘 남겨진 모든 축하 메세지는\n신랑·신부에게 바로 전달됩니다.\n축하의 마음을 전해주셔서 감사합니다."}
-                  </p>
+          {/* 메시지 레이어 */}
+          <div className="relative w-full h-full">
+            {/* 상태 텍스트(오픈 전/종료) */}
+            {phase !== "open" ? (
+              <div className="absolute inset-0 flex items-center justify-center px-6">
+                <div className="bg-black/40 text-white rounded-3xl px-10 py-8 text-2xl md:text-3xl text-center whitespace-pre-line leading-relaxed backdrop-blur-md border border-white/15">
+                  {phase === "before_wait"
+                    ? "예식 1시간 전부터 축하 메세지 접수가 시작됩니다.\n잠시만 기다려주세요."
+                    : phase === "closed"
+                    ? "메시지 접수가 모두 종료되었습니다.\n축하해주셔서 감사합니다."
+                    : "잠시 후 축하 메세지 접수가 시작됩니다."}
                 </div>
-              ) : (
-                <>
-                  {visibleMessages.length === 0 && (
-                    <div className="flex-1 flex items-center justify-center">
-                      <p className="text-2xl md:text-3xl text-gray-400 text-center leading-relaxed">
-                        아직 등록된 축하메세지가 없습니다.
-                        <br />
-                        상단 QR을 찍고 첫 번째 메세지를 남겨주세요 ✨
-                      </p>
-                    </div>
-                  )}
-
-                  {visibleMessages.length > 0 && (
-                    <div className="relative flex-1">
-                      {visibleMessages.map((msg, index) => {
-                        const pos =
-                          slotPositions[index] || { top: "50%", left: "50%" };
-                        const durationSec = 7;
-                        const delaySec = Math.random() * 3;
-
-                        return (
-                          <div
-                            key={msg.id}
-                            className="absolute max-w-md bg-white/95 rounded-3xl shadow-lg px-8 py-6
-                                   text-center text-gray-800 text-2xl leading-relaxed
-                                   border border-pink-50"
-                            style={{
-                              ...pos,
-                              animation: `fadeInOutSingle ${durationSec}s ease-in-out ${delaySec}s infinite`,
-                            }}
-                          >
-                            <p className="whitespace-pre-wrap break-keep">
-                              {msg.body}
-                            </p>
-                            {msg.nickname && (
-                              <p className="mt-4 text-xl md:text-2xl text-pink-400 font-semibold">
-                                {msg.nickname}
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              )}
-
-              <div className="mt-4 flex items-center justify-between text-lg md:text-xl text-gray-400">
-                <span>메세지 개수: {messageCount}개</span>
-                <span>마지막 업데이트: {lastUpdatedText}</span>
               </div>
+            ) : (
+              <>
+                {/* 메시지 없음 */}
+                {visibleMessages.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center px-6">
+                    <div className="bg-black/35 text-white rounded-3xl px-10 py-8 text-2xl md:text-3xl text-center leading-relaxed backdrop-blur-md border border-white/15">
+                      아직 등록된 축하메세지가 없습니다.
+                      <br />
+                      상단 QR을 찍고 첫 번째 메세지를 남겨주세요 ✨
+                    </div>
+                  </div>
+                )}
+
+                {/* 메시지 표시 */}
+                {visibleMessages.length > 0 && (
+                  <div className="absolute inset-0">
+                    {visibleMessages.map((msg, index) => {
+                      const pos =
+                        slotPositions[index] || { top: "70%", left: "50%" };
+
+                      const durationSec = 7;
+                      const delaySec = Math.random() * 3;
+
+                      return (
+                        <div
+                          key={msg.id}
+                          className="absolute max-w-md rounded-3xl px-8 py-6 text-center
+                                     text-white text-2xl leading-relaxed
+                                     border border-white/20 shadow-lg
+                                     backdrop-blur-md"
+                          style={{
+                            ...pos,
+                            // ✅ 사진을 더 보이게: 카드 투명도 확 낮춤
+                            backgroundColor: "rgba(0,0,0,0.28)",
+                            animation: `fadeInOutSingle ${durationSec}s ease-in-out ${delaySec}s infinite`,
+                          }}
+                        >
+                          <p className="whitespace-pre-wrap break-keep">
+                            {msg.body}
+                          </p>
+                          {msg.nickname && (
+                            <p className="mt-4 text-xl md:text-2xl text-pink-200 font-semibold">
+                              {msg.nickname}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* 오른쪽 아래: 마지막 업데이트만 */}
+            <div className="absolute bottom-4 right-4 bg-black/40 text-white rounded-full px-5 py-2 text-lg md:text-xl backdrop-blur-md border border-white/15">
+              마지막 업데이트: {lastUpdatedText}
+            </div>
+
+            {/* 인스타(나중에 로고 교체 예정) */}
+            <div className="absolute bottom-4 left-4 flex items-center gap-3 text-lg md:text-xl text-white/90 drop-shadow">
+              <img
+                src="/instagram-logo.jpg"
+                alt="Instagram"
+                className="w-10 h-10 opacity-90"
+              />
+              <span className="font-semibold">@digital_guestbook</span>
             </div>
           </div>
-
-          {/* 인스타그램 홍보 */}
-          <div className="mt-4 w-full max-w-4xl flex justify-end items-center gap-3 text-xl md:text-2xl text-gray-100 drop-shadow">
-            <img
-              src="/instagram-logo.jpg"
-              alt="Instagram"
-              className="w-10 h-10 opacity-90"
-            />
-            <span className="font-semibold">@digital_guestbook</span>
-          </div>
-        </main>
+        </section>
       </div>
     </div>
   );
