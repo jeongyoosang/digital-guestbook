@@ -34,7 +34,7 @@ const MAX_VISIBLE = 10;
 const SLIDE_DURATION_MS = 6000;
 
 // 상단 바 높이(스탠바이미 세로 기준 안정적으로)
-const TOP_BAR_HEIGHT = "26vh"; // 필요하면 22~30vh 사이로 조절
+const TOP_BAR_HEIGHT = "22vh"; // 필요하면 22~30vh 사이로 조절
 
 export default function DisplayPage() {
   const { eventId } = useParams<RouteParams>();
@@ -376,7 +376,7 @@ export default function DisplayPage() {
 
               {/* 중앙: 타이틀 + QR */}
               <div className="flex flex-col items-center">
-                <p className="text-2xl md:text-3xl font-extrabold text-white drop-shadow">
+                <p className="text-3xl md:text-4xl font-extrabold text-white drop-shadow">
                   축하 메시지 전하기
                 </p>
 
@@ -389,7 +389,7 @@ export default function DisplayPage() {
                 </div>
 
                 <div className="mt-3 text-center space-y-1">
-                  <p className="text-xl md:text-2xl font-extrabold text-white/95 drop-shadow">
+                  <p className="text-2xl md:text-3xl font-extrabold text-white/95 drop-shadow">
                     {lowerMessage}
                   </p>
                   {dateText && (
@@ -520,20 +520,20 @@ export default function DisplayPage() {
               </>
             )}
 
-            {/* 오른쪽 아래: 마지막 업데이트만 */}
-            <div className="absolute bottom-4 right-4 bg-black/40 text-white rounded-full px-5 py-2 text-lg md:text-xl backdrop-blur-md border border-white/15">
-              마지막 업데이트: {lastUpdatedText}
-            </div>
+            {/* 왼쪽 아래: 마지막 업데이트만 */}
+              <div className="absolute bottom-4 left-4 bg-black/40 text-white rounded-full px-5 py-2 text-lg md:text-xl backdrop-blur-md border border-white/15">
+                마지막 업데이트: {lastUpdatedText}
+              </div>
 
-            {/* 인스타(나중에 로고 교체 예정) */}
-            <div className="absolute bottom-4 left-4 flex items-center gap-3 text-lg md:text-xl text-white/90 drop-shadow">
-              <img
-                src="/instagram-logo.jpg"
-                alt="Instagram"
-                className="w-10 h-10 opacity-90"
-              />
-              <span className="font-semibold">@digital_guestbook</span>
-            </div>
+              {/* 오른쪽 아래: 인스타 */}
+              <div className="absolute bottom-4 right-4 flex items-center gap-3 text-lg md:text-xl text-white/90 drop-shadow">
+                <img
+                  src="/instagram-logo.jpg"
+                  alt="Instagram"
+                  className="w-10 h-10 opacity-90"
+                />
+                <span className="font-semibold">@digital_guestbook</span>
+              </div>
           </div>
         </section>
       </div>
