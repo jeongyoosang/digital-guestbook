@@ -33,8 +33,8 @@ const MAX_VISIBLE = 10;
 // 사진 슬라이드 한 장당 노출 시간
 const SLIDE_DURATION_MS = 6000;
 
-// 상단 바 높이(스탠바이미 세로 기준 안정적으로)
-const TOP_BAR_HEIGHT = "22vh"; // 필요하면 22~30vh 사이로 조절
+// ✅ 상단 바 높이 (요청: 26 → 22)
+const TOP_BAR_HEIGHT = "22vh";
 
 export default function DisplayPage() {
   const { eventId } = useParams<RouteParams>();
@@ -315,12 +315,10 @@ export default function DisplayPage() {
 
   /**
    * ✅ 메시지 카드 랜덤 위치
-   * - 사진(또는 템플릿)을 너무 가리지 않도록, 하단 영역 위주로 배치
-   * - 기존과 "느낌"은 같되, top 범위를 아래로 내림
+   * - 사진/템플릿을 너무 가리지 않도록, 하단 영역 위주로 배치
    */
   const slotPositions = useMemo(() => {
-    // 하단 중심 배치: top 52%~88%, left 6%~74%
-    // (너무 아래로 가면 하단 업데이트 pill과 겹칠 수 있어 88%로 컷)
+    // top 52%~88%, left 6%~74%
     return visibleMessages.map(() => {
       const top = 52 + Math.random() * 36; // 52~88
       const left = 6 + Math.random() * 68; // 6~74
@@ -376,11 +374,12 @@ export default function DisplayPage() {
 
               {/* 중앙: 타이틀 + QR */}
               <div className="flex flex-col items-center">
+                {/* ✅ 요청: "축하 메시지 전하기" 더 크게 */}
                 <p className="text-3xl md:text-4xl font-extrabold text-white drop-shadow">
                   축하 메시지 전하기
                 </p>
 
-                <div className="mt-3 w-[160px] h-[160px] md:w-[190px] md:h-[190px] bg-white/90 rounded-3xl flex items-center justify-center overflow-hidden shadow-lg">
+                <div className="mt-3 w-[150px] h-[150px] md:w-[180px] md:h-[180px] bg-white/90 rounded-3xl flex items-center justify-center overflow-hidden shadow-lg">
                   <img
                     src="/preic_qr.png"
                     alt="축하 메세지 QR"
@@ -389,6 +388,7 @@ export default function DisplayPage() {
                 </div>
 
                 <div className="mt-3 text-center space-y-1">
+                  {/* ✅ 요청: lowerMessage 더 크게 */}
                   <p className="text-2xl md:text-3xl font-extrabold text-white/95 drop-shadow">
                     {lowerMessage}
                   </p>
@@ -441,7 +441,7 @@ export default function DisplayPage() {
               ))}
               {/* 어두운 오버레이 */}
               <div className="absolute inset-0 bg-black/28" />
-              {/* 하단 그라데이션(텍스트 가독성 + 고급감) */}
+              {/* 하단 그라데이션 */}
               <div className="absolute inset-x-0 bottom-0 h-[38%] bg-gradient-to-t from-black/55 via-black/18 to-transparent" />
             </div>
           ) : (
@@ -499,7 +499,7 @@ export default function DisplayPage() {
                                      backdrop-blur-md"
                           style={{
                             ...pos,
-                            // ✅ 사진을 더 보이게: 카드 투명도 확 낮춤
+                            // ✅ 사진/템플릿을 더 보이게: 카드 투명도 확 낮춤
                             backgroundColor: "rgba(0,0,0,0.28)",
                             animation: `fadeInOutSingle ${durationSec}s ease-in-out ${delaySec}s infinite`,
                           }}
@@ -520,20 +520,20 @@ export default function DisplayPage() {
               </>
             )}
 
-            {/* 왼쪽 아래: 마지막 업데이트만 */}
-              <div className="absolute bottom-4 left-4 bg-black/40 text-white rounded-full px-5 py-2 text-lg md:text-xl backdrop-blur-md border border-white/15">
-                마지막 업데이트: {lastUpdatedText}
-              </div>
+            {/* ✅ 요청: 마지막 업데이트는 하단 왼쪽 */}
+            <div className="absolute bottom-4 left-4 bg-black/40 text-white rounded-full px-5 py-2 text-lg md:text-xl backdrop-blur-md border border-white/15">
+              마지막 업데이트: {lastUpdatedText}
+            </div>
 
-              {/* 오른쪽 아래: 인스타 */}
-              <div className="absolute bottom-4 right-4 flex items-center gap-3 text-lg md:text-xl text-white/90 drop-shadow">
-                <img
-                  src="/instagram-logo.jpg"
-                  alt="Instagram"
-                  className="w-10 h-10 opacity-90"
-                />
-                <span className="font-semibold">@digital_guestbook</span>
-              </div>
+            {/* ✅ 요청: 인스타는 하단 오른쪽 */}
+            <div className="absolute bottom-4 right-4 flex items-center gap-3 text-lg md:text-xl text-white/90 drop-shadow">
+              <img
+                src="/instagram-logo.jpg"
+                alt="Instagram"
+                className="w-10 h-10 opacity-90"
+              />
+              <span className="font-semibold">@digital_guestbook</span>
+            </div>
           </div>
         </section>
       </div>
