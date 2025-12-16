@@ -29,28 +29,40 @@ type EventAccountRow = {
 };
 
 const KAKAO_CHANNEL_URL = "https://pf.kakao.com/_UyaHn";
+const DEFAULT_DISPLAY_MESSAGE = "축하드립니다 💐";
+
+function onlyDigits(s: string) {
+  return s.replace(/\D/g, "");
+}
+
+function formatKoreanMobile(input: string) {
+  const d = onlyDigits(input).slice(0, 11);
+  if (d.length <= 3) return d;
+  if (d.length <= 7) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+}
+
+function isValidKoreanMobile(digits: string) {
+  return /^010\d{8}$/.test(digits);
+}
 
 export default function GuestPage() {
   const { eventId } = useParams<RouteParams>();
 
-  // 1. 신랑측/신부측
   const [side, setSide] = useState<"" | "groom" | "bride">("");
-
-  // 2. 실명 (엑셀용)
   const [realName, setRealName] = useState("");
+  const [phone, setPhone] = useState("");
 
-  // 3. 축하메세지
+  const [sendMoneyOnly, setSendMoneyOnly] = useState(false);
+
   const [message, setMessage] = useState("");
 
-  // 4. 표시 방식 (닉네임 / 메세지만)
   const [displayMode, setDisplayMode] = useState<DisplayMode | "">("");
   const [nickname, setNickname] = useState("");
 
-  // 5. 관계 (옵션 + 직접입력)
   const [relationship, setRelationship] = useState("");
   const [relationshipDetail, setRelationshipDetail] = useState("");
 
-  // 6. 축의금 계좌
   const [accounts, setAccounts] = useState<EventAccountRow[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(
     null
@@ -61,7 +73,6 @@ export default function GuestPage() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  // 예식 시간 스케줄 & 상태
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [phase, setPhase] = useState<EventPhase>("open");
 
@@ -94,8 +105,8 @@ export default function GuestPage() {
 
       if (data.ceremony_start_time && data.ceremony_end_time) {
         const dateStr = (data.ceremony_date as string) ?? "";
-        const startTime = data.ceremony_start_time as string; // "09:30"
-        const endTime = data.ceremony_end_time as string; // "11:00"
+        const startTime = data.ceremony_start_time as string;
+        const endTime = data.ceremony_end_time as string;
 
         const baseDate =
           dateStr && dateStr.length === 10
@@ -127,7 +138,7 @@ export default function GuestPage() {
       setPhase(getEventPhase(now, start, end));
     };
 
-    updatePhase(); // 처음 한 번
+    updatePhase();
     const timer = setInterval(updatePhase, 60 * 1000);
 
     return () => clearInterval(timer);
@@ -170,20 +181,14 @@ export default function GuestPage() {
     };
   }, [eventId]);
 
-  // 신랑/신부측에 따라 보여줄 계좌 필터링
   const filteredAccounts = useMemo(() => {
     if (!side) return accounts;
 
-    if (side === "groom") {
-      return accounts.filter((a) => a.label.includes("신랑"));
-    }
-    if (side === "bride") {
-      return accounts.filter((a) => a.label.includes("신부"));
-    }
+    if (side === "groom") return accounts.filter((a) => a.label.includes("신랑"));
+    if (side === "bride") return accounts.filter((a) => a.label.includes("신부"));
     return accounts;
   }, [accounts, side]);
 
-  // side가 바뀌면 선택했던 계좌가 안 맞을 수 있으니 초기화
   useEffect(() => {
     if (!selectedAccountId) return;
     if (!filteredAccounts.find((a) => a.id === selectedAccountId)) {
@@ -191,31 +196,47 @@ export default function GuestPage() {
     }
   }, [filteredAccounts, selectedAccountId]);
 
+  useEffect(() => {
+    if (sendMoneyOnly) {
+      setMessage(DEFAULT_DISPLAY_MESSAGE);
+      setDisplayMode("anonymous");
+      setNickname("");
+    }
+  }, [sendMoneyOnly]);
+
   async function handleSubmit() {
-    // 입력 순서대로 필수값 체크
     if (!realName.trim()) {
-      alert("성함을 입력해주세요. (신랑·신부에게만 보입니다)");
+      alert("성함(실명)을 입력해주세요. (신랑·신부에게만 전달됩니다)");
       return;
     }
 
-    if (!message.trim()) {
-      alert("축하메세지를 입력해주세요.");
+    const phoneDigits = onlyDigits(phone);
+    if (!phoneDigits) {
+      alert("연락처를 입력해주세요.");
+      return;
+    }
+    if (!isValidKoreanMobile(phoneDigits)) {
+      alert("연락처 형식이 올바르지 않습니다. (예: 010-1234-5678)");
       return;
     }
 
-    if (message.length > MESSAGE_MAX) {
-      alert(`축하메세지는 최대 ${MESSAGE_MAX}자까지 가능합니다.`);
-      return;
-    }
-
-    if (!displayMode) {
-      alert("화면에 어떻게 표시할지 선택해주세요.");
-      return;
-    }
-
-    if (displayMode === "nickname" && !nickname.trim()) {
-      alert("닉네임을 입력해주세요.");
-      return;
+    if (!sendMoneyOnly) {
+      if (!message.trim()) {
+        alert("축하메시지를 입력해주세요.");
+        return;
+      }
+      if (message.length > MESSAGE_MAX) {
+        alert(`축하메시지는 최대 ${MESSAGE_MAX}자까지 가능합니다.`);
+        return;
+      }
+      if (!displayMode) {
+        alert("디스플레이 표시 방식을 선택해주세요.");
+        return;
+      }
+      if (displayMode === "nickname" && !nickname.trim()) {
+        alert("닉네임을 입력해주세요.");
+        return;
+      }
     }
 
     if (!side) {
@@ -223,7 +244,6 @@ export default function GuestPage() {
       return;
     }
 
-    // 관계 직접입력 처리
     let finalRelationship = relationship;
     if (relationship === "직접입력") {
       if (!relationshipDetail.trim()) {
@@ -233,7 +253,6 @@ export default function GuestPage() {
       finalRelationship = relationshipDetail.trim();
     }
 
-    // 계좌 선택 (계좌가 설정되어 있다면 필수)
     if (filteredAccounts.length > 0 && !selectedAccountId) {
       alert("축의금을 송금하실 계좌를 선택해주세요.");
       return;
@@ -245,14 +264,21 @@ export default function GuestPage() {
 
     setLoading(true);
 
+    const finalBody = sendMoneyOnly ? DEFAULT_DISPLAY_MESSAGE : message.trim();
+    const finalIsAnonymous =
+      sendMoneyOnly ? true : displayMode === "anonymous";
+    const finalNickname =
+      sendMoneyOnly ? null : displayMode === "nickname" ? nickname.trim() : null;
+
     const { error } = await supabase.from("messages").insert({
       event_id: eventId,
       side,
-      guest_name: realName.trim(), // 엑셀용 실명
-      nickname: displayMode === "nickname" ? nickname.trim() : null,
-      is_anonymous: displayMode === "anonymous", // 메세지만 보이기일 때 true
+      guest_name: realName.trim(),
+      guest_phone: phoneDigits,
+      nickname: finalNickname,
+      is_anonymous: finalIsAnonymous,
       relationship: finalRelationship || null,
-      body: message.trim(),
+      body: finalBody,
       source: "onsite",
     });
 
@@ -260,7 +286,7 @@ export default function GuestPage() {
 
     if (error) {
       console.error(error);
-      alert("메세지 전송 중 오류가 발생했습니다.");
+      alert("메시지 전송 중 오류가 발생했습니다.");
       return;
     }
 
@@ -276,26 +302,21 @@ export default function GuestPage() {
 
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).then(
-        () => {
-          alert("계좌번호가 복사되었습니다.");
-        },
-        () => {
-          alert("복사에 실패했습니다. 직접 입력해 주세요.");
-        }
+        () => alert("계좌번호가 복사되었습니다."),
+        () => alert("복사에 실패했습니다. 직접 입력해 주세요.")
       );
     } else {
       alert("복사가 지원되지 않는 브라우저입니다. 직접 입력해 주세요.");
     }
   }
 
-  // 이미 전송한 경우: 2단계 - 송금 안내 + 카카오 채널 옵션
   if (submitted) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center">
         <div className="max-w-md mx-auto w-full px-4 py-8">
           <div className="bg-white rounded-2xl shadow-md px-6 py-7 text-center space-y-4">
             <p className="text-sm font-medium text-pink-500">
-              축하메세지가 전송되었어요 💐
+              메시지가 전송되었어요 💐
             </p>
             <p className="text-lg font-semibold">
               이제 선택하신 계좌로
@@ -335,7 +356,6 @@ export default function GuestPage() {
               </p>
             )}
 
-            {/* 카카오 채널 옵션 (선택 사항) */}
             <div className="pt-3 border-t border-gray-100 mt-4 space-y-2">
               <p className="text-[11px] text-gray-500">
                 신랑·신부의 감사 인사를 카카오톡으로 받고 싶다면
@@ -356,7 +376,6 @@ export default function GuestPage() {
     );
   }
 
-  // 예식 1시간 전 이전: 대기 화면
   if (phase === "before_wait") {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center">
@@ -368,7 +387,7 @@ export default function GuestPage() {
             <p className="text-lg font-semibold">
               예식 1시간 전부터
               <br />
-              축하메세지 작성이 가능합니다.
+              작성이 가능합니다.
             </p>
             <p className="text-xs text-gray-500">
               잠시 후 다시 접속하시거나,
@@ -380,7 +399,6 @@ export default function GuestPage() {
     );
   }
 
-  // 예식 종료 10분 전 이후: 마감 화면
   if (phase === "closed") {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center">
@@ -390,7 +408,7 @@ export default function GuestPage() {
               메시지 접수가 모두 종료되었습니다.
             </p>
             <p className="text-sm text-gray-600">
-              오늘 남겨주신 모든 축하메세지는
+              오늘 남겨주신 모든 축하메시지는
               <br className="sm:hidden" /> 신랑·신부에게 잘 전달될 예정입니다.
             </p>
             <p className="text-xs text-gray-400">
@@ -402,115 +420,156 @@ export default function GuestPage() {
     );
   }
 
-  // phase === "open" → 1단계 입력 폼
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-md mx-auto w-full px-4 py-6 sm:py-10">
-        {/* 상단 헤더 */}
         <header className="mb-6 text-center">
           <p className="text-xs font-medium tracking-wide text-pink-500 uppercase">
             DIGITAL GUESTBOOK
           </p>
+
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            축하 메세지를 남겨주세요 💌
+            축하 메시지를 남겨주세요 💌
           </h1>
+          <p className="mt-1 text-sm font-medium text-gray-800">
+            축하의 마음을 전하세요
+          </p>
+
           <p className="mt-2 text-xs text-gray-500">
-            메세지를 남기면 축의금을 보낼 수 있어요.
-            <br className="sm:hidden" /> 작성하신 메세지는 디스플레이에 나오고,
-            종합하여 신랑신부에게 전달됩니다.
+            메시지를 남기면 축의금도 바로 보낼 수 있어요.
+            <br className="sm:hidden" /> 작성하신 메시지는 디스플레이에 표시되고,
+            예식 후 신랑·신부에게 전달됩니다.
+          </p>
+
+          {/* ✅ “대체” 인지 고정용 한 줄 (무의식 신호) */}
+          <p className="mt-2 text-[11px] text-gray-500">
+            이 화면은 <span className="font-semibold">현장 방명록</span>을 대신합니다.
           </p>
         </header>
 
         <div className="bg-white rounded-2xl shadow-sm px-4 py-5 sm:px-6 sm:py-7 space-y-5">
-          {/* 1. 성함 */}
           <section>
-            <label className="block text-sm font-semibold">성함</label>
+            <label className="block text-sm font-semibold">성함(실명)</label>
             <input
               className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
-              placeholder="신랑·신부에게만 보이는 실제 이름"
+              placeholder="신랑·신부에게만 전달되는 실명"
               value={realName}
               onChange={(e) => setRealName(e.target.value)}
             />
             <p className="mt-1 text-[11px] text-gray-500">
-              실명은 신랑신부에게만 전달되고,
-              <br className="sm:hidden" /> 디스플레이에는 절대 노출되지 않습니다.
+              실명은 신랑·신부에게만 전달되며 디스플레이에는 노출되지 않습니다.
+              <br className="sm:hidden" />
+              축의금 송금 시, 보내는 분 이름과 동일하게 입력해 주세요.
             </p>
           </section>
 
-          {/* 2. 축하메세지 */}
           <section>
-            <div className="flex items-center justify-between">
-              <label className="block text-sm font-semibold">
-                축하메세지
-              </label>
-              <span className="text-[11px] text-gray-400">
-                {message.length} / {MESSAGE_MAX}자
-              </span>
-            </div>
-            <textarea
+            <label className="block text-sm font-semibold">연락처</label>
+            <input
+              inputMode="tel"
               className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
-              rows={4}
-              maxLength={MESSAGE_MAX}
-              placeholder="따뜻한 축하의 말을 남겨주세요 💐"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              placeholder="010-1234-5678"
+              value={phone}
+              onChange={(e) => setPhone(formatKoreanMobile(e.target.value))}
             />
-            <p className="mt-1 text-[11px] text-gray-400 text-right">
-              예: 오늘 두 분 결혼 너무 축하해요!
+            <p className="mt-1 text-[11px] text-gray-500">
+              신랑·신부가 축하 메시지/축의금을 확인하면, 이 연락처로 감사 인사가 전해집니다.
             </p>
           </section>
 
-          {/* 3. 표시 방식 (닉네임 / 메세지만) */}
           <section>
-            <label className="block text-sm font-semibold">
-              화면에 어떻게 보일까요?
+            <label className="inline-flex items-start gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-pink-500"
+                checked={sendMoneyOnly}
+                onChange={(e) => setSendMoneyOnly(e.target.checked)}
+              />
+              <span className="text-sm font-semibold text-gray-800">
+                메시지 없이 축의금만 송금할게요{" "}
+                <span className="text-gray-400 text-xs">(선택)</span>
+              </span>
             </label>
-            <div className="mt-3 grid grid-cols-1 gap-2">
-              <button
-                type="button"
-                onClick={() => setDisplayMode("nickname")}
-                className={`flex h-11 items-center justify-between rounded-xl border px-3 text-sm transition ${
-                  displayMode === "nickname"
-                    ? "border-pink-500 bg-pink-500 text-white"
-                    : "border-gray-300 bg-white text-gray-800"
-                }`}
-              >
-                <span>닉네임으로 표시</span>
-                <span className="text-[11px] opacity-80">
-                  예: 잠보기, 고래 등
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setDisplayMode("anonymous")}
-                className={`flex h-11 items-center justify-between rounded-xl border px-3 text-sm transition ${
-                  displayMode === "anonymous"
-                    ? "border-pink-500 bg-pink-500 text-white"
-                    : "border-gray-300 bg-white text-gray-800"
-                }`}
-              >
-                <span>메세지만 보이기</span>
-                <span className="text-[11px] opacity-80">
-                  화면에는 메세지만 나와요
-                </span>
-              </button>
-            </div>
-
-            {displayMode === "nickname" && (
-              <div className="mt-3">
-                <label className="block text-xs font-medium">닉네임</label>
-                <input
-                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
-                  placeholder="예: 잠보기, 깐부, 고래"
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
-                />
-              </div>
+            {sendMoneyOnly && (
+              <p className="mt-2 text-[11px] text-gray-500">
+                디스플레이에는 “{DEFAULT_DISPLAY_MESSAGE}”로 표시됩니다.
+              </p>
             )}
           </section>
 
-          {/* 4. 신랑측 / 신부측 */}
+          {!sendMoneyOnly && (
+            <>
+              <section>
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-semibold">축하메시지</label>
+                  <span className="text-[11px] text-gray-400">
+                    {message.length} / {MESSAGE_MAX}자
+                  </span>
+                </div>
+                <textarea
+                  className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                  rows={4}
+                  maxLength={MESSAGE_MAX}
+                  placeholder="따뜻한 축하의 말을 남겨주세요 💐"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                />
+                <p className="mt-1 text-[11px] text-gray-400 text-right">
+                  예: 오늘 두 분 결혼 너무 축하해요!
+                </p>
+              </section>
+
+              <section>
+                <label className="block text-sm font-semibold">
+                  디스플레이 표시 방식
+                </label>
+                <p className="mt-1 text-[11px] text-gray-500">
+                  축하 메시지만 표시되며, 실명·전화번호·축의금액 화면에 나오지 않아요.
+                </p>
+
+                <div className="mt-3 grid grid-cols-1 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDisplayMode("nickname")}
+                    className={`flex h-11 items-center justify-between rounded-xl border px-3 text-sm transition ${
+                      displayMode === "nickname"
+                        ? "border-pink-500 bg-pink-500 text-white"
+                        : "border-gray-300 bg-white text-gray-800"
+                    }`}
+                  >
+                    <span>닉네임과 함께 보이기</span>
+                    <span className="text-[11px] opacity-80">예: 잠보기, 고래</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDisplayMode("anonymous")}
+                    className={`flex h-11 items-center justify-between rounded-xl border px-3 text-sm transition ${
+                      displayMode === "anonymous"
+                        ? "border-pink-500 bg-pink-500 text-white"
+                        : "border-gray-300 bg-white text-gray-800"
+                    }`}
+                  >
+                    <span>축하 메시지만 보이기</span>
+                    <span className="text-[11px] opacity-80">이름 없이 메시지만</span>
+                  </button>
+                </div>
+
+                {displayMode === "nickname" && (
+                  <div className="mt-3">
+                    <label className="block text-xs font-medium">닉네임</label>
+                    <input
+                      className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                      placeholder="예: 잠보기, 깐부, 고래"
+                      value={nickname}
+                      onChange={(e) => setNickname(e.target.value)}
+                    />
+                  </div>
+                )}
+              </section>
+            </>
+          )}
+
           <section>
             <label className="block text-sm font-semibold">
               어느 쪽 하객이신가요?
@@ -541,7 +600,6 @@ export default function GuestPage() {
             </div>
           </section>
 
-          {/* 5. 관계 (옵션 + 직접입력) */}
           <section>
             <label className="block text-sm font-semibold">
               관계 <span className="text-gray-400 text-xs">(선택)</span>
@@ -561,12 +619,10 @@ export default function GuestPage() {
 
             {relationship === "직접입력" && (
               <div className="mt-3">
-                <label className="block text-xs font-medium">
-                  관계 직접입력
-                </label>
+                <label className="block text-xs font-medium">관계 직접입력</label>
                 <input
                   className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
-                  placeholder="예: 마태오 성당"
+                  placeholder="예: 대학교 선배, 동호회"
                   value={relationshipDetail}
                   onChange={(e) => setRelationshipDetail(e.target.value)}
                 />
@@ -574,17 +630,12 @@ export default function GuestPage() {
             )}
           </section>
 
-          {/* 6. 축의금 계좌 선택 */}
           <section>
-            <label className="block text-sm font-semibold">
-              축의금 받으실 분
-            </label>
+            <label className="block text-sm font-semibold">축의금 받으실 분</label>
             <p className="mt-1 text-[11px] text-gray-500">
-              메세지를 남기면 다음 단계에서 선택하신 계좌번호로
-              <br className="sm:hidden" /> 축의금을 보내실 수 있어요.
+              다음 단계에서 선택하신 계좌번호로 축의금을 보내실 수 있어요.
             </p>
 
-            {/* ✅ 쪽 선택 전에는 계좌 리스트 숨기기 */}
             {!side ? (
               <p className="mt-3 text-xs text-gray-400">
                 먼저 위에서 <span className="font-semibold">어느 쪽 하객인지</span>{" "}
@@ -619,19 +670,17 @@ export default function GuestPage() {
             )}
           </section>
 
-          {/* 제출 버튼 */}
           <section className="pt-1">
             <button
               className="w-full h-12 rounded-xl bg-pink-500 text-white text-sm font-semibold disabled:opacity-60 active:scale-[0.99] transition shadow-sm hover:bg-pink-600"
               disabled={loading}
               onClick={handleSubmit}
             >
-              {loading ? "메세지 전송 중..." : "메세지 남기기"}
+              {loading ? "전송 중..." : "다음 단계로"}
             </button>
           </section>
         </div>
 
-        {/* 하단 작은 안내 */}
         <p className="mt-4 text-[11px] text-center text-gray-400">
           전송 버튼을 누르시면 이용약관 및 개인정보 처리방침에 동의한 것으로
           간주됩니다.
