@@ -106,15 +106,68 @@ export const AdminPage = () => {
     }
   };
 
+  const getConfirmUrl = (eventId: string) => `${window.location.origin}/confirm/${eventId}`;
+
+  const copyToClipboardBestEffort = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("Confirm 링크가 클립보드에 복사되었습니다.");
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // ✅ 이벤트가 없으면 생성하고, 있으면 기존 eventId 반환
+  const ensureEventForReservation = async (row: ReservationRow) => {
+    const existingEventId = eventIdMap[row.id];
+    if (existingEventId) return existingEventId;
+
+    const { data, error } = await supabase
+      .from("events")
+      .insert({ reservation_id: row.id })
+      .select("id")
+      .single();
+
+    if (error) throw error;
+
+    const newEventId = (data as { id: string }).id;
+
+    // 매핑 업데이트
+    setEventIdMap((prev) => ({ ...prev, [row.id]: newEventId }));
+
+    return newEventId;
+  };
+
+  // ✅ 진행 전환(예약금 확인) 시 Confirm 링크 발급/복사/열기
+  const promptOpenOrCopyConfirm = async (eventId: string) => {
+    const confirmUrl = getConfirmUrl(eventId);
+    const openNow = window.confirm(
+      `진행 상태로 전환되며 Confirm 링크가 준비되었습니다.\n\nConfirm 페이지를 새 창에서 여시겠습니까?\n\n${confirmUrl}`
+    );
+
+    if (openNow) {
+      window.open(confirmUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    const copied = await copyToClipboardBestEffort(confirmUrl);
+    if (!copied) {
+      alert(`아래 링크를 복사해 고객에게 전달해주세요:\n\n${confirmUrl}`);
+    }
+  };
+
   // 상태 변경 (신규 → 진행 중 → 완료 → 신규)
   const updateStatus = async (row: ReservationRow) => {
     if (!row.id) return;
     setStatusChanging(true);
+
     try {
       const current: ReservationStatus = (row.status ?? "new") as ReservationStatus;
       const next: ReservationStatus =
         current === "new" ? "in_progress" : current === "in_progress" ? "done" : "new";
 
+      // 1) 상태 업데이트
       const { error } = await supabase
         .from("reservations")
         .update({ status: next })
@@ -122,10 +175,16 @@ export const AdminPage = () => {
 
       if (error) throw error;
 
-      // 로컬 state 동기화
+      // 2) 로컬 state 동기화
       setReservations((prev) =>
         prev.map((r) => (r.id === row.id ? { ...r, status: next } : r))
       );
+
+      // 3) ✅ 신규 -> 진행(in_progress) 이라면 이벤트 자동 생성 + Confirm 링크 처리
+      if (current === "new" && next === "in_progress") {
+        const eventId = await ensureEventForReservation(row);
+        await promptOpenOrCopyConfirm(eventId);
+      }
     } catch (e) {
       console.error("상태 변경 오류:", e);
       alert("상태를 변경하는 중 오류가 발생했습니다.");
@@ -138,58 +197,23 @@ export const AdminPage = () => {
   const handleCreateOrOpenEvent = async (row: ReservationRow) => {
     if (!row.id) return;
 
-    const existingEventId = eventIdMap[row.id];
-
-    // 이미 이벤트가 있는 경우 → 새로 만들지 않고 Confirm 페이지만 열기
-    if (existingEventId) {
-      const confirmUrl = `${window.location.origin}/confirm/${existingEventId}`;
-      const openNow = window.confirm(
-        `이미 이 예약에 연결된 이벤트가 있습니다.\n\nConfirm 페이지를 새 창에서 여시겠습니까?\n\n${confirmUrl}`
-      );
-      if (openNow) {
-        window.open(confirmUrl, "_blank", "noopener,noreferrer");
-      }
-      return;
-    }
-
-    // 아직 이벤트가 없는 경우 → 새로 생성
     setCreatingEvent(true);
     try {
-      const { data, error } = await supabase
-        .from("events")
-        .insert({
-          reservation_id: row.id,
-        })
-        .select("id")
-        .single();
-
-      if (error) throw error;
-
-      const newEventId = (data as { id: string }).id;
-
-      // 매핑 업데이트
-      setEventIdMap((prev) => ({ ...prev, [row.id]: newEventId }));
-
-      const confirmUrl = `${window.location.origin}/confirm/${newEventId}`;
+      const eventId = await ensureEventForReservation(row);
+      const confirmUrl = getConfirmUrl(eventId);
 
       const openNow = window.confirm(
-        `이벤트가 생성되었습니다.\n\nConfirm 페이지를 새 창에서 여시겠습니까?\n\n${confirmUrl}`
+        `Confirm 페이지를 새 창에서 여시겠습니까?\n\n${confirmUrl}`
       );
-
       if (openNow) {
         window.open(confirmUrl, "_blank", "noopener,noreferrer");
       } else {
-        // 안 연다고 하면 링크를 클립보드에 복사 시도
-        try {
-          await navigator.clipboard.writeText(confirmUrl);
-          alert("Confirm 링크가 클립보드에 복사되었습니다.");
-        } catch {
-          // 클립보드 권한 없으면 그냥 무시
-        }
+        const copied = await copyToClipboardBestEffort(confirmUrl);
+        if (!copied) alert(confirmUrl);
       }
     } catch (e) {
-      console.error("이벤트 생성 오류:", e);
-      alert("이벤트를 생성하는 중 오류가 발생했습니다.");
+      console.error("이벤트 생성/열기 오류:", e);
+      alert("이벤트를 생성/열기 하는 중 오류가 발생했습니다.");
     } finally {
       setCreatingEvent(false);
     }
@@ -238,9 +262,7 @@ export const AdminPage = () => {
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-ink/90">예약 목록</h2>
-                <span className="text-xs text-ink/50">
-                  총 {reservations.length}건
-                </span>
+                <span className="text-xs text-ink/50">총 {reservations.length}건</span>
               </div>
 
               <div className="border border-leafLight/50 rounded-2xl overflow-hidden bg-ivory/40 max-h-[520px]">
@@ -254,10 +276,8 @@ export const AdminPage = () => {
                   <ul className="divide-y divide-leafLight/40 overflow-auto max-h-[520px]">
                     {reservations.map((r) => {
                       const isSelected = r.id === selectedId;
-
                       const hasEvent = !!eventIdMap[r.id];
 
-                      // 날짜/시간 텍스트
                       const dateText =
                         r.date_status === "confirmed"
                           ? r.event_date ?? "-"
@@ -289,9 +309,7 @@ export const AdminPage = () => {
                               <div className="font-medium text-ink truncate">
                                 {r.name || "(이름 없음)"}{" "}
                                 {r.role && (
-                                  <span className="text-xs text-ink/60">
-                                    / {r.role}
-                                  </span>
+                                  <span className="text-xs text-ink/60">/ {r.role}</span>
                                 )}
                               </div>
                               <div className="flex items-center gap-1">
@@ -317,9 +335,7 @@ export const AdminPage = () => {
 
                             <div className="text-xs text-ink/60 flex flex-wrap gap-x-2 gap-y-0.5">
                               <span>
-                                {r.date_status === "confirmed"
-                                  ? "날짜 확정"
-                                  : "날짜 미정"}
+                                {r.date_status === "confirmed" ? "날짜 확정" : "날짜 미정"}
                               </span>
                               <span>·</span>
                               <span>
@@ -329,9 +345,7 @@ export const AdminPage = () => {
                             </div>
 
                             {r.venue_name && (
-                              <div className="text-xs text-ink/70 truncate">
-                                {r.venue_name}
-                              </div>
+                              <div className="text-xs text-ink/70 truncate">{r.venue_name}</div>
                             )}
 
                             <div className="text-[11px] text-ink/50">
@@ -356,9 +370,7 @@ export const AdminPage = () => {
           {/* 오른쪽: 상세 보기 */}
           <Card className="bg-white/90 backdrop-blur border-leafLight/60">
             <CardContent className="p-4 sm:p-6">
-              <h2 className="text-lg font-semibold text-ink/90 mb-4">
-                예약 상세
-              </h2>
+              <h2 className="text-lg font-semibold text-ink/90 mb-4">예약 상세</h2>
 
               {!selected ? (
                 <div className="py-20 text-center text-ink/60 text-sm">
@@ -368,16 +380,12 @@ export const AdminPage = () => {
                 <div className="space-y-5 text-sm text-ink/80">
                   {/* 기본 정보 */}
                   <section className="space-y-1">
-                    <h3 className="font-semibold text-ink/90 mb-1">
-                      기본 정보
-                    </h3>
+                    <h3 className="font-semibold text-ink/90 mb-1">기본 정보</h3>
                     <div className="grid grid-cols-[90px_minmax(0,1fr)] gap-y-1.5">
                       <span className="text-ink/60">이름</span>
                       <span>
                         {selected.name || "-"}{" "}
-                        {selected.role && (
-                          <span className="text-ink/60">/ {selected.role}</span>
-                        )}
+                        {selected.role && <span className="text-ink/60">/ {selected.role}</span>}
                       </span>
 
                       <span className="text-ink/60">관계</span>
@@ -396,7 +404,6 @@ export const AdminPage = () => {
                       </span>
                     </div>
 
-                    {/* 상태 변경 버튼 + 이벤트 생성/열기 버튼 */}
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button
                         type="button"
@@ -406,9 +413,7 @@ export const AdminPage = () => {
                         className="border-leafLight text-ink hover:bg-ivory/70"
                         onClick={() => updateStatus(selected)}
                       >
-                        {statusChanging
-                          ? "변경 중..."
-                          : "상태 바꾸기 (신규 → 진행 → 완료)"}
+                        {statusChanging ? "변경 중..." : "상태 바꾸기 (신규 → 진행 → 완료)"}
                       </Button>
 
                       <Button
@@ -419,29 +424,21 @@ export const AdminPage = () => {
                         className="border-blue-200 text-blue-700 hover:bg-blue-50"
                         onClick={() => handleCreateOrOpenEvent(selected)}
                       >
-                        {eventIdMap[selected.id]
-                          ? creatingEvent
-                            ? "열기..."
-                            : "Confirm 페이지 열기"
-                          : creatingEvent
-                          ? "이벤트 생성 중..."
-                          : "이벤트 생성 & Confirm 링크"}
+                        {creatingEvent
+                          ? "처리 중..."
+                          : eventIdMap[selected.id]
+                          ? "Confirm 페이지 열기"
+                          : "Confirm 링크 생성/열기"}
                       </Button>
                     </div>
                   </section>
 
                   {/* 일정/장소 */}
                   <section className="space-y-1">
-                    <h3 className="font-semibold text-ink/90 mb-1">
-                      일정 & 장소
-                    </h3>
+                    <h3 className="font-semibold text-ink/90 mb-1">일정 & 장소</h3>
                     <div className="grid grid-cols-[90px_minmax(0,1fr)] gap-y-1.5">
                       <span className="text-ink/60">날짜 상태</span>
-                      <span>
-                        {selected.date_status === "confirmed"
-                          ? "날짜 확정"
-                          : "날짜 미정"}
-                      </span>
+                      <span>{selected.date_status === "confirmed" ? "날짜 확정" : "날짜 미정"}</span>
 
                       <span className="text-ink/60">예식일자</span>
                       <span>
@@ -451,27 +448,19 @@ export const AdminPage = () => {
                       </span>
 
                       <span className="text-ink/60">예식 시간</span>
-                      <span>
-                        {selected.wedding_time
-                          ? selected.wedding_time.slice(0, 5)
-                          : "-"}
-                      </span>
+                      <span>{selected.wedding_time ? selected.wedding_time.slice(0, 5) : "-"}</span>
 
                       <span className="text-ink/60">예식장</span>
                       <span>{selected.venue_name || "-"}</span>
 
                       <span className="text-ink/60">주소</span>
-                      <span className="whitespace-pre-line">
-                        {selected.venue_address || "-"}
-                      </span>
+                      <span className="whitespace-pre-line">{selected.venue_address || "-"}</span>
                     </div>
                   </section>
 
                   {/* 모바일 청첩장 */}
                   <section className="space-y-1">
-                    <h3 className="font-semibold text-ink/90 mb-1">
-                      모바일 청첩장
-                    </h3>
+                    <h3 className="font-semibold text-ink/90 mb-1">모바일 청첩장</h3>
                     {selected.mobile_invitation_link ? (
                       <a
                         href={selected.mobile_invitation_link}
@@ -482,33 +471,25 @@ export const AdminPage = () => {
                         {selected.mobile_invitation_link}
                       </a>
                     ) : (
-                      <p className="text-ink/60 text-sm">
-                        입력된 모바일 청첩장 링크가 없습니다.
-                      </p>
+                      <p className="text-ink/60 text-sm">입력된 모바일 청첩장 링크가 없습니다.</p>
                     )}
                   </section>
 
                   {/* 문의내용 */}
                   <section className="space-y-1">
-                    <h3 className="font-semibold text-ink/90 mb-1">
-                      문의 내용
-                    </h3>
+                    <h3 className="font-semibold text-ink/90 mb-1">문의 내용</h3>
                     <div className="text-sm text-ink/80 whitespace-pre-line bg-ivory/70 border border-leafLight/50 rounded-xl px-3 py-2 min-h-[60px]">
                       {selected.message?.trim() || "별도 문의 내용이 없습니다."}
                     </div>
                   </section>
 
-                  {/* 메모/후속 연락용 안내 */}
                   <section className="border-t border-dashed border-leafLight/60 pt-3 text-xs text-ink/60">
                     <p className="mb-1">
-                      • 예약 문의가 오면, 위 정보 기준으로{" "}
-                      <strong>카카오톡 공식채널</strong>에서 먼저 연락을
-                      드리면 돼요.
+                      • 예약금 입금 확인 후 <strong>신규 → 진행</strong>으로 변경하면{" "}
+                      <strong>이벤트가 자동 생성</strong>되고 Confirm 링크가 발급됩니다.
                     </p>
                     <p>
-                      • 예약금 입금 확인 후{" "}
-                      <strong>이벤트 생성 & Confirm 링크</strong> 버튼으로
-                      각 예식에 맞는 설정 페이지를 열 수 있습니다.
+                      • 당일 종료 및 리포트 발송까지 완료되면 <strong>완료</strong>로 변경하세요.
                     </p>
                   </section>
                 </div>
