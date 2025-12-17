@@ -378,7 +378,9 @@ export default function DisplayPage() {
         {/* PHOTO/TEMPLATE AREA (footer 높이만큼 제외) */}
         <section
           className="relative flex-1"
-          style={{ minHeight: `calc(100vh - ${TOP_BAR_HEIGHT} - ${FOOTER_HEIGHT_PX}px)` }}
+          style={{
+            minHeight: `calc(100vh - ${TOP_BAR_HEIGHT} - ${FOOTER_HEIGHT_PX}px)`,
+          }}
         >
           {/* Background */}
           {usePhotoBackground ? (
@@ -444,7 +446,7 @@ export default function DisplayPage() {
                         <div
                           key={msg.id}
                           className="absolute max-w-md rounded-3xl px-8 py-6 text-center
-                                     text-white text-2xl leading-relaxed
+                                     text-white text-4xl leading-relaxed
                                      border border-white/20 shadow-lg
                                      backdrop-blur-md"
                           style={{
@@ -457,7 +459,7 @@ export default function DisplayPage() {
                             {msg.body}
                           </p>
                           {msg.nickname && (
-                            <p className="mt-4 text-xl md:text-2xl text-pink-200 font-semibold">
+                            <p className="mt-4 text-2xl md:text-4xl text-pink-200 font-semibold">
                               {msg.nickname}
                             </p>
                           )}
@@ -477,9 +479,7 @@ export default function DisplayPage() {
           style={{ height: `${FOOTER_HEIGHT_PX}px` }}
         >
           {/* 왼쪽: 마지막 업데이트 */}
-          <div className="text-lg md:text-xl">
-            마지막 업데이트: {lastUpdatedText}
-          </div>
+          <div className="text-lg md:text-xl">마지막 업데이트: {lastUpdatedText}</div>
 
           {/* 오른쪽: 인스타 */}
           <div className="flex items-center gap-3 text-lg md:text-xl">
