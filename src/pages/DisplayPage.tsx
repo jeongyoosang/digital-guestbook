@@ -34,14 +34,14 @@ type ActiveItem = {
   nickname: string | null;
   createdAt: string;
 
-  xPct: number; // center x (%)
+  xPct: number;
   yStartPct: number; // start y (%)
 
   startAt: number;
   endAt: number;
   durationMs: number;
 
-  widthPct: number; // estimated card width in %
+  widthPct: number;
 };
 
 function clamp(n: number, min: number, max: number) {
@@ -70,7 +70,6 @@ function getSpawnIntervalMs(backlog: number, isPortrait: boolean) {
   return Math.round(slow - (slow - fast) * t);
 }
 
-// rough width estimation (good enough for collision avoidance)
 function estimateCardWidthPct(body: string, nickname: string | null, isPortrait: boolean) {
   const text = (body ?? "").trim();
   const lines = text.split("\n");
@@ -80,7 +79,6 @@ function estimateCardWidthPct(body: string, nickname: string | null, isPortrait:
   const hasNick = Boolean(nickname && nickname.trim());
 
   const base = isPortrait ? 44 : 34;
-
   const lineFactor = clamp(maxLineLen / 22, 0, 2.2);
   const lenFactor = clamp(len / 70, 0, 1.6);
   const nickBoost = hasNick ? 3 : 0;
@@ -144,7 +142,6 @@ export default function DisplayPage() {
     activeItemsRef.current = activeItems;
   }, [activeItems]);
 
-  // queue model (new messages first)
   const pendingQueueRef = useRef<MessageRow[]>([]);
   const queuedSetRef = useRef<Set<string>>(new Set());
   const shownSetRef = useRef<Set<string>>(new Set());
@@ -359,7 +356,6 @@ export default function DisplayPage() {
   const maxConcurrent = useMemo(() => (isPortrait ? 7 : 10), [isPortrait]);
 
   const getNextMessageToShow = () => {
-    // ✅ new messages first
     if (pendingQueueRef.current.length > 0) {
       const m = pendingQueueRef.current.shift()!;
       queuedSetRef.current.delete(m.id);
@@ -391,7 +387,6 @@ export default function DisplayPage() {
 
     const gap = isPortrait ? 3.0 : 2.2;
 
-    // 후보를 여러 개 찍고 최적 선택
     const candidates: number[] = [];
     for (let i = 0; i < 18; i++) {
       candidates.push(minX + Math.random() * (maxX - minX));
@@ -430,11 +425,19 @@ export default function DisplayPage() {
       }
     }
 
-    // 너무 빡빡하면(겹칠 수밖에 없으면) 가장자리로
     if (bestScore >= 1200) {
       return Math.random() < 0.5 ? minX + 4 : maxX - 4;
     }
     return best;
+  };
+
+  // ✅ 카드가 "사진영역 바닥"에서 출발하도록 계산
+  const yStartPctForPhotoBottom = () => {
+    // section 내부 기준(%). 100% = footer 바로 위 사진영역 바닥.
+    // 완전히 바닥에서 튀어나오게 하려면 100~104% 정도가 자연스러움.
+    const base = 100;
+    const jitter = isPortrait ? 3 : 2;
+    return base + Math.random() * jitter; // 100~103 (또는 100~102)
   };
 
   // spawn loop
@@ -454,7 +457,6 @@ export default function DisplayPage() {
       const nowTs = Date.now();
       const sinceLast = nowTs - lastSpawnAtRef.current;
 
-      // density guard
       const actives = activeItemsRef.current;
       const densityGuard = actives.length >= Math.floor(maxConcurrent * 0.85) ? 220 : 0;
 
@@ -472,9 +474,7 @@ export default function DisplayPage() {
         const durationMs = estimateDurationMs(msg.body, isPortrait);
         const widthPct = estimateCardWidthPct(msg.body, msg.nickname, isPortrait);
 
-        // start from bottom (use whole bottom)
-        const yStart = isPortrait ? 94 + Math.random() * 4 : 92 + Math.random() * 4;
-
+        const yStart = yStartPctForPhotoBottom(); // ✅ 바닥에서 출발
         const x = pickPlacementX(nowTs, durationMs, widthPct);
 
         lastSpawnAtRef.current = nowTs;
@@ -512,7 +512,7 @@ export default function DisplayPage() {
     };
   }, [phase, allMessages, isPortrait, maxConcurrent]);
 
-  // fonts (works only if index.html loads them)
+  // fonts
   const serifFont = `"Noto Serif KR", "Nanum Myeongjo", serif`;
   const scriptFont = `"Nanum Pen Script", cursive`;
 
@@ -522,26 +522,28 @@ export default function DisplayPage() {
     letterSpacing: "-0.02em",
   } as React.CSSProperties;
 
+  // ✅ 신랑/신부 + 이름 더 키움
   const roleStyle = {
-    fontSize: "clamp(18px, 2.0vw, 28px)",
+    fontSize: "clamp(20px, 2.2vw, 32px)",
   } as React.CSSProperties;
 
   const nameStyle = {
-    fontSize: "clamp(34px, 3.4vw, 56px)", // ✅ 더 크게
+    fontSize: "clamp(40px, 4.0vw, 68px)",
     fontWeight: 900,
     letterSpacing: "-0.02em",
   } as React.CSSProperties;
 
-  // “처음~지금” 중간 정도로 조정
+  // ✅ 메시지 본문도 필기체로
   const bodyTextStyle = {
-    fontSize: isPortrait ? "clamp(24px, 2.6vw, 44px)" : "clamp(20px, 2.0vw, 36px)",
-    lineHeight: 1.18,
+    fontFamily: scriptFont,
+    fontSize: isPortrait ? "clamp(26px, 2.8vw, 48px)" : "clamp(22px, 2.2vw, 40px)",
+    lineHeight: 1.16,
     letterSpacing: "-0.02em",
   } as React.CSSProperties;
 
   const nicknameStyle = {
     fontFamily: scriptFont,
-    fontSize: isPortrait ? "clamp(20px, 2.1vw, 38px)" : "clamp(18px, 1.6vw, 32px)",
+    fontSize: isPortrait ? "clamp(22px, 2.2vw, 40px)" : "clamp(20px, 1.7vw, 34px)",
     lineHeight: 1.05,
   } as React.CSSProperties;
 
@@ -695,7 +697,7 @@ export default function DisplayPage() {
                       className="absolute rounded-[30px] text-center text-white border border-white/18 shadow-lg backdrop-blur-md"
                       style={{
                         left: `${it.xPct}%`,
-                        top: `${it.yStartPct}%`,
+                        top: `${it.yStartPct}%`, // ✅ section 바닥(사진영역 바닥)에서 시작
                         maxWidth: cardMaxWidth,
                         width: "fit-content",
                         padding: isPortrait ? "24px 28px" : "18px 24px",
