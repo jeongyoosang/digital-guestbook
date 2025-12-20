@@ -1,5 +1,5 @@
 // src/pages/DisplayPage.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getEventPhase, type EventPhase } from "../lib/time";
@@ -24,23 +24,98 @@ type DisplayStyle = "basic" | "christmas" | "garden" | "luxury";
 type BackgroundMode = "photo" | "template";
 
 const POLL_INTERVAL_MS = 5000;
-const ROTATION_INTERVAL_MS = 5000;
-const MAX_VISIBLE = 10;
 const SLIDE_DURATION_MS = 6000;
-
-const TOP_BAR_HEIGHT = "22vh";
 const FOOTER_HEIGHT_PX = 64;
+
+type ActiveItem = {
+  key: string;
+  msgId: string;
+  body: string;
+  nickname: string | null;
+  createdAt: string;
+
+  xPct: number; // center x (%)
+  yStartPct: number; // start y (%)
+
+  startAt: number;
+  endAt: number;
+  durationMs: number;
+
+  widthPct: number; // estimated card width in %
+};
+
+function clamp(n: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, n));
+}
+
+function estimateDurationMs(text: string, isPortrait: boolean) {
+  const t = (text ?? "").trim();
+  const len = t.length;
+
+  const base = isPortrait ? 10800 : 9300;
+
+  const lineBreaks = (t.match(/\n/g) || []).length;
+  const lineBoost = Math.min(1800, lineBreaks * 650);
+
+  const extra = Math.min(6800, Math.max(0, len - 26) * 95);
+
+  return base + extra + lineBoost;
+}
+
+function getSpawnIntervalMs(backlog: number, isPortrait: boolean) {
+  const slow = isPortrait ? 1500 : 1200;
+  const fast = isPortrait ? 620 : 480;
+
+  const t = clamp(backlog / 30, 0, 1);
+  return Math.round(slow - (slow - fast) * t);
+}
+
+// rough width estimation (good enough for collision avoidance)
+function estimateCardWidthPct(body: string, nickname: string | null, isPortrait: boolean) {
+  const text = (body ?? "").trim();
+  const lines = text.split("\n");
+  const maxLineLen = Math.max(...lines.map((l) => l.trim().length), 0);
+
+  const len = text.length;
+  const hasNick = Boolean(nickname && nickname.trim());
+
+  const base = isPortrait ? 44 : 34;
+
+  const lineFactor = clamp(maxLineLen / 22, 0, 2.2);
+  const lenFactor = clamp(len / 70, 0, 1.6);
+  const nickBoost = hasNick ? 3 : 0;
+
+  let width = base + lineFactor * 10 + lenFactor * 6 + nickBoost;
+  width = clamp(width, isPortrait ? 38 : 28, isPortrait ? 78 : 62);
+
+  return width;
+}
+
+function overlapsInTime(aStart: number, aEnd: number, bStart: number, bEnd: number) {
+  return aStart < bEnd && bStart < aEnd;
+}
+
+function overlapsInX(
+  aCenter: number,
+  aWidth: number,
+  bCenter: number,
+  bWidth: number,
+  gap = 2
+) {
+  const aL = aCenter - aWidth / 2 - gap;
+  const aR = aCenter + aWidth / 2 + gap;
+  const bL = bCenter - bWidth / 2 - gap;
+  const bR = bCenter + bWidth / 2 + gap;
+  return aL < bR && bL < aR;
+}
 
 export default function DisplayPage() {
   const { eventId } = useParams<RouteParams>();
 
   const [allMessages, setAllMessages] = useState<MessageRow[]>([]);
-  const [visibleMessages, setVisibleMessages] = useState<MessageRow[]>([]);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const [lowerMessage, setLowerMessage] = useState(
-    "친히 오셔서 축복해주셔서 감사합니다."
-  );
+  const [lowerMessage, setLowerMessage] = useState("친히 오셔서 축복해주셔서 감사합니다.");
   const [dateText, setDateText] = useState<string>("");
 
   const [groomName, setGroomName] = useState<string>("");
@@ -51,10 +126,32 @@ export default function DisplayPage() {
 
   const [displayStyle, setDisplayStyle] = useState<DisplayStyle>("basic");
 
-  const [backgroundMode, setBackgroundMode] =
-    useState<BackgroundMode>("template");
+  const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>("template");
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [currentSlide, setCurrentSlide] = useState(0);
+
+  const [viewport, setViewport] = useState(() => ({
+    w: typeof window !== "undefined" ? window.innerWidth : 1000,
+    h: typeof window !== "undefined" ? window.innerHeight : 1600,
+  }));
+
+  const isPortrait = useMemo(() => viewport.h >= viewport.w, [viewport]);
+  const TOP_BAR_HEIGHT = useMemo(() => (isPortrait ? "22vh" : "18vh"), [isPortrait]);
+
+  const [activeItems, setActiveItems] = useState<ActiveItem[]>([]);
+  const activeItemsRef = useRef<ActiveItem[]>([]);
+  useEffect(() => {
+    activeItemsRef.current = activeItems;
+  }, [activeItems]);
+
+  // queue model (new messages first)
+  const pendingQueueRef = useRef<MessageRow[]>([]);
+  const queuedSetRef = useRef<Set<string>>(new Set());
+  const shownSetRef = useRef<Set<string>>(new Set());
+  const replayCursorRef = useRef<number>(0);
+
+  const spawnTimerRef = useRef<number | null>(null);
+  const lastSpawnAtRef = useRef<number>(0);
 
   if (!eventId) {
     return (
@@ -69,7 +166,17 @@ export default function DisplayPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // 메시지 폴링
+  useEffect(() => {
+    const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize as any);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize as any);
+    };
+  }, []);
+
+  // messages polling + enqueue new
   useEffect(() => {
     let cancelled = false;
 
@@ -88,8 +195,16 @@ export default function DisplayPage() {
       if (!data || cancelled) return;
 
       setAllMessages(data);
+
       if (data.length > 0) {
         setLastUpdated(new Date(data[data.length - 1].created_at));
+      }
+
+      for (const m of data) {
+        if (shownSetRef.current.has(m.id)) continue;
+        if (queuedSetRef.current.has(m.id)) continue;
+        pendingQueueRef.current.push(m);
+        queuedSetRef.current.add(m.id);
       }
     }
 
@@ -146,9 +261,7 @@ export default function DisplayPage() {
         const endTime = data.ceremony_end_time as string;
 
         const baseDate =
-          dateStr && dateStr.length === 10
-            ? dateStr
-            : new Date().toISOString().slice(0, 10);
+          dateStr && dateStr.length === 10 ? dateStr : new Date().toISOString().slice(0, 10);
 
         setSchedule({
           start: `${baseDate}T${startTime}:00`,
@@ -158,19 +271,13 @@ export default function DisplayPage() {
 
       if (data.display_style) {
         const value = data.display_style as DisplayStyle;
-        setDisplayStyle(
-          ["basic", "christmas", "garden", "luxury"].includes(value)
-            ? value
-            : "basic"
-        );
+        setDisplayStyle(["basic", "christmas", "garden", "luxury"].includes(value) ? value : "basic");
       } else {
         setDisplayStyle("basic");
       }
 
       const mode = data.background_mode as BackgroundMode | null;
-      setBackgroundMode(
-        mode === "photo" || mode === "template" ? mode : "template"
-      );
+      setBackgroundMode(mode === "photo" || mode === "template" ? mode : "template");
 
       if (Array.isArray(data.media_urls) && data.media_urls.length > 0) {
         setMediaUrls(data.media_urls as string[]);
@@ -222,45 +329,6 @@ export default function DisplayPage() {
     return getEventPhase(now, start, end);
   }, [now, schedule]);
 
-  // 메시지 순환
-  useEffect(() => {
-    if (allMessages.length === 0) {
-      setVisibleMessages([]);
-      return;
-    }
-    if (allMessages.length <= MAX_VISIBLE) {
-      setVisibleMessages(allMessages);
-      return;
-    }
-
-    let older = allMessages.slice(0, -(MAX_VISIBLE - 1));
-    let latestStable = allMessages.slice(-(MAX_VISIBLE - 1));
-
-    let rollingIndex = older.length - 1;
-    setVisibleMessages([older[rollingIndex], ...latestStable]);
-
-    const interval = setInterval(() => {
-      const current = [...allMessages];
-      if (current.length <= MAX_VISIBLE) {
-        setVisibleMessages(current);
-        return;
-      }
-
-      older = current.slice(0, -(MAX_VISIBLE - 1));
-      latestStable = current.slice(-(MAX_VISIBLE - 1));
-
-      if (older.length === 0) {
-        setVisibleMessages(current.slice(-MAX_VISIBLE));
-        return;
-      }
-
-      rollingIndex = (rollingIndex - 1 + older.length) % older.length;
-      setVisibleMessages([older[rollingIndex], ...latestStable]);
-    }, ROTATION_INTERVAL_MS);
-
-    return () => clearInterval(interval);
-  }, [allMessages]);
-
   const lastUpdatedText = useMemo(() => {
     if (!lastUpdated) return "-";
     return lastUpdated.toLocaleTimeString("ko-KR", {
@@ -275,8 +343,7 @@ export default function DisplayPage() {
     [displayStyle]
   );
 
-  const usePhotoBackground =
-    backgroundMode === "photo" && mediaUrls && mediaUrls.length > 0;
+  const usePhotoBackground = backgroundMode === "photo" && mediaUrls && mediaUrls.length > 0;
 
   useEffect(() => {
     if (!usePhotoBackground || mediaUrls.length <= 1) {
@@ -289,24 +356,206 @@ export default function DisplayPage() {
     return () => clearInterval(timer);
   }, [usePhotoBackground, mediaUrls]);
 
-  const slotPositions = useMemo(() => {
-    // 하단 중심 배치 (큰 카드 대비 하단 잘림 방지로 살짝 위로 올림)
-    return visibleMessages.map(() => {
-      const top = 46 + Math.random() * 34; // 46~80
-      const left = 6 + Math.random() * 70; // 6~76
-      return { top: `${top}%`, left: `${left}%` };
-    });
-  }, [visibleMessages]);
+  const maxConcurrent = useMemo(() => (isPortrait ? 7 : 10), [isPortrait]);
+
+  const getNextMessageToShow = () => {
+    // ✅ new messages first
+    if (pendingQueueRef.current.length > 0) {
+      const m = pendingQueueRef.current.shift()!;
+      queuedSetRef.current.delete(m.id);
+      return m;
+    }
+    if (allMessages.length === 0) return null;
+
+    const start = replayCursorRef.current;
+
+    for (let i = 0; i < allMessages.length; i++) {
+      const idx = (start + i) % allMessages.length;
+      const m = allMessages[idx];
+
+      const alreadyActive = activeItemsRef.current.some((it) => it.msgId === m.id);
+      if (!alreadyActive) {
+        replayCursorRef.current = (idx + 1) % allMessages.length;
+        return m;
+      }
+    }
+    return null;
+  };
+
+  const pickPlacementX = (nowTs: number, durationMs: number, widthPct: number) => {
+    const minX = isPortrait ? 8 : 6;
+    const maxX = isPortrait ? 92 : 94;
+
+    const startAt = nowTs;
+    const endAt = nowTs + durationMs;
+
+    const gap = isPortrait ? 3.0 : 2.2;
+
+    // 후보를 여러 개 찍고 최적 선택
+    const candidates: number[] = [];
+    for (let i = 0; i < 18; i++) {
+      candidates.push(minX + Math.random() * (maxX - minX));
+    }
+
+    let best = candidates[0];
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    const actives = activeItemsRef.current;
+
+    for (const x of candidates) {
+      let score = 0;
+
+      for (const it of actives) {
+        const timeHit = overlapsInTime(startAt, endAt, it.startAt, it.endAt);
+        if (!timeHit) continue;
+
+        const xHit = overlapsInX(x, widthPct, it.xPct, it.widthPct, gap);
+
+        if (xHit) score += 1000;
+        else {
+          const dist = Math.abs(x - it.xPct);
+          score += clamp(40 - dist, 0, 40);
+        }
+
+        const age = nowTs - it.startAt;
+        if (age < 2200) {
+          const dist = Math.abs(x - it.xPct);
+          score += clamp(26 - dist, 0, 26);
+        }
+      }
+
+      if (score < bestScore) {
+        bestScore = score;
+        best = x;
+      }
+    }
+
+    // 너무 빡빡하면(겹칠 수밖에 없으면) 가장자리로
+    if (bestScore >= 1200) {
+      return Math.random() < 0.5 ? minX + 4 : maxX - 4;
+    }
+    return best;
+  };
+
+  // spawn loop
+  useEffect(() => {
+    if (phase !== "open") {
+      if (spawnTimerRef.current) {
+        window.clearTimeout(spawnTimerRef.current);
+        spawnTimerRef.current = null;
+      }
+      return;
+    }
+
+    const tick = () => {
+      const backlog = pendingQueueRef.current.length;
+      const interval = getSpawnIntervalMs(backlog, isPortrait);
+
+      const nowTs = Date.now();
+      const sinceLast = nowTs - lastSpawnAtRef.current;
+
+      // density guard
+      const actives = activeItemsRef.current;
+      const densityGuard = actives.length >= Math.floor(maxConcurrent * 0.85) ? 220 : 0;
+
+      const guardedInterval =
+        sinceLast < 320 ? Math.max(interval, 520) + densityGuard : interval + densityGuard;
+
+      setActiveItems((prev) => {
+        if (prev.length >= maxConcurrent) return prev;
+
+        const msg = getNextMessageToShow();
+        if (!msg) return prev;
+
+        shownSetRef.current.add(msg.id);
+
+        const durationMs = estimateDurationMs(msg.body, isPortrait);
+        const widthPct = estimateCardWidthPct(msg.body, msg.nickname, isPortrait);
+
+        // start from bottom (use whole bottom)
+        const yStart = isPortrait ? 94 + Math.random() * 4 : 92 + Math.random() * 4;
+
+        const x = pickPlacementX(nowTs, durationMs, widthPct);
+
+        lastSpawnAtRef.current = nowTs;
+
+        const key = `${nowTs}_${msg.id}`;
+
+        return [
+          ...prev,
+          {
+            key,
+            msgId: msg.id,
+            body: msg.body,
+            nickname: msg.nickname,
+            createdAt: msg.created_at,
+            xPct: x,
+            yStartPct: yStart,
+            durationMs,
+            startAt: nowTs,
+            endAt: nowTs + durationMs,
+            widthPct,
+          },
+        ];
+      });
+
+      spawnTimerRef.current = window.setTimeout(tick, guardedInterval);
+    };
+
+    spawnTimerRef.current = window.setTimeout(tick, 450);
+
+    return () => {
+      if (spawnTimerRef.current) {
+        window.clearTimeout(spawnTimerRef.current);
+        spawnTimerRef.current = null;
+      }
+    };
+  }, [phase, allMessages, isPortrait, maxConcurrent]);
+
+  // fonts (works only if index.html loads them)
+  const serifFont = `"Noto Serif KR", "Nanum Myeongjo", serif`;
+  const scriptFont = `"Nanum Pen Script", cursive`;
+
+  const titleStyle = {
+    fontFamily: serifFont,
+    fontSize: "clamp(28px, 3.2vw, 54px)",
+    letterSpacing: "-0.02em",
+  } as React.CSSProperties;
+
+  const roleStyle = {
+    fontSize: "clamp(18px, 2.0vw, 28px)",
+  } as React.CSSProperties;
+
+  const nameStyle = {
+    fontSize: "clamp(34px, 3.4vw, 56px)", // ✅ 더 크게
+    fontWeight: 900,
+    letterSpacing: "-0.02em",
+  } as React.CSSProperties;
+
+  // “처음~지금” 중간 정도로 조정
+  const bodyTextStyle = {
+    fontSize: isPortrait ? "clamp(24px, 2.6vw, 44px)" : "clamp(20px, 2.0vw, 36px)",
+    lineHeight: 1.18,
+    letterSpacing: "-0.02em",
+  } as React.CSSProperties;
+
+  const nicknameStyle = {
+    fontFamily: scriptFont,
+    fontSize: isPortrait ? "clamp(20px, 2.1vw, 38px)" : "clamp(18px, 1.6vw, 32px)",
+    lineHeight: 1.05,
+  } as React.CSSProperties;
+
+  const cardMaxWidth = isPortrait ? "min(86vw, 760px)" : "min(64vw, 760px)";
 
   return (
     <div className="relative min-h-screen bg-black overflow-hidden">
       <style>
         {`
-          @keyframes fadeInOutSingle {
-            0% { opacity: 0; transform: scale(0.96); }
-            15% { opacity: 1; transform: scale(1); }
-            85% { opacity: 1; transform: scale(1); }
-            100% { opacity: 0; transform: scale(0.96); }
+          @keyframes floatUp {
+            0%   { transform: translate(-50%, 0); opacity: 0; }
+            10%  { opacity: 1; }
+            90%  { opacity: 1; }
+            100% { transform: translate(-50%, -120vh); opacity: 0; }
           }
         `}
       </style>
@@ -315,21 +564,18 @@ export default function DisplayPage() {
 
       <div className="relative min-h-screen flex flex-col">
         {/* TOP BAR */}
-        <header
-          className="relative w-full flex items-center justify-center px-4"
-          style={{ height: TOP_BAR_HEIGHT }}
-        >
+        <header className="relative w-full flex items-center justify-center px-4" style={{ height: TOP_BAR_HEIGHT }}>
           <div className="absolute inset-0 bg-black/35" />
 
-          <div className="relative w-full max-w-5xl">
-            <div className="flex items-center justify-between gap-4">
+          <div className="relative w-full max-w-6xl">
+            <div className="flex items-center justify-between gap-3">
               <div className="min-w-[160px] text-right">
                 {groomName ? (
                   <>
-                    <p className="text-xl md:text-2xl text-white/70 mb-1">
+                    <p className="text-white/75 mb-1" style={roleStyle}>
                       신랑
                     </p>
-                    <p className="text-3xl md:text-4xl font-extrabold text-white">
+                    <p className="text-white drop-shadow" style={nameStyle}>
                       {groomName}
                     </p>
                   </>
@@ -339,24 +585,20 @@ export default function DisplayPage() {
               </div>
 
               <div className="flex flex-col items-center">
-                <p className="text-3xl md:text-4xl font-extrabold text-white drop-shadow">
-                  축하 메시지 전하기
+                <p className="font-extrabold text-white drop-shadow text-center" style={titleStyle}>
+                  축하의 마음 전하기
                 </p>
 
-                <div className="mt-3 w-[150px] h-[150px] md:w-[180px] md:h-[180px] bg-white/90 rounded-3xl flex items-center justify-center overflow-hidden shadow-lg">
-                  <img
-                    src="/preic_qr.png"
-                    alt="축하 메세지 QR"
-                    className="w-full h-full object-contain"
-                  />
+                <div className="mt-2 w-[140px] h-[140px] md:w-[170px] md:h-[170px] bg-white/90 rounded-3xl flex items-center justify-center overflow-hidden shadow-lg">
+                  <img src="/preic_qr.png" alt="축하 메세지 QR" className="w-full h-full object-contain" />
                 </div>
 
-                <div className="mt-3 text-center space-y-1">
-                  <p className="text-2xl md:text-3xl font-extrabold text-white/95 drop-shadow">
+                <div className="mt-2 text-center space-y-1 px-2">
+                  <p className="font-extrabold text-white/95 drop-shadow" style={{ fontSize: "clamp(18px, 2.1vw, 34px)" }}>
                     {lowerMessage}
                   </p>
                   {dateText && (
-                    <p className="text-sm md:text-base text-white/70">
+                    <p className="text-white/70" style={{ fontSize: "clamp(12px, 1.2vw, 16px)" }}>
                       {dateText}
                     </p>
                   )}
@@ -366,10 +608,10 @@ export default function DisplayPage() {
               <div className="min-w-[160px] text-left">
                 {brideName ? (
                   <>
-                    <p className="text-xl md:text-2xl text-white/70 mb-1">
+                    <p className="text-white/75 mb-1" style={roleStyle}>
                       신부
                     </p>
-                    <p className="text-3xl md:text-4xl font-extrabold text-white">
+                    <p className="text-white drop-shadow" style={nameStyle}>
                       {brideName}
                     </p>
                   </>
@@ -381,7 +623,7 @@ export default function DisplayPage() {
           </div>
         </header>
 
-        {/* PHOTO/TEMPLATE AREA (footer 높이만큼 제외) */}
+        {/* PHOTO/TEMPLATE AREA */}
         <section
           className="relative flex-1"
           style={{
@@ -399,7 +641,7 @@ export default function DisplayPage() {
                   className="absolute inset-0 w-full h-full object-cover transition-opacity duration-[2000ms] ease-in-out"
                   style={{
                     opacity: index === currentSlide ? 1 : 0,
-                    objectPosition: "50% 35%",
+                    objectPosition: isPortrait ? "50% 35%" : "50% 45%",
                   }}
                 />
               ))}
@@ -420,7 +662,10 @@ export default function DisplayPage() {
           <div className="relative w-full h-full">
             {phase !== "open" ? (
               <div className="absolute inset-0 flex items-center justify-center px-6">
-                <div className="bg-black/40 text-white rounded-3xl px-10 py-8 text-2xl md:text-3xl text-center whitespace-pre-line leading-relaxed backdrop-blur-md border border-white/15">
+                <div
+                  className="bg-black/40 text-white rounded-3xl px-10 py-8 text-center whitespace-pre-line leading-relaxed backdrop-blur-md border border-white/15"
+                  style={{ fontSize: "clamp(20px, 2.4vw, 34px)" }}
+                >
                   {phase === "before_wait"
                     ? "예식 1시간 전부터 축하 메세지 접수가 시작됩니다.\n잠시만 기다려주세요."
                     : phase === "closed"
@@ -430,9 +675,12 @@ export default function DisplayPage() {
               </div>
             ) : (
               <>
-                {visibleMessages.length === 0 && (
+                {allMessages.length === 0 && activeItems.length === 0 && (
                   <div className="absolute inset-0 flex items-center justify-center px-6">
-                    <div className="bg-black/35 text-white rounded-3xl px-10 py-8 text-2xl md:text-3xl text-center leading-relaxed backdrop-blur-md border border-white/15">
+                    <div
+                      className="bg-black/35 text-white rounded-3xl px-10 py-8 text-center leading-relaxed backdrop-blur-md border border-white/15"
+                      style={{ fontSize: "clamp(20px, 2.4vw, 34px)" }}
+                    >
                       아직 등록된 축하메세지가 없습니다.
                       <br />
                       상단 QR을 찍고 첫 번째 메세지를 남겨주세요 ✨
@@ -440,63 +688,52 @@ export default function DisplayPage() {
                   </div>
                 )}
 
-                {visibleMessages.length > 0 && (
-                  <div className="absolute inset-0">
-                    {visibleMessages.map((msg, index) => {
-                      const pos =
-                        slotPositions[index] || { top: "70%", left: "50%" };
-                      const durationSec = 7;
-                      const delaySec = Math.random() * 3;
+                <div className="absolute inset-0">
+                  {activeItems.map((it) => (
+                    <div
+                      key={it.key}
+                      className="absolute rounded-[30px] text-center text-white border border-white/18 shadow-lg backdrop-blur-md"
+                      style={{
+                        left: `${it.xPct}%`,
+                        top: `${it.yStartPct}%`,
+                        maxWidth: cardMaxWidth,
+                        width: "fit-content",
+                        padding: isPortrait ? "24px 28px" : "18px 24px",
+                        backgroundColor: "rgba(0,0,0,0.26)",
+                        transform: "translate(-50%, 0)",
+                        animation: `floatUp ${it.durationMs}ms linear 0ms 1`,
+                        boxShadow: "0 10px 28px rgba(0,0,0,0.35)",
+                      }}
+                      onAnimationEnd={() => {
+                        setActiveItems((prev) => prev.filter((x) => x.key !== it.key));
+                      }}
+                    >
+                      <p className="whitespace-pre-wrap break-keep" style={bodyTextStyle}>
+                        {it.body}
+                      </p>
 
-                      return (
-                        <div
-                          key={msg.id}
-                          className="absolute max-w-2xl rounded-[32px] px-10 py-8 text-center
-                                     text-white text-7xl leading-tight
-                                     border border-white/20 shadow-lg
-                                     backdrop-blur-md"
-                          style={{
-                            ...pos,
-                            backgroundColor: "rgba(0,0,0,0.28)",
-                            animation: `fadeInOutSingle ${durationSec}s ease-in-out ${delaySec}s infinite`,
-                          }}
-                        >
-                          <p className="whitespace-pre-wrap break-keep">
-                            {msg.body}
-                          </p>
-
-                          {msg.nickname && (
-                            <p className="mt-6 text-4xl md:text-5xl text-pink-200 font-extrabold drop-shadow">
-                              {msg.nickname}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                      {it.nickname && (
+                        <p className="mt-4 text-pink-200 drop-shadow" style={nicknameStyle}>
+                          {it.nickname}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </>
             )}
           </div>
         </section>
 
-        {/* FOOTER BAR (사진보다 밑) */}
+        {/* FOOTER BAR */}
         <footer
           className="w-full flex items-center justify-between px-5 bg-black/70 text-white border-t border-white/10"
           style={{ height: `${FOOTER_HEIGHT_PX}px` }}
         >
-          {/* 왼쪽: 마지막 업데이트 */}
-          <div className="text-lg md:text-xl">
-            마지막 업데이트: {lastUpdatedText}
-          </div>
+          <div style={{ fontSize: "clamp(14px, 1.4vw, 20px)" }}>마지막 업데이트: {lastUpdatedText}</div>
 
-          {/* 오른쪽: 인스타 */}
-          <div className="flex items-center gap-3 text-lg md:text-xl">
-            <img
-              src="/instagram-logo.jpg"
-              alt="Instagram"
-              className="w-8 h-8 opacity-90"
-            />
+          <div className="flex items-center gap-3" style={{ fontSize: "clamp(14px, 1.4vw, 20px)" }}>
+            <img src="/instagram-logo.jpg" alt="Instagram" className="w-8 h-8 opacity-90" />
             <span className="font-semibold">@digital_guestbook</span>
           </div>
         </footer>
