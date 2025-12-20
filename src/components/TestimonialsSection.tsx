@@ -4,7 +4,7 @@ import { Star } from "lucide-react";
 const testimonials = [
   {
     name: "김OO 신랑님",
-    date: "10월 예식",
+    date: "12월 예식",
     content:
       "친구들의 재치있는 축하메시지ㅋㅋ 덕분에 하객들이 즐거워했어요! 지금은 좋은 추억 입니다:) ",
   },
@@ -20,12 +20,12 @@ const testimonials = [
   },
   {
     name: "최OO 신부님",
-    date: "10월 예식",
+    date: "12월 예식",
     content: "예식이 끝나자마자 바로 파일로 받아볼 수 있어서 너무 신기해요😍",
   },
   {
     name: "이OO 신부님",
-    date: "10월 예식",
+    date: "12월 예식",
     content:
       "디지털 방명록 화면을 신부대기실에도 놓았어요. 덕분에 누가 오셨는지도 미리 알 수 있었고, 분위기가 너무 즐거웠어요 💐",
   },

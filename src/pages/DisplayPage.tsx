@@ -168,7 +168,9 @@ export default function DisplayPage() {
       }
 
       const mode = data.background_mode as BackgroundMode | null;
-      setBackgroundMode(mode === "photo" || mode === "template" ? mode : "template");
+      setBackgroundMode(
+        mode === "photo" || mode === "template" ? mode : "template"
+      );
 
       if (Array.isArray(data.media_urls) && data.media_urls.length > 0) {
         setMediaUrls(data.media_urls as string[]);
@@ -288,9 +290,9 @@ export default function DisplayPage() {
   }, [usePhotoBackground, mediaUrls]);
 
   const slotPositions = useMemo(() => {
-    // 하단 중심 배치
+    // 하단 중심 배치 (큰 카드 대비 하단 잘림 방지로 살짝 위로 올림)
     return visibleMessages.map(() => {
-      const top = 52 + Math.random() * 34; // 52~86
+      const top = 46 + Math.random() * 34; // 46~80
       const left = 6 + Math.random() * 70; // 6~76
       return { top: `${top}%`, left: `${left}%` };
     });
@@ -324,7 +326,9 @@ export default function DisplayPage() {
               <div className="min-w-[160px] text-right">
                 {groomName ? (
                   <>
-                    <p className="text-xl md:text-2xl text-white/70 mb-1">신랑</p>
+                    <p className="text-xl md:text-2xl text-white/70 mb-1">
+                      신랑
+                    </p>
                     <p className="text-3xl md:text-4xl font-extrabold text-white">
                       {groomName}
                     </p>
@@ -362,7 +366,9 @@ export default function DisplayPage() {
               <div className="min-w-[160px] text-left">
                 {brideName ? (
                   <>
-                    <p className="text-xl md:text-2xl text-white/70 mb-1">신부</p>
+                    <p className="text-xl md:text-2xl text-white/70 mb-1">
+                      신부
+                    </p>
                     <p className="text-3xl md:text-4xl font-extrabold text-white">
                       {brideName}
                     </p>
@@ -445,8 +451,8 @@ export default function DisplayPage() {
                       return (
                         <div
                           key={msg.id}
-                          className="absolute max-w-md rounded-3xl px-8 py-6 text-center
-                                     text-white text-4xl leading-relaxed
+                          className="absolute max-w-2xl rounded-[32px] px-10 py-8 text-center
+                                     text-white text-7xl leading-tight
                                      border border-white/20 shadow-lg
                                      backdrop-blur-md"
                           style={{
@@ -458,8 +464,9 @@ export default function DisplayPage() {
                           <p className="whitespace-pre-wrap break-keep">
                             {msg.body}
                           </p>
+
                           {msg.nickname && (
-                            <p className="mt-4 text-2xl md:text-4xl text-pink-200 font-semibold">
+                            <p className="mt-6 text-4xl md:text-5xl text-pink-200 font-extrabold drop-shadow">
                               {msg.nickname}
                             </p>
                           )}
@@ -479,7 +486,9 @@ export default function DisplayPage() {
           style={{ height: `${FOOTER_HEIGHT_PX}px` }}
         >
           {/* 왼쪽: 마지막 업데이트 */}
-          <div className="text-lg md:text-xl">마지막 업데이트: {lastUpdatedText}</div>
+          <div className="text-lg md:text-xl">
+            마지막 업데이트: {lastUpdatedText}
+          </div>
 
           {/* 오른쪽: 인스타 */}
           <div className="flex items-center gap-3 text-lg md:text-xl">
