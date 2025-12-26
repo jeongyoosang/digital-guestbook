@@ -24,13 +24,12 @@ type BackgroundMode = "photo" | "template";
 
 const POLL_INTERVAL_MS = 5000;
 const SLIDE_DURATION_MS = 6000;
-
 const FOOTER_HEIGHT_PX = 64;
 
 type FloatingItem = {
   key: string;
   message: MessageRow;
-  leftPx: number; // ✅ px 기반으로 안전 배치 (끝에서 1글자만 보이는 현상 방지)
+  leftPct: number;
   durationMs: number;
 };
 
@@ -74,13 +73,7 @@ function InstagramIcon({
 export default function DisplayPage() {
   const { eventId } = useParams<RouteParams>();
 
-  // 화면 폭 측정 (px 기반 안전 배치용)
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [containerW, setContainerW] = useState<number>(
-    typeof window !== "undefined" ? window.innerWidth : 1080
-  );
-
-  // ✅ 회전(가로/세로) 자동 반영
+  /** ✅ 회전(가로/세로) 자동 반영 */
   const [isPortrait, setIsPortrait] = useState(
     window.matchMedia("(orientation: portrait)").matches
   );
@@ -96,26 +89,9 @@ export default function DisplayPage() {
     };
   }, []);
 
-  useEffect(() => {
-    const onResize = () => {
-      const w = containerRef.current?.clientWidth ?? window.innerWidth;
-      setContainerW(w);
-    };
-    onResize();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  /** 원본 메시지(정렬된 상태) */
   const [allMessages, setAllMessages] = useState<MessageRow[]>([]);
-
-  /** 화면에 떠 있는 카드 */
   const [activeItems, setActiveItems] = useState<FloatingItem[]>([]);
-
-  /** 🔁 무한 순환 큐 */
   const rotationQueueRef = useRef<MessageRow[]>([]);
-
-  /** 새 메시지 감지용 */
   const knownIdsRef = useRef<Set<string>>(new Set());
 
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -158,11 +134,9 @@ export default function DisplayPage() {
       if (error || !data || cancelled) return;
 
       setAllMessages(data);
-      if (data.length > 0) {
-        setLastUpdated(new Date(data[data.length - 1].created_at));
-      }
+      if (data.length > 0) setLastUpdated(new Date(data[data.length - 1].created_at));
 
-      // 🔑 새 메시지는 큐 맨 뒤에 추가 (기존 순서 유지)
+      // 새 메시지 뒤에 추가
       data.forEach((m) => {
         if (!knownIdsRef.current.has(m.id)) {
           knownIdsRef.current.add(m.id);
@@ -250,25 +224,22 @@ export default function DisplayPage() {
     return () => clearInterval(t);
   }, [usePhotoBackground, mediaUrls]);
 
-  /* ---------- ✅ 자동 밀도 계산 ---------- */
+  /* ---------- ✅ 자동 밀도 ---------- */
   const queueLen = rotationQueueRef.current.length;
 
   const maxActive = useMemo(() => {
-    // 세로: 3~9 / 가로: 4~12
     if (isPortrait) return Math.min(9, Math.max(3, Math.round(queueLen * 0.38)));
     return Math.min(12, Math.max(4, Math.round(queueLen * 0.42)));
   }, [queueLen, isPortrait]);
 
   const intervalMs = useMemo(() => {
-    // 500~1600ms
     const base = isPortrait ? 1500 : 1350;
     const v = Math.round(base - queueLen * (isPortrait ? 50 : 55));
     return Math.min(1600, Math.max(500, v));
   }, [queueLen, isPortrait]);
 
-  /* ---------- ✅ 헤더/폰트 반응형 (세로는 더 크게) ---------- */
-  const topBarHeight = isPortrait ? "26vh" : "28vh"; // ✅ 세로에서 글씨 키우기 위해 공간도 같이 확보
-
+  /* ---------- ✅ 헤더/폰트 (세로: 더 큼) ---------- */
+  const topBarHeight = isPortrait ? "26vh" : "28vh";
   const groomBrideLabelClass = isPortrait ? "text-2xl" : "text-lg";
 
   const nameStyle: CSSProperties = isPortrait
@@ -283,11 +254,12 @@ export default function DisplayPage() {
         lineHeight: 1.05,
       };
 
+  // ✅ (1) 타이틀 글씨 키움
   const titleStyle: CSSProperties = isPortrait
     ? {
         fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
-        fontSize: "clamp(44px, 4.4vw, 82px)",
-        lineHeight: 1.05,
+        fontSize: "clamp(60px, 5.0vw, 102px)",
+        lineHeight: 1.03,
       }
     : {
         fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
@@ -295,29 +267,32 @@ export default function DisplayPage() {
         lineHeight: 1.1,
       };
 
+  // ✅ (2) 하단 문구 글씨 키움
   const lowerStyle: CSSProperties = isPortrait
-    ? { fontSize: "clamp(22px, 2.2vw, 34px)" }
+    ? { fontSize: "clamp(30px, 2.6vw, 46px)" }
     : { fontSize: "clamp(14px, 1.6vw, 24px)" };
 
+  // ✅ (3) 날짜 글씨 키움
   const dateStyle: CSSProperties = isPortrait
-    ? { fontSize: "clamp(18px, 1.8vw, 28px)" }
+    ? { fontSize: "clamp(24px, 2.2vw, 36px)" }
     : { fontSize: "clamp(12px, 1.4vw, 18px)" };
 
+  // ✅ (4) QR 크기 키움
   const qrSize = isPortrait
-    ? "clamp(150px, 13vw, 210px)"
+    ? "clamp(200px, 15vw, 280px)"
     : "clamp(80px, 8vw, 120px)";
 
-  /* ---------- ✅ 카드 폭(대략) 기반 안전 배치 ---------- */
-  const cardW = useMemo(() => {
-    // 세로는 더 넓게 써도 읽힘이 좋고, 가로는 조금 줄여야 겹침이 덜함
-    // clamp(360px, 72vw, 760px) 정도 느낌을 px로 근사
-    const max = isPortrait ? 760 : 680;
-    const min = isPortrait ? 380 : 340;
-    const preferred = containerW * (isPortrait ? 0.78 : 0.62);
-    return Math.max(min, Math.min(max, Math.round(preferred)));
-  }, [containerW, isPortrait]);
-
-  const safePad = useMemo(() => (isPortrait ? 18 : 24), [isPortrait]);
+  /* ---------- ✅ 카드 배치 안전 구간 ---------- */
+  const getSafeRange = (len: number) => {
+    if (isPortrait) {
+      if (len >= 70) return { min: 24, max: 76 };
+      if (len >= 45) return { min: 20, max: 80 };
+      return { min: 16, max: 84 };
+    }
+    if (len >= 70) return { min: 22, max: 78 };
+    if (len >= 45) return { min: 18, max: 82 };
+    return { min: 14, max: 86 };
+  };
 
   /* ---------- floating spawn (INFINITE ROTATION) ---------- */
   useEffect(() => {
@@ -331,24 +306,17 @@ export default function DisplayPage() {
       if (!msg) return;
       rotationQueueRef.current.push(msg);
 
-      // ✅ px 기반으로 "화면 밖으로 절대 안 나가게"
-      const minX = safePad + cardW / 2;
-      const maxX = Math.max(minX + 1, containerW - safePad - cardW / 2);
+      const len = msg.body.length;
+      const { min, max } = getSafeRange(len);
 
-      // 후보 여러 개 뽑아서 겹침 최소화
-      const candidates = Array.from({ length: 10 }, () => {
-        const r = Math.random();
-        return Math.round(minX + r * (maxX - minX));
-      });
-
+      const candidates = Array.from({ length: 12 }, () => min + Math.random() * (max - min));
       const chosen = candidates.find((x) => {
-        // 기존 카드와 x 거리 너무 가까우면 제외
-        return !activeItems.some((a) => Math.abs(a.leftPx - x) < cardW * 0.35);
+        const minGap = isPortrait ? (len >= 60 ? 16 : 14) : (len >= 60 ? 14 : 12);
+        return !activeItems.some((a) => Math.abs(a.leftPct - x) < minGap);
       });
 
       if (chosen === undefined) return;
 
-      const len = msg.body.length;
       const durationMs =
         (isPortrait ? 15500 : 13200) +
         Math.min(6500, Math.max(0, len - 30) * 120);
@@ -358,18 +326,18 @@ export default function DisplayPage() {
         {
           key: `${msg.id}-${Date.now()}`,
           message: msg,
-          leftPx: chosen,
+          leftPct: chosen,
           durationMs,
         },
       ]);
     }, intervalMs);
 
     return () => clearInterval(t);
-  }, [activeItems, phase, intervalMs, maxActive, containerW, cardW, safePad, isPortrait]);
+  }, [activeItems, phase, intervalMs, maxActive, isPortrait]);
 
   /* ---------- render ---------- */
   return (
-    <div ref={containerRef} className="relative min-h-screen bg-black overflow-hidden">
+    <div className="relative min-h-screen bg-black overflow-hidden">
       <style>{`
         @keyframes floatUp {
           0%   { transform: translate(-50%, 12vh) scale(0.98); opacity: 0; }
@@ -381,22 +349,21 @@ export default function DisplayPage() {
 
       <audio src="/bgm.m4a" autoPlay loop preload="auto" />
 
-      {/* ✅ 메시지 레이어를 "루트"로 올림: 헤더 박스는 침범하되(=위로 올라감),
-          QR은 더 위 레이어(z-40)로 띄워서 항상 읽히게 */}
+      {/* ✅ 메시지 레이어: 헤더 박스는 침범 가능, QR/핵심 텍스트는 z-40으로 항상 읽힘 */}
       <div className="absolute inset-0 overflow-hidden z-30 pointer-events-none">
         {activeItems.map((item) => (
           <div
             key={item.key}
-            className="absolute left-1/2 bottom-0 rounded-[32px] text-white text-center shadow-lg backdrop-blur-md"
+            className="absolute left-1/2 bottom-0 max-w-2xl px-10 py-8 rounded-[32px]
+                       text-white text-center shadow-lg backdrop-blur-md"
             style={{
-              left: `${item.leftPx}px`,
-              width: `${cardW}px`,
-              padding: isPortrait ? "28px 36px" : "24px 32px",
+              left: `${item.leftPct}%`,
               backgroundColor: "rgba(0,0,0,0.28)",
               fontFamily: "Nanum Pen Script, cursive",
               animation: `floatUp ${item.durationMs}ms linear`,
               animationFillMode: "both",
-              // 줄바꿈 품질 개선
+              width: "auto",
+              maxWidth: isPortrait ? "78vw" : "62vw",
               wordBreak: "keep-all",
               overflowWrap: "break-word",
               whiteSpace: "pre-wrap",
@@ -422,11 +389,9 @@ export default function DisplayPage() {
         className="relative w-full flex items-center justify-center px-6"
         style={{ height: topBarHeight }}
       >
-        {/* ✅ 헤더 박스(배경)는 메시지 뒤로(z-20) */}
         <div className="absolute inset-0 bg-black/40 z-20" />
 
         <div className="relative w-full max-w-6xl flex items-center justify-between z-40">
-          {/* ✅ 신랑/신부/타이틀/QR은 z-40: 메시지가 박스를 침범해도 QR은 항상 읽힘 */}
           <div className="text-right">
             <p className={`${groomBrideLabelClass} text-white/60`}>신랑</p>
             <p className="text-white font-bold" style={nameStyle}>
@@ -482,13 +447,11 @@ export default function DisplayPage() {
             />
           ) : (
             <>
-              {/* 뒤: 블러 cover */}
               <img
                 src={mediaUrls[currentSlide]}
                 className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-60"
                 alt="background blur"
               />
-              {/* 앞: contain */}
               <img
                 src={mediaUrls[currentSlide]}
                 className="absolute inset-0 w-full h-full object-contain"
