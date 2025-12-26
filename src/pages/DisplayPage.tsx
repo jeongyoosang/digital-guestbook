@@ -89,7 +89,6 @@ export default function DisplayPage() {
     };
   }, []);
 
-  /** 메시지 큐/상태 */
   const [activeItems, setActiveItems] = useState<FloatingItem[]>([]);
   const rotationQueueRef = useRef<MessageRow[]>([]);
   const knownIdsRef = useRef<Set<string>>(new Set());
@@ -137,7 +136,6 @@ export default function DisplayPage() {
         setLastUpdated(new Date(data[data.length - 1].created_at));
       }
 
-      // 🔁 새 메시지는 큐 맨 뒤에 추가 (기존 순서 유지)
       data.forEach((m) => {
         if (!knownIdsRef.current.has(m.id)) {
           knownIdsRef.current.add(m.id);
@@ -225,29 +223,32 @@ export default function DisplayPage() {
     return () => clearInterval(t);
   }, [usePhotoBackground, mediaUrls]);
 
-  /* ---------- ✅ 자동 밀도 계산 ---------- */
+  /* ---------- ✅ 자동 밀도 ---------- */
   const queueLen = rotationQueueRef.current.length;
 
   const maxActive = useMemo(() => {
-    // 세로: 3~9 / 가로: 4~12
     if (isPortrait) return Math.min(9, Math.max(3, Math.round(queueLen * 0.38)));
     return Math.min(12, Math.max(4, Math.round(queueLen * 0.42)));
   }, [queueLen, isPortrait]);
 
   const intervalMs = useMemo(() => {
-    // 500~1600ms
     const base = isPortrait ? 1500 : 1350;
     const v = Math.round(base - queueLen * (isPortrait ? 50 : 55));
     return Math.min(1600, Math.max(500, v));
   }, [queueLen, isPortrait]);
 
-  /* ---------- ✅ 헤더/폰트 반응형 ---------- */
+  /* ---------- ✅ 헤더/폰트 ---------- */
   const topBarHeight = isPortrait ? "26vh" : "28vh";
 
-  // ✅✅ 여기만 “라벨 크기” 최종 조정
-  // - 세로: 더 또렷하게 (감사 문구보다 작아 보이지 않게)
-  // - 가로: 과하지 않게
+  // ✅ 라벨 크기 + 라벨↔이름 간격
   const groomBrideLabelClass = isPortrait ? "text-4xl" : "text-2xl";
+  const groomBrideGapClass = isPortrait ? "mb-3" : "mb-2";
+
+  // ✅ 자간(고급스럽게 약간만)
+  const roleLabelStyle: CSSProperties = {
+    letterSpacing: "0.02em",
+    fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
+  };
 
   const nameStyle: CSSProperties = isPortrait
     ? {
@@ -285,9 +286,8 @@ export default function DisplayPage() {
     ? "clamp(200px, 15vw, 280px)"
     : "clamp(80px, 8vw, 120px)";
 
-  /* ---------- ✅ 카드 배치 안전 구간 ---------- */
+  /* ---------- ✅ 한글 가독성/좌우 안전 ---------- */
   const getSafeRange = (len: number) => {
-    // 긴 글일수록 카드가 커질 확률이 높으니 중앙쪽으로
     if (isPortrait) {
       if (len >= 70) return { min: 24, max: 76 };
       if (len >= 45) return { min: 20, max: 80 };
@@ -298,7 +298,7 @@ export default function DisplayPage() {
     return { min: 14, max: 86 };
   };
 
-  /* ---------- floating spawn (INFINITE ROTATION) ---------- */
+  /* ---------- floating spawn (INFINITE) ---------- */
   useEffect(() => {
     if (phase !== "open") return;
 
@@ -306,7 +306,6 @@ export default function DisplayPage() {
       if (rotationQueueRef.current.length === 0) return;
       if (activeItems.length >= maxActive) return;
 
-      // 1→2→…→N→1 무한 순환
       const msg = rotationQueueRef.current.shift();
       if (!msg) return;
       rotationQueueRef.current.push(msg);
@@ -354,7 +353,7 @@ export default function DisplayPage() {
 
       <audio src="/bgm.m4a" autoPlay loop preload="auto" />
 
-      {/* ✅ 메시지 레이어: 헤더 박스 침범 가능(z-30), QR/텍스트는 더 위(z-40) */}
+      {/* FLOATING (z-30) */}
       <div className="absolute inset-0 overflow-hidden z-30 pointer-events-none">
         {activeItems.map((item) => (
           <div
@@ -367,10 +366,8 @@ export default function DisplayPage() {
               fontFamily: "Nanum Pen Script, cursive",
               animation: `floatUp ${item.durationMs}ms linear`,
               animationFillMode: "both",
-              // ✅ 글자수에 맞게 자동 크기 + 최대폭만 제한
               width: "auto",
               maxWidth: isPortrait ? "78vw" : "62vw",
-              // ✅ 한글 가독성(세로로 한 글자씩 떨어지는 케이스 방지)
               wordBreak: "keep-all",
               overflowWrap: "break-word",
               whiteSpace: "pre-wrap",
@@ -398,10 +395,15 @@ export default function DisplayPage() {
       >
         <div className="absolute inset-0 bg-black/40 z-20" />
 
-        {/* ✅ QR/핵심 텍스트는 메시지보다 위 */}
+        {/* QR/텍스트는 z-40으로 항상 위 */}
         <div className="relative w-full max-w-6xl flex items-center justify-between z-40">
           <div className="text-right">
-            <p className={`${groomBrideLabelClass} text-white/70`}>신랑</p>
+            <p
+              className={`${groomBrideLabelClass} ${groomBrideGapClass} text-white/70`}
+              style={roleLabelStyle}
+            >
+              신랑
+            </p>
             <p className="text-white font-bold" style={nameStyle}>
               {groomName}
             </p>
@@ -431,7 +433,12 @@ export default function DisplayPage() {
           </div>
 
           <div className="text-left">
-            <p className={`${groomBrideLabelClass} text-white/70`}>신부</p>
+            <p
+              className={`${groomBrideLabelClass} ${groomBrideGapClass} text-white/70`}
+              style={roleLabelStyle}
+            >
+              신부
+            </p>
             <p className="text-white font-bold" style={nameStyle}>
               {brideName}
             </p>
@@ -439,7 +446,7 @@ export default function DisplayPage() {
         </div>
       </header>
 
-      {/* MAIN (✅ 여기 빠져서 검은 화면 됐던 거) */}
+      {/* MAIN */}
       <section
         className="relative flex-1"
         style={{
@@ -455,7 +462,6 @@ export default function DisplayPage() {
             />
           ) : (
             <>
-              {/* 가로: 잘림 최소화를 위해 blur 배경 + contain 본이미지 */}
               <img
                 src={mediaUrls[currentSlide]}
                 className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-60"
