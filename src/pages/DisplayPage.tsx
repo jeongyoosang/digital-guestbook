@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getEventPhase, type EventPhase } from "../lib/time";
@@ -30,7 +30,7 @@ const FOOTER_HEIGHT_PX = 64;
 type FloatingItem = {
   key: string;
   message: MessageRow;
-  leftPct: number;
+  leftPx: number; // ✅ px 기반으로 안전 배치 (끝에서 1글자만 보이는 현상 방지)
   durationMs: number;
 };
 
@@ -41,7 +41,6 @@ function InstagramIcon({
   size?: number;
   className?: string;
 }) {
-  // 심플 인스타그램 로고 SVG (외부 의존성 없음)
   return (
     <svg
       width={size}
@@ -75,6 +74,38 @@ function InstagramIcon({
 export default function DisplayPage() {
   const { eventId } = useParams<RouteParams>();
 
+  // 화면 폭 측정 (px 기반 안전 배치용)
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerW, setContainerW] = useState<number>(
+    typeof window !== "undefined" ? window.innerWidth : 1080
+  );
+
+  // ✅ 회전(가로/세로) 자동 반영
+  const [isPortrait, setIsPortrait] = useState(
+    window.matchMedia("(orientation: portrait)").matches
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia("(orientation: portrait)");
+    const handler = (e: MediaQueryListEvent) => setIsPortrait(e.matches);
+    if (mq.addEventListener) mq.addEventListener("change", handler);
+    else mq.addListener(handler);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", handler);
+      else mq.removeListener(handler);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onResize = () => {
+      const w = containerRef.current?.clientWidth ?? window.innerWidth;
+      setContainerW(w);
+    };
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   /** 원본 메시지(정렬된 상태) */
   const [allMessages, setAllMessages] = useState<MessageRow[]>([]);
 
@@ -104,25 +135,6 @@ export default function DisplayPage() {
     useState<BackgroundMode>("template");
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [currentSlide, setCurrentSlide] = useState(0);
-
-  /** ✅ 회전(가로/세로) 자동 반영 */
-  const [isPortrait, setIsPortrait] = useState(
-    window.matchMedia("(orientation: portrait)").matches
-  );
-
-  useEffect(() => {
-    const mq = window.matchMedia("(orientation: portrait)");
-    const handler = (e: MediaQueryListEvent) => setIsPortrait(e.matches);
-
-    // 일부 브라우저 호환
-    if (mq.addEventListener) mq.addEventListener("change", handler);
-    else mq.addListener(handler);
-
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", handler);
-      else mq.removeListener(handler);
-    };
-  }, []);
 
   /* ---------- time ---------- */
   useEffect(() => {
@@ -242,20 +254,70 @@ export default function DisplayPage() {
   const queueLen = rotationQueueRef.current.length;
 
   const maxActive = useMemo(() => {
-    // 메시지 개수에 따라 자연스럽게 상한 변화
-    // 세로: 3~8 / 가로: 4~12
-    if (isPortrait) {
-      return Math.min(8, Math.max(3, Math.round(queueLen * 0.35)));
-    }
+    // 세로: 3~9 / 가로: 4~12
+    if (isPortrait) return Math.min(9, Math.max(3, Math.round(queueLen * 0.38)));
     return Math.min(12, Math.max(4, Math.round(queueLen * 0.42)));
   }, [queueLen, isPortrait]);
 
   const intervalMs = useMemo(() => {
-    // 메시지가 많을수록 더 자주 생성 (너무 과속 방지: 500~1600ms)
-    const base = isPortrait ? 1550 : 1350;
-    const v = Math.round(base - queueLen * (isPortrait ? 45 : 55));
+    // 500~1600ms
+    const base = isPortrait ? 1500 : 1350;
+    const v = Math.round(base - queueLen * (isPortrait ? 50 : 55));
     return Math.min(1600, Math.max(500, v));
   }, [queueLen, isPortrait]);
+
+  /* ---------- ✅ 헤더/폰트 반응형 (세로는 더 크게) ---------- */
+  const topBarHeight = isPortrait ? "26vh" : "28vh"; // ✅ 세로에서 글씨 키우기 위해 공간도 같이 확보
+
+  const groomBrideLabelClass = isPortrait ? "text-2xl" : "text-lg";
+
+  const nameStyle: CSSProperties = isPortrait
+    ? {
+        fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
+        fontSize: "clamp(46px, 4.6vw, 84px)",
+        lineHeight: 1.03,
+      }
+    : {
+        fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
+        fontSize: "clamp(28px, 4.2vw, 64px)",
+        lineHeight: 1.05,
+      };
+
+  const titleStyle: CSSProperties = isPortrait
+    ? {
+        fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
+        fontSize: "clamp(44px, 4.4vw, 82px)",
+        lineHeight: 1.05,
+      }
+    : {
+        fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
+        fontSize: "clamp(22px, 3.2vw, 52px)",
+        lineHeight: 1.1,
+      };
+
+  const lowerStyle: CSSProperties = isPortrait
+    ? { fontSize: "clamp(22px, 2.2vw, 34px)" }
+    : { fontSize: "clamp(14px, 1.6vw, 24px)" };
+
+  const dateStyle: CSSProperties = isPortrait
+    ? { fontSize: "clamp(18px, 1.8vw, 28px)" }
+    : { fontSize: "clamp(12px, 1.4vw, 18px)" };
+
+  const qrSize = isPortrait
+    ? "clamp(150px, 13vw, 210px)"
+    : "clamp(80px, 8vw, 120px)";
+
+  /* ---------- ✅ 카드 폭(대략) 기반 안전 배치 ---------- */
+  const cardW = useMemo(() => {
+    // 세로는 더 넓게 써도 읽힘이 좋고, 가로는 조금 줄여야 겹침이 덜함
+    // clamp(360px, 72vw, 760px) 정도 느낌을 px로 근사
+    const max = isPortrait ? 760 : 680;
+    const min = isPortrait ? 380 : 340;
+    const preferred = containerW * (isPortrait ? 0.78 : 0.62);
+    return Math.max(min, Math.min(max, Math.round(preferred)));
+  }, [containerW, isPortrait]);
+
+  const safePad = useMemo(() => (isPortrait ? 18 : 24), [isPortrait]);
 
   /* ---------- floating spawn (INFINITE ROTATION) ---------- */
   useEffect(() => {
@@ -265,68 +327,49 @@ export default function DisplayPage() {
       if (rotationQueueRef.current.length === 0) return;
       if (activeItems.length >= maxActive) return;
 
-      // 🔁 큐에서 하나 꺼내고, 끝에 다시 붙인다 (무한 순환)
       const msg = rotationQueueRef.current.shift();
       if (!msg) return;
       rotationQueueRef.current.push(msg);
 
-      const leftCandidates = Array.from({ length: 10 }, () => 8 + Math.random() * 84);
-      const leftPct = leftCandidates.find(
-        (x) => !activeItems.some((a) => Math.abs(a.leftPct - x) < 14)
-      );
-      if (leftPct === undefined) return;
+      // ✅ px 기반으로 "화면 밖으로 절대 안 나가게"
+      const minX = safePad + cardW / 2;
+      const maxX = Math.max(minX + 1, containerW - safePad - cardW / 2);
+
+      // 후보 여러 개 뽑아서 겹침 최소화
+      const candidates = Array.from({ length: 10 }, () => {
+        const r = Math.random();
+        return Math.round(minX + r * (maxX - minX));
+      });
+
+      const chosen = candidates.find((x) => {
+        // 기존 카드와 x 거리 너무 가까우면 제외
+        return !activeItems.some((a) => Math.abs(a.leftPx - x) < cardW * 0.35);
+      });
+
+      if (chosen === undefined) return;
 
       const len = msg.body.length;
       const durationMs =
-        (isPortrait ? 15000 : 13000) +
-        Math.min(6000, Math.max(0, len - 30) * 120);
+        (isPortrait ? 15500 : 13200) +
+        Math.min(6500, Math.max(0, len - 30) * 120);
 
       setActiveItems((prev) => [
         ...prev,
         {
           key: `${msg.id}-${Date.now()}`,
           message: msg,
-          leftPct,
+          leftPx: chosen,
           durationMs,
         },
       ]);
     }, intervalMs);
 
     return () => clearInterval(t);
-  }, [activeItems, phase, isPortrait, intervalMs, maxActive]);
-
-  /* ---------- ✅ 레이아웃 반응형(가로에서 안 짤리게) ---------- */
-  const topBarHeight = isPortrait ? "22vh" : "28vh";
-
-  const groomBrideLabelClass = isPortrait ? "text-2xl" : "text-lg";
-
-  const nameStyle: React.CSSProperties = {
-    fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
-    fontSize: "clamp(28px, 4.2vw, 64px)",
-    lineHeight: 1.05,
-  };
-
-  const titleStyle: React.CSSProperties = {
-    fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
-    fontSize: "clamp(22px, 3.2vw, 52px)",
-    lineHeight: 1.1,
-  };
-
-  const lowerStyle: React.CSSProperties = {
-    fontSize: "clamp(14px, 1.6vw, 24px)",
-  };
-
-  const dateStyle: React.CSSProperties = {
-    fontSize: "clamp(12px, 1.4vw, 18px)",
-  };
-
-  const qrSize = isPortrait
-    ? "clamp(110px, 12vw, 160px)"
-    : "clamp(80px, 8vw, 120px)";
+  }, [activeItems, phase, intervalMs, maxActive, containerW, cardW, safePad, isPortrait]);
 
   /* ---------- render ---------- */
   return (
-    <div className="relative min-h-screen bg-black overflow-hidden">
+    <div ref={containerRef} className="relative min-h-screen bg-black overflow-hidden">
       <style>{`
         @keyframes floatUp {
           0%   { transform: translate(-50%, 12vh) scale(0.98); opacity: 0; }
@@ -338,13 +381,52 @@ export default function DisplayPage() {
 
       <audio src="/bgm.m4a" autoPlay loop preload="auto" />
 
+      {/* ✅ 메시지 레이어를 "루트"로 올림: 헤더 박스는 침범하되(=위로 올라감),
+          QR은 더 위 레이어(z-40)로 띄워서 항상 읽히게 */}
+      <div className="absolute inset-0 overflow-hidden z-30 pointer-events-none">
+        {activeItems.map((item) => (
+          <div
+            key={item.key}
+            className="absolute left-1/2 bottom-0 rounded-[32px] text-white text-center shadow-lg backdrop-blur-md"
+            style={{
+              left: `${item.leftPx}px`,
+              width: `${cardW}px`,
+              padding: isPortrait ? "28px 36px" : "24px 32px",
+              backgroundColor: "rgba(0,0,0,0.28)",
+              fontFamily: "Nanum Pen Script, cursive",
+              animation: `floatUp ${item.durationMs}ms linear`,
+              animationFillMode: "both",
+              // 줄바꿈 품질 개선
+              wordBreak: "keep-all",
+              overflowWrap: "break-word",
+              whiteSpace: "pre-wrap",
+            }}
+            onAnimationEnd={() =>
+              setActiveItems((prev) => prev.filter((p) => p.key !== item.key))
+            }
+          >
+            <p className={isPortrait ? "text-6xl leading-tight" : "text-5xl leading-tight"}>
+              {item.message.body}
+            </p>
+            {item.message.nickname && (
+              <p className={isPortrait ? "mt-6 text-4xl text-pink-200" : "mt-5 text-3xl text-pink-200"}>
+                {item.message.nickname}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+
       {/* TOP */}
       <header
-        className="relative z-20 w-full flex items-center justify-center px-6"
+        className="relative w-full flex items-center justify-center px-6"
         style={{ height: topBarHeight }}
       >
-        <div className="absolute inset-0 bg-black/40" />
-        <div className="relative w-full max-w-6xl flex items-center justify-between">
+        {/* ✅ 헤더 박스(배경)는 메시지 뒤로(z-20) */}
+        <div className="absolute inset-0 bg-black/40 z-20" />
+
+        <div className="relative w-full max-w-6xl flex items-center justify-between z-40">
+          {/* ✅ 신랑/신부/타이틀/QR은 z-40: 메시지가 박스를 침범해도 QR은 항상 읽힘 */}
           <div className="text-right">
             <p className={`${groomBrideLabelClass} text-white/60`}>신랑</p>
             <p className="text-white font-bold" style={nameStyle}>
@@ -386,7 +468,7 @@ export default function DisplayPage() {
 
       {/* MAIN */}
       <section
-        className="relative z-10 flex-1"
+        className="relative flex-1"
         style={{
           minHeight: `calc(100vh - ${topBarHeight} - ${FOOTER_HEIGHT_PX}px)`,
         }}
@@ -400,13 +482,13 @@ export default function DisplayPage() {
             />
           ) : (
             <>
-              {/* 뒤: 블러 cover로 화면 채우기 */}
+              {/* 뒤: 블러 cover */}
               <img
                 src={mediaUrls[currentSlide]}
                 className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-60"
                 alt="background blur"
               />
-              {/* 앞: contain으로 인물/사진 안 잘리게 */}
+              {/* 앞: contain */}
               <img
                 src={mediaUrls[currentSlide]}
                 className="absolute inset-0 w-full h-full object-contain"
@@ -422,41 +504,11 @@ export default function DisplayPage() {
             }}
           />
         )}
-
-        {/* FLOATING (TOP까지 지나가게) */}
-        <div className="absolute inset-0 overflow-hidden z-10">
-          {activeItems.map((item) => (
-            <div
-              key={item.key}
-              className="absolute left-1/2 bottom-0 max-w-2xl px-10 py-8 rounded-[32px]
-                         text-white text-center shadow-lg backdrop-blur-md"
-              style={{
-                left: `${item.leftPct}%`,
-                backgroundColor: "rgba(0,0,0,0.28)",
-                fontFamily: "Nanum Pen Script, cursive",
-                animation: `floatUp ${item.durationMs}ms linear`,
-                animationFillMode: "both",
-              }}
-              onAnimationEnd={() =>
-                setActiveItems((prev) => prev.filter((p) => p.key !== item.key))
-              }
-            >
-              <p className="text-6xl leading-tight whitespace-pre-wrap">
-                {item.message.body}
-              </p>
-              {item.message.nickname && (
-                <p className="mt-6 text-4xl text-pink-200">
-                  {item.message.nickname}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
       </section>
 
       {/* FOOTER */}
       <footer
-        className="relative z-30 w-full flex items-center justify-between px-6 bg-black/70 text-white"
+        className="relative z-50 w-full flex items-center justify-between px-6 bg-black/70 text-white"
         style={{ height: FOOTER_HEIGHT_PX }}
       >
         <span>
@@ -467,7 +519,6 @@ export default function DisplayPage() {
           })}
         </span>
 
-        {/* ✅ 인스타 로고 + 핸들 */}
         <span className="flex items-center gap-2 text-white/90">
           <InstagramIcon className="text-white/90" />
           <span>@digital_guestbook</span>
