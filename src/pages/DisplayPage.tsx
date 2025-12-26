@@ -33,13 +33,20 @@ type FloatingItem = {
   durationMs: number;
 };
 
-function InstagramIcon({ size = 18 }: { size?: number }) {
+function InstagramIcon({
+  size = 18,
+  className = "",
+}: {
+  size?: number;
+  className?: string;
+}) {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 24 24"
       fill="none"
+      className={className}
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
@@ -66,7 +73,7 @@ function InstagramIcon({ size = 18 }: { size?: number }) {
 export default function DisplayPage() {
   const { eventId } = useParams<RouteParams>();
 
-  /* ---------- orientation ---------- */
+  /** ✅ 회전(가로/세로) 자동 반영 */
   const [isPortrait, setIsPortrait] = useState(
     window.matchMedia("(orientation: portrait)").matches
   );
@@ -74,15 +81,15 @@ export default function DisplayPage() {
   useEffect(() => {
     const mq = window.matchMedia("(orientation: portrait)");
     const handler = (e: MediaQueryListEvent) => setIsPortrait(e.matches);
-    mq.addEventListener?.("change", handler);
-    mq.addListener?.(handler);
+    if (mq.addEventListener) mq.addEventListener("change", handler);
+    else mq.addListener(handler);
     return () => {
-      mq.removeEventListener?.("change", handler);
-      mq.removeListener?.(handler);
+      if (mq.removeEventListener) mq.removeEventListener("change", handler);
+      else mq.removeListener(handler);
     };
   }, []);
 
-  /* ---------- states ---------- */
+  /** 메시지 큐/상태 */
   const [activeItems, setActiveItems] = useState<FloatingItem[]>([]);
   const rotationQueueRef = useRef<MessageRow[]>([]);
   const knownIdsRef = useRef<Set<string>>(new Set());
@@ -92,6 +99,7 @@ export default function DisplayPage() {
     "친히 오셔서 축복해주셔서 감사합니다."
   );
   const [dateText, setDateText] = useState("");
+
   const [groomName, setGroomName] = useState("");
   const [brideName, setBrideName] = useState("");
 
@@ -113,36 +121,43 @@ export default function DisplayPage() {
   /* ---------- fetch messages ---------- */
   useEffect(() => {
     if (!eventId) return;
-    const fetchMessages = async () => {
-      const { data } = await supabase
+    let cancelled = false;
+
+    async function fetchMessages() {
+      const { data, error } = await supabase
         .from("messages")
         .select("id, body, nickname, created_at")
         .eq("event_id", eventId)
         .eq("is_hidden", false)
         .order("created_at", { ascending: true });
 
-      if (!data) return;
+      if (error || !data || cancelled) return;
 
       if (data.length > 0) {
         setLastUpdated(new Date(data[data.length - 1].created_at));
       }
 
+      // 🔁 새 메시지는 큐 맨 뒤에 추가 (기존 순서 유지)
       data.forEach((m) => {
         if (!knownIdsRef.current.has(m.id)) {
           knownIdsRef.current.add(m.id);
           rotationQueueRef.current.push(m);
         }
       });
-    };
+    }
 
     fetchMessages();
     const t = setInterval(fetchMessages, POLL_INTERVAL_MS);
-    return () => clearInterval(t);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
   }, [eventId]);
 
   /* ---------- settings ---------- */
   useEffect(() => {
     if (!eventId) return;
+
     supabase
       .from("event_settings")
       .select(
@@ -152,17 +167,21 @@ export default function DisplayPage() {
       .maybeSingle()
       .then(({ data }) => {
         if (!data) return;
+
         if (data.lower_message) setLowerMessage(data.lower_message);
+
         if (data.ceremony_date) {
           const [y, m, d] = data.ceremony_date.split("-");
           setDateText(`${y}년 ${Number(m)}월 ${Number(d)}일`);
         }
+
         if (data.ceremony_start_time && data.ceremony_end_time) {
           setSchedule({
             start: `${data.ceremony_date}T${data.ceremony_start_time}:00`,
             end: `${data.ceremony_date}T${data.ceremony_end_time}:00`,
           });
         }
+
         setDisplayStyle(data.display_style ?? "basic");
         setBackgroundMode(data.background_mode ?? "template");
         setMediaUrls(Array.isArray(data.media_urls) ? data.media_urls : []);
@@ -190,7 +209,7 @@ export default function DisplayPage() {
     return getEventPhase(now, new Date(schedule.start), new Date(schedule.end));
   }, [now, schedule]);
 
-  /* ---------- slide ---------- */
+  /* ---------- photo slide ---------- */
   const usePhotoBackground =
     backgroundMode === "photo" && mediaUrls.length > 0;
 
@@ -206,47 +225,171 @@ export default function DisplayPage() {
     return () => clearInterval(t);
   }, [usePhotoBackground, mediaUrls]);
 
-  /* ---------- styles ---------- */
+  /* ---------- ✅ 자동 밀도 계산 ---------- */
+  const queueLen = rotationQueueRef.current.length;
+
+  const maxActive = useMemo(() => {
+    // 세로: 3~9 / 가로: 4~12
+    if (isPortrait) return Math.min(9, Math.max(3, Math.round(queueLen * 0.38)));
+    return Math.min(12, Math.max(4, Math.round(queueLen * 0.42)));
+  }, [queueLen, isPortrait]);
+
+  const intervalMs = useMemo(() => {
+    // 500~1600ms
+    const base = isPortrait ? 1500 : 1350;
+    const v = Math.round(base - queueLen * (isPortrait ? 50 : 55));
+    return Math.min(1600, Math.max(500, v));
+  }, [queueLen, isPortrait]);
+
+  /* ---------- ✅ 헤더/폰트 반응형 ---------- */
   const topBarHeight = isPortrait ? "26vh" : "28vh";
 
-  /** ✅ 여기만 변경: 신랑/신부 라벨 크기 업 */
+  // ✅✅ 여기만 “라벨 크기” 최종 조정
+  // - 세로: 더 또렷하게 (감사 문구보다 작아 보이지 않게)
+  // - 가로: 과하지 않게
   const groomBrideLabelClass = isPortrait ? "text-4xl" : "text-2xl";
 
-  const nameStyle: CSSProperties = {
-    fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
-    fontSize: isPortrait
-      ? "clamp(46px, 4.6vw, 84px)"
-      : "clamp(28px, 4.2vw, 64px)",
-    lineHeight: 1.05,
-  };
+  const nameStyle: CSSProperties = isPortrait
+    ? {
+        fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
+        fontSize: "clamp(46px, 4.6vw, 84px)",
+        lineHeight: 1.03,
+      }
+    : {
+        fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
+        fontSize: "clamp(28px, 4.2vw, 64px)",
+        lineHeight: 1.05,
+      };
 
-  const titleStyle: CSSProperties = {
-    fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
-    fontSize: isPortrait
-      ? "clamp(60px, 5vw, 102px)"
-      : "clamp(22px, 3.2vw, 52px)",
-  };
+  const titleStyle: CSSProperties = isPortrait
+    ? {
+        fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
+        fontSize: "clamp(60px, 5.0vw, 102px)",
+        lineHeight: 1.03,
+      }
+    : {
+        fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
+        fontSize: "clamp(22px, 3.2vw, 52px)",
+        lineHeight: 1.1,
+      };
 
-  const lowerStyle: CSSProperties = {
-    fontSize: isPortrait
-      ? "clamp(30px, 2.6vw, 46px)"
-      : "clamp(14px, 1.6vw, 24px)",
-  };
+  const lowerStyle: CSSProperties = isPortrait
+    ? { fontSize: "clamp(30px, 2.6vw, 46px)" }
+    : { fontSize: "clamp(14px, 1.6vw, 24px)" };
 
-  const dateStyle: CSSProperties = {
-    fontSize: isPortrait
-      ? "clamp(24px, 2.2vw, 36px)"
-      : "clamp(12px, 1.4vw, 18px)",
-  };
+  const dateStyle: CSSProperties = isPortrait
+    ? { fontSize: "clamp(24px, 2.2vw, 36px)" }
+    : { fontSize: "clamp(12px, 1.4vw, 18px)" };
 
   const qrSize = isPortrait
     ? "clamp(200px, 15vw, 280px)"
     : "clamp(80px, 8vw, 120px)";
 
+  /* ---------- ✅ 카드 배치 안전 구간 ---------- */
+  const getSafeRange = (len: number) => {
+    // 긴 글일수록 카드가 커질 확률이 높으니 중앙쪽으로
+    if (isPortrait) {
+      if (len >= 70) return { min: 24, max: 76 };
+      if (len >= 45) return { min: 20, max: 80 };
+      return { min: 16, max: 84 };
+    }
+    if (len >= 70) return { min: 22, max: 78 };
+    if (len >= 45) return { min: 18, max: 82 };
+    return { min: 14, max: 86 };
+  };
+
+  /* ---------- floating spawn (INFINITE ROTATION) ---------- */
+  useEffect(() => {
+    if (phase !== "open") return;
+
+    const t = setInterval(() => {
+      if (rotationQueueRef.current.length === 0) return;
+      if (activeItems.length >= maxActive) return;
+
+      // 1→2→…→N→1 무한 순환
+      const msg = rotationQueueRef.current.shift();
+      if (!msg) return;
+      rotationQueueRef.current.push(msg);
+
+      const len = msg.body.length;
+      const { min, max } = getSafeRange(len);
+
+      const candidates = Array.from({ length: 12 }, () => min + Math.random() * (max - min));
+      const chosen = candidates.find((x) => {
+        const minGap = isPortrait ? (len >= 60 ? 16 : 14) : (len >= 60 ? 14 : 12);
+        return !activeItems.some((a) => Math.abs(a.leftPct - x) < minGap);
+      });
+
+      if (chosen === undefined) return;
+
+      const durationMs =
+        (isPortrait ? 15500 : 13200) +
+        Math.min(6500, Math.max(0, len - 30) * 120);
+
+      setActiveItems((prev) => [
+        ...prev,
+        {
+          key: `${msg.id}-${Date.now()}`,
+          message: msg,
+          leftPct: chosen,
+          durationMs,
+        },
+      ]);
+    }, intervalMs);
+
+    return () => clearInterval(t);
+  }, [activeItems, phase, intervalMs, maxActive, isPortrait]);
+
   /* ---------- render ---------- */
   return (
     <div className="relative min-h-screen bg-black overflow-hidden">
+      <style>{`
+        @keyframes floatUp {
+          0%   { transform: translate(-50%, 12vh) scale(0.98); opacity: 0; }
+          3%   { opacity: 1; }
+          90%  { opacity: 1; }
+          100% { transform: translate(-50%, -160vh) scale(1); opacity: 0; }
+        }
+      `}</style>
+
       <audio src="/bgm.m4a" autoPlay loop preload="auto" />
+
+      {/* ✅ 메시지 레이어: 헤더 박스 침범 가능(z-30), QR/텍스트는 더 위(z-40) */}
+      <div className="absolute inset-0 overflow-hidden z-30 pointer-events-none">
+        {activeItems.map((item) => (
+          <div
+            key={item.key}
+            className="absolute left-1/2 bottom-0 max-w-2xl px-10 py-8 rounded-[32px]
+                       text-white text-center shadow-lg backdrop-blur-md"
+            style={{
+              left: `${item.leftPct}%`,
+              backgroundColor: "rgba(0,0,0,0.28)",
+              fontFamily: "Nanum Pen Script, cursive",
+              animation: `floatUp ${item.durationMs}ms linear`,
+              animationFillMode: "both",
+              // ✅ 글자수에 맞게 자동 크기 + 최대폭만 제한
+              width: "auto",
+              maxWidth: isPortrait ? "78vw" : "62vw",
+              // ✅ 한글 가독성(세로로 한 글자씩 떨어지는 케이스 방지)
+              wordBreak: "keep-all",
+              overflowWrap: "break-word",
+              whiteSpace: "pre-wrap",
+            }}
+            onAnimationEnd={() =>
+              setActiveItems((prev) => prev.filter((p) => p.key !== item.key))
+            }
+          >
+            <p className={isPortrait ? "text-6xl leading-tight" : "text-5xl leading-tight"}>
+              {item.message.body}
+            </p>
+            {item.message.nickname && (
+              <p className={isPortrait ? "mt-6 text-4xl text-pink-200" : "mt-5 text-3xl text-pink-200"}>
+                {item.message.nickname}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
 
       {/* TOP */}
       <header
@@ -255,6 +398,7 @@ export default function DisplayPage() {
       >
         <div className="absolute inset-0 bg-black/40 z-20" />
 
+        {/* ✅ QR/핵심 텍스트는 메시지보다 위 */}
         <div className="relative w-full max-w-6xl flex items-center justify-between z-40">
           <div className="text-right">
             <p className={`${groomBrideLabelClass} text-white/70`}>신랑</p>
@@ -295,9 +439,48 @@ export default function DisplayPage() {
         </div>
       </header>
 
+      {/* MAIN (✅ 여기 빠져서 검은 화면 됐던 거) */}
+      <section
+        className="relative flex-1"
+        style={{
+          minHeight: `calc(100vh - ${topBarHeight} - ${FOOTER_HEIGHT_PX}px)`,
+        }}
+      >
+        {usePhotoBackground ? (
+          isPortrait ? (
+            <img
+              src={mediaUrls[currentSlide]}
+              className="absolute inset-0 w-full h-full object-cover"
+              alt="background"
+            />
+          ) : (
+            <>
+              {/* 가로: 잘림 최소화를 위해 blur 배경 + contain 본이미지 */}
+              <img
+                src={mediaUrls[currentSlide]}
+                className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-60"
+                alt="background blur"
+              />
+              <img
+                src={mediaUrls[currentSlide]}
+                className="absolute inset-0 w-full h-full object-contain"
+                alt="background contain"
+              />
+            </>
+          )
+        ) : (
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{
+              backgroundImage: `url(/display-templates/${displayStyle}/background.jpg)`,
+            }}
+          />
+        )}
+      </section>
+
       {/* FOOTER */}
       <footer
-        className="absolute bottom-0 w-full flex items-center justify-between px-6 bg-black/70 text-white"
+        className="relative z-50 w-full flex items-center justify-between px-6 bg-black/70 text-white"
         style={{ height: FOOTER_HEIGHT_PX }}
       >
         <span>
@@ -307,9 +490,10 @@ export default function DisplayPage() {
             minute: "2-digit",
           })}
         </span>
-        <span className="flex items-center gap-2">
-          <InstagramIcon />
-          @digital_guestbook
+
+        <span className="flex items-center gap-2 text-white/90">
+          <InstagramIcon className="text-white/90" />
+          <span>@digital_guestbook</span>
         </span>
       </footer>
     </div>
