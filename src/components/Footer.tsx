@@ -1,10 +1,8 @@
-export const Footer = () => {
+const Footer = () => {
   return (
     <footer className="py-12 px-4 bg-foreground/5">
       <div className="container mx-auto text-center">
-        {/* SNS 아이콘 */}
         <div className="mb-6 flex justify-center gap-3">
-          {/* Instagram */}
           <a
             href="https://www.instagram.com/digital_guestbook"
             target="_blank"
@@ -32,7 +30,6 @@ export const Footer = () => {
             </svg>
           </a>
 
-          {/* Kakao Channel */}
           <a
             href="https://pf.kakao.com/_UyaHn"
             target="_blank"
@@ -51,7 +48,6 @@ export const Footer = () => {
           </a>
         </div>
 
-        {/* 회사 정보 */}
         <p className="text-muted-foreground text-sm leading-relaxed">
           ㈜고래유니버스 | 대표 정유상 | 사업자등록번호 : 521-81-03425 <br />
           서대문구 연세로2나길 61 연세대학교 캠퍼스타운 에스큐브 204호
@@ -64,3 +60,5 @@ export const Footer = () => {
     </footer>
   );
 };
+
+export default Footer;
