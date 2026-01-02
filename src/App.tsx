@@ -10,7 +10,6 @@ import NotFound from "./pages/NotFound";
 import GuestPage from "./pages/GuestPage";
 import DisplayPage from "./pages/DisplayPage";
 import ConfirmPage from "./pages/ConfirmPage";
-import ResultPage from "./pages/ResultPage";
 import ReplayPage from "./pages/ReplayPage";
 import { AdminPage } from "./pages/AdminPage";
 
@@ -19,10 +18,11 @@ import LoginPage from "./pages/LoginPage";
 import AuthGuard from "@/components/AuthGuard";
 import AppLayout from "./pages/app/AppLayout";
 import EventHome from "./pages/app/EventHome";
-import ReportPage from "./pages/app/ReportPage"; // ✅ 추가
+import ReportPage from "./pages/app/ReportPage";
 
 // ✅ Legacy redirect
 import LegacyConfirmRedirect from "./pages/LegacyConfirmRedirect";
+import LegacyResultRedirect from "./pages/LegacyResultRedirect"; // ✅ 추가
 
 const queryClient = new QueryClient();
 
@@ -54,7 +54,7 @@ const App = () => (
             {/* ✅ IA 2단계: Confirm 이사 */}
             <Route path="event/:eventId/settings" element={<ConfirmPage />} />
 
-            {/* ✅ IA 3단계: Result 이사 */}
+            {/* ✅ IA 3단계: Result(Report) 이사 */}
             <Route path="event/:eventId/report" element={<ReportPage />} />
           </Route>
 
@@ -67,8 +67,10 @@ const App = () => (
           {/* ✅ 레거시 confirm 링크 유지: /confirm -> /app/event/:id/settings */}
           <Route path="/confirm/:eventId" element={<LegacyConfirmRedirect />} />
 
-          {/* 결과/다시보기 (일단 기존 유지) */}
-          <Route path="/result/:eventId" element={<ResultPage />} />
+          {/* ✅ 레거시 result 링크 유지: /result -> /app/event/:id/report */}
+          <Route path="/result/:eventId" element={<LegacyResultRedirect />} />
+
+          {/* 다시보기 (일단 기존 유지) */}
           <Route path="/replay/:eventId" element={<ReplayPage />} />
 
           {/* Admin (일단 기존 유지) */}
