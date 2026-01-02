@@ -19,6 +19,7 @@ import LoginPage from "./pages/LoginPage";
 import AuthGuard from "@/components/AuthGuard";
 import AppLayout from "./pages/app/AppLayout";
 import EventHome from "./pages/app/EventHome";
+import ReportPage from "./pages/app/ReportPage"; // ✅ 추가
 
 // ✅ Legacy redirect
 import LegacyConfirmRedirect from "./pages/LegacyConfirmRedirect";
@@ -52,6 +53,9 @@ const App = () => (
 
             {/* ✅ IA 2단계: Confirm 이사 */}
             <Route path="event/:eventId/settings" element={<ConfirmPage />} />
+
+            {/* ✅ IA 3단계: Result 이사 */}
+            <Route path="event/:eventId/report" element={<ReportPage />} />
           </Route>
 
           {/* 하객 입력 */}
