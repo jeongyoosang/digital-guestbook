@@ -98,21 +98,6 @@ export default function EventHome() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="w-full border-b bg-white/60 backdrop-blur">
-        <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
-          <div className="font-bold">디지털 방명록</div>
-          <Button
-            variant="outline"
-            onClick={async () => {
-              await supabase.auth.signOut();
-              navigate("/", { replace: true });
-            }}
-          >
-            로그아웃
-          </Button>
-        </div>
-      </div>
-
       <div className="mx-auto max-w-5xl px-4 py-8">
         <div className="mb-6">
           <h1 className="text-xl font-bold">내 이벤트</h1>
