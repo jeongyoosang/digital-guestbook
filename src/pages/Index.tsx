@@ -1,6 +1,6 @@
 // src/pages/Index.tsx
 import { useNavigate } from "react-router-dom";
-import { HeroSection } from "@/components/HeroSection";
+import HeroSection from "@/components/HeroSection";
 import Footer from "@/components/Footer";
 
 const Index = () => {
