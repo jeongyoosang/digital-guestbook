@@ -7,7 +7,6 @@ import { Card, CardContent } from "@/components/ui/card";
 
 type EventRow = {
   id: string;
-  title?: string | null;
   groom_name?: string | null;
   bride_name?: string | null;
   ceremony_date?: string | null;
@@ -18,8 +17,7 @@ type EventRow = {
 
 function fmtDate(d?: string | null) {
   if (!d) return "";
-  // d is YYYY-MM-DD
-  return d;
+  return d; // YYYY-MM-DD
 }
 
 export default function EventHome() {
@@ -43,7 +41,6 @@ export default function EventHome() {
       setLoading(true);
       setError(null);
 
-      // 1) get logged-in user
       const { data: userData, error: userErr } = await supabase.auth.getUser();
       if (!mounted) return;
 
@@ -62,12 +59,10 @@ export default function EventHome() {
         return;
       }
 
-      // 2) fetch events owned by this email (RLS enforced)
+      // ✅ title 컬럼 제거 (DB에 없음)
       const { data, error: evErr } = await supabase
         .from("events")
-        .select(
-          "id,title,groom_name,bride_name,ceremony_date,venue_name,created_at,owner_email"
-        )
+        .select("id,groom_name,bride_name,ceremony_date,venue_name,created_at,owner_email")
         .order("created_at", { ascending: false });
 
       if (!mounted) return;
@@ -81,9 +76,6 @@ export default function EventHome() {
 
       setEvents((data ?? []) as EventRow[]);
       setLoading(false);
-
-      // 3) If URL has /app/event/:eventId but it isn't in my list, show a friendly note
-      // (We don't redirect automatically because user might have pasted a wrong ID)
     };
 
     run();
@@ -93,11 +85,9 @@ export default function EventHome() {
     };
   }, []);
 
-  const go = (path: string) => navigate(path);
-
-  const openSettings = (id: string) => go(`/app/event/${id}/settings`);
-  const openReport = (id: string) => go(`/app/event/${id}/report`);
-  const openReplay = (id: string) => go(`/replay/${id}`); // replay는 아직 레거시 라우트 유지
+  const openSettings = (id: string) => navigate(`/app/event/${id}/settings`);
+  const openReport = (id: string) => navigate(`/app/event/${id}/report`);
+  const openReplay = (id: string) => navigate(`/replay/${id}`); // 레거시 유지
 
   const headerSubtitle = useMemo(() => {
     if (loading) return "불러오는 중…";
@@ -108,25 +98,21 @@ export default function EventHome() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Top bar */}
       <div className="w-full border-b bg-white/60 backdrop-blur">
         <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
           <div className="font-bold">디지털 방명록</div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={async () => {
-                await supabase.auth.signOut();
-                navigate("/", { replace: true });
-              }}
-            >
-              로그아웃
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              await supabase.auth.signOut();
+              navigate("/", { replace: true });
+            }}
+          >
+            로그아웃
+          </Button>
         </div>
       </div>
 
-      {/* Body */}
       <div className="mx-auto max-w-5xl px-4 py-8">
         <div className="mb-6">
           <h1 className="text-xl font-bold">내 이벤트</h1>
@@ -142,9 +128,7 @@ export default function EventHome() {
           <Card className="mb-6">
             <CardContent className="p-6">
               <div className="text-sm font-semibold">이벤트 정보를 불러올 수 없습니다.</div>
-              <div className="text-sm text-muted-foreground mt-2 break-words">
-                {error}
-              </div>
+              <div className="text-sm text-muted-foreground mt-2 break-words">{error}</div>
               <div className="mt-4 flex gap-2">
                 <Button onClick={() => window.location.reload()}>새로고침</Button>
                 <Button variant="outline" onClick={() => navigate("/", { replace: true })}>
@@ -168,16 +152,13 @@ export default function EventHome() {
 
         {!error && events.length > 0 && (
           <div className="grid grid-cols-1 gap-4">
-            {/* If user opened /app/event/:eventId that isn't in list */}
             {eventId && !selectedEvent && (
               <Card>
                 <CardContent className="p-6">
-                  <div className="text-sm font-semibold">
-                    이 이벤트를 찾을 수 없습니다.
-                  </div>
+                  <div className="text-sm font-semibold">이 이벤트를 찾을 수 없습니다.</div>
                   <div className="text-sm text-muted-foreground mt-2">
-                    요청한 eventId(<span className="font-mono">{eventId}</span>)가
-                    현재 로그인 계정에 연결되어 있지 않습니다.
+                    요청한 eventId(<span className="font-mono">{eventId}</span>)가 현재 로그인 계정에
+                    연결되어 있지 않습니다.
                   </div>
                 </CardContent>
               </Card>
@@ -185,9 +166,7 @@ export default function EventHome() {
 
             {events.map((e) => {
               const title =
-                e.title ||
-                [e.groom_name, e.bride_name].filter(Boolean).join(" · ") ||
-                "이벤트";
+                [e.groom_name, e.bride_name].filter(Boolean).join(" · ") || "이벤트";
 
               const meta = [
                 e.ceremony_date ? `예식일 ${fmtDate(e.ceremony_date)}` : null,
@@ -211,9 +190,7 @@ export default function EventHome() {
                       </div>
 
                       <div className="flex flex-col gap-2 shrink-0">
-                        <Button onClick={() => navigate(`/app/event/${e.id}`)}>
-                          이벤트 홈
-                        </Button>
+                        <Button onClick={() => navigate(`/app/event/${e.id}`)}>이벤트 홈</Button>
                       </div>
                     </div>
 
