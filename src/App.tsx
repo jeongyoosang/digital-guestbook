@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import Index from "./pages/Index";
+import ReservePage from "./pages/ReservePage"; // ✅ 추가
 import NotFound from "./pages/NotFound";
 import GuestPage from "./pages/GuestPage";
 import DisplayPage from "./pages/DisplayPage";
@@ -22,7 +23,7 @@ import ReportPage from "./pages/app/ReportPage";
 
 // ✅ Legacy redirect
 import LegacyConfirmRedirect from "./pages/LegacyConfirmRedirect";
-import LegacyResultRedirect from "./pages/LegacyResultRedirect"; // ✅ 추가
+import LegacyResultRedirect from "./pages/LegacyResultRedirect";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,9 @@ const App = () => (
           {/* 랜딩 */}
           <Route path="/" element={<Index />} />
 
+          {/* 예약 */}
+          <Route path="/reserve" element={<ReservePage />} />
+
           {/* 로그인 */}
           <Route path="/login" element={<LoginPage />} />
 
@@ -50,11 +54,7 @@ const App = () => (
             }
           >
             <Route path="event/:eventId" element={<EventHome />} />
-
-            {/* ✅ IA 2단계: Confirm 이사 */}
             <Route path="event/:eventId/settings" element={<ConfirmPage />} />
-
-            {/* ✅ IA 3단계: Result(Report) 이사 */}
             <Route path="event/:eventId/report" element={<ReportPage />} />
           </Route>
 
@@ -64,16 +64,14 @@ const App = () => (
           {/* 디스플레이 */}
           <Route path="/display/:eventId" element={<DisplayPage />} />
 
-          {/* ✅ 레거시 confirm 링크 유지: /confirm -> /app/event/:id/settings */}
+          {/* 레거시 링크 유지 */}
           <Route path="/confirm/:eventId" element={<LegacyConfirmRedirect />} />
-
-          {/* ✅ 레거시 result 링크 유지: /result -> /app/event/:id/report */}
           <Route path="/result/:eventId" element={<LegacyResultRedirect />} />
 
-          {/* 다시보기 (일단 기존 유지) */}
+          {/* 다시보기 */}
           <Route path="/replay/:eventId" element={<ReplayPage />} />
 
-          {/* Admin (일단 기존 유지) */}
+          {/* Admin */}
           <Route path="/admin" element={<AdminPage />} />
 
           {/* 404 */}
