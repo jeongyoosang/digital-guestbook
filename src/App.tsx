@@ -11,14 +11,17 @@ import GuestPage from "./pages/GuestPage";
 import DisplayPage from "./pages/DisplayPage";
 import ConfirmPage from "./pages/ConfirmPage";
 import ResultPage from "./pages/ResultPage";
-import ReplayPage from "./pages/ReplayPage"; // ✅ 신랑·신부용 메세지 다시보기
-import { AdminPage } from "./pages/AdminPage"; // ✅ 어드민 대시보드
+import ReplayPage from "./pages/ReplayPage";
+import { AdminPage } from "./pages/AdminPage";
 
-// ✅ IA 1단계 추가
+// ✅ IA
 import LoginPage from "./pages/LoginPage";
 import AuthGuard from "@/components/AuthGuard";
 import AppLayout from "./pages/app/AppLayout";
 import EventHome from "./pages/app/EventHome";
+
+// ✅ Legacy redirect
+import LegacyConfirmRedirect from "./pages/LegacyConfirmRedirect";
 
 const queryClient = new QueryClient();
 
@@ -30,10 +33,10 @@ const App = () => (
 
       <BrowserRouter>
         <Routes>
-          {/* 랜딩페이지 */}
+          {/* 랜딩 */}
           <Route path="/" element={<Index />} />
 
-          {/* ✅ 로그인 */}
+          {/* 로그인 */}
           <Route path="/login" element={<LoginPage />} />
 
           {/* ✅ /app (로그인 필수 IA) */}
@@ -45,26 +48,26 @@ const App = () => (
               </AuthGuard>
             }
           >
-            {/* 임시 이벤트 홈 */}
             <Route path="event/:eventId" element={<EventHome />} />
+
+            {/* ✅ IA 2단계: Confirm 이사 */}
+            <Route path="event/:eventId/settings" element={<ConfirmPage />} />
           </Route>
 
-          {/* 하객 입력 페이지 */}
+          {/* 하객 입력 */}
           <Route path="/guest/:eventId" element={<GuestPage />} />
 
-          {/* 디스플레이 페이지 (스탠바이미용) */}
+          {/* 디스플레이 */}
           <Route path="/display/:eventId" element={<DisplayPage />} />
 
-          {/* 예식 전날/당일 설정 확정 페이지 (기존 유지) */}
-          <Route path="/confirm/:eventId" element={<ConfirmPage />} />
+          {/* ✅ 레거시 confirm 링크 유지: /confirm -> /app/event/:id/settings */}
+          <Route path="/confirm/:eventId" element={<LegacyConfirmRedirect />} />
 
-          {/* 예식 종료 후 결과/엑셀 다운로드 페이지 (기존 유지) */}
+          {/* 결과/다시보기 (일단 기존 유지) */}
           <Route path="/result/:eventId" element={<ResultPage />} />
-
-          {/* 신랑·신부용 메세지 전체화면 다시보기 페이지 (기존 유지) */}
           <Route path="/replay/:eventId" element={<ReplayPage />} />
 
-          {/* ✅ Admin 대시보드 (일단 기존 유지. 다음에 AuthGuard 적용 가능) */}
+          {/* Admin (일단 기존 유지) */}
           <Route path="/admin" element={<AdminPage />} />
 
           {/* 404 */}

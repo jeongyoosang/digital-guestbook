@@ -1,35 +1,43 @@
-// src/pages/app/EventHome.tsx
-import { Link, useParams } from "react-router-dom";
+import { useMemo } from "react";
+import { useParams, Link } from "react-router-dom";
 
 export default function EventHome() {
   const { eventId } = useParams<{ eventId: string }>();
 
+  const safeEventId = useMemo(() => eventId || "", [eventId]);
+
   return (
-    <div className="space-y-3">
-      <h1 className="text-xl font-bold">이벤트 홈</h1>
-      <p className="text-sm text-muted-foreground">
-        IA 1단계: /app 구조만 만든 상태야. (Confirm/Result는 다음 단계에서 옮김)
-      </p>
+    <div className="space-y-4">
+      <div className="rounded-2xl border p-4">
+        <div className="text-sm text-muted-foreground">Event ID</div>
+        <div className="font-mono break-all">{safeEventId}</div>
+      </div>
 
-      <div className="rounded-2xl border p-4 space-y-2">
-        <div className="text-sm">
-          eventId: <span className="font-mono">{eventId}</span>
-        </div>
+      <div className="grid gap-3">
+        <Link
+          to={`/app/event/${safeEventId}/settings`}
+          className="rounded-xl border px-4 py-3 hover:bg-muted"
+        >
+          예식 설정(Confirm) 열기 →
+        </Link>
 
-        {/* 임시로 기존 페이지로 연결 */}
-        {eventId && (
-          <div className="flex flex-wrap gap-2">
-            <Link className="rounded-xl border px-3 py-1.5 text-sm" to={`/confirm/${eventId}`}>
-              기존 Confirm로 이동
-            </Link>
-            <Link className="rounded-xl border px-3 py-1.5 text-sm" to={`/result/${eventId}`}>
-              기존 Result로 이동
-            </Link>
-            <Link className="rounded-xl border px-3 py-1.5 text-sm" to={`/replay/${eventId}`}>
-              기존 Replay로 이동
-            </Link>
-          </div>
-        )}
+        <Link
+          to={`/result/${safeEventId}`}
+          className="rounded-xl border px-4 py-3 hover:bg-muted"
+        >
+          결과 리포트(Result) 열기 →
+        </Link>
+
+        <Link
+          to={`/replay/${safeEventId}`}
+          className="rounded-xl border px-4 py-3 hover:bg-muted"
+        >
+          다시보기(Replay) 열기 →
+        </Link>
+      </div>
+
+      <div className="text-xs text-muted-foreground">
+        * 다음 단계에서 Result/Replay도 /app 내부로 이사합니다.
       </div>
     </div>
   );
