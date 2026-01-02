@@ -1,4 +1,3 @@
-// src/pages/ReservePage.tsx
 import { ReservationForm } from "@/components/ReservationForm";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -8,14 +7,15 @@ export default function ReservePage() {
 
   return (
     <main className="min-h-screen bg-[#F6F4EF] text-zinc-900">
-      <div className="mx-auto max-w-screen-md px-4 sm:px-6 py-10 sm:py-14">
+      {/* ✅ PC에서 너무 좁지 않게 */}
+      <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-10 py-10 sm:py-14">
         {/* 상단 네비 */}
         <div className="flex items-center justify-between">
           <button
             onClick={() => navigate("/")}
             className="text-sm text-zinc-600 hover:text-zinc-900 underline underline-offset-4"
           >
-            ← 랜딩으로
+            ← 처음으로
           </button>
 
           <button
@@ -40,8 +40,10 @@ export default function ReservePage() {
             </span>
           </p>
 
-          <div className="mt-5 rounded-2xl border border-zinc-200 bg-white/70 px-4 py-4 text-sm text-zinc-600">
-            제출 후 카카오톡으로 입금 및 확정 안내를 드립니다.
+          {/* ✅ 여기는 ‘제출 전 안내’로만 간단하게 */}
+          <div className="mt-5 rounded-2xl border border-zinc-200 bg-white/70 px-5 py-4 text-sm text-zinc-600">
+            제출 후 <span className="font-medium text-zinc-800">카카오톡</span>으로
+            입금 및 확정 안내를 드립니다.
             <br />
             입금 확인 후 예약이 확정됩니다.
           </div>
@@ -49,15 +51,16 @@ export default function ReservePage() {
 
         {/* 폼 */}
         <section className="mt-8">
-          <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-4 sm:p-6">
+          {/* ✅ 카드 폭/패딩도 PC에서 충분히 */}
+          <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-5 sm:p-7">
             <ReservationForm />
           </div>
         </section>
 
         {/* 하단 */}
-        <section className="mt-8 flex flex-col sm:flex-row gap-3">
+        <section className="mt-10 flex flex-col sm:flex-row gap-3">
           <Button variant="outline" onClick={() => navigate("/")}>
-            랜딩으로 돌아가기
+            처음으로 돌아가기
           </Button>
           <Button variant="outline" onClick={() => navigate("/login")}>
             이미 예약했어요 (리포트 보기)
