@@ -1,91 +1,95 @@
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 
 interface HeroSectionProps {
   onPrimaryCTAClick: () => void;   // 예약
   onSecondaryCTAClick: () => void; // 리포트(로그인)
-  rightSlot?: React.ReactNode;     // ✅ 우측 도식 슬롯(PC에서만 보여줄 예정)
+  rightSlot?: React.ReactNode;     // 우측 비주얼(이미지/영상)
 }
 
-export const HeroSection = ({
+const HeroSection = ({
   onPrimaryCTAClick,
   onSecondaryCTAClick,
   rightSlot,
 }: HeroSectionProps) => {
   return (
-    <section className="relative min-h-[88vh] flex items-center bg-[#F6F4EF] text-zinc-900 overflow-hidden">
-      {/* background */}
-      <div
-        className="absolute inset-0 -z-10"
-        style={{
-          background: "linear-gradient(180deg, #F7F5F0 0%, #EEEAE2 100%)",
-        }}
-      />
-
+    <section className="min-h-screen flex items-center pt-20 pb-16 overflow-hidden bg-[#FBF7F4]">
       <div className="mx-auto max-w-7xl w-full px-6 lg:px-10">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-center">
-          {/* LEFT */}
-          <div>
-            <h1 className="text-[38px] sm:text-[44px] lg:text-[56px] font-semibold tracking-tight leading-tight">
-              결혼식의 축하를
+        <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
+          {/* Left Content */}
+          <motion.div
+            initial={{ opacity: 0, y: 22 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.75, ease: "easeOut" }}
+            className="order-2 lg:order-1"
+          >
+            <div className="mb-6">
+              <span className="inline-flex items-center text-sm font-medium text-[#C84B5B] bg-[#F7E3E6] px-4 py-2 rounded-full">
+                Digital Guestbook · 디지털 방명록
+              </span>
+            </div>
+
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold leading-tight mb-6 text-[#171717]">
+              <span>결혼식의 축하를</span>
               <br />
-              <span className="text-zinc-700">하나의 리포트로</span>
+              <span className="text-[#C84B5B]">하나의 리포트로</span>
             </h1>
 
-            <p className="mt-5 text-[16px] sm:text-lg text-zinc-600 leading-relaxed">
+            <p className="text-lg md:text-xl text-[#6B7280] leading-relaxed mb-10 max-w-xl">
               하객은 QR로 축하 메시지를 남기고,
               <br className="hidden sm:block" />
               예식이 끝나면 메시지와 축의금을 정리한 리포트를 받아보세요.
             </p>
 
-            {/* CTA */}
-            <div className="mt-9 flex flex-col sm:flex-row gap-4 items-start">
-              <Button
-                size="lg"
-                onClick={onPrimaryCTAClick}
-                className="w-full sm:w-auto px-8 py-6 rounded-full text-base font-medium bg-zinc-900 hover:bg-zinc-800"
-              >
-                예약 문의하기
-              </Button>
+            {/* CTA Row */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <Button
+                  size="lg"
+                  onClick={onPrimaryCTAClick}
+                  className="rounded-full px-8 py-6 text-base font-semibold bg-[#C84B5B] hover:bg-[#B74352] text-white shadow-lg"
+                >
+                  예약문의 하기
+                </Button>
+              </motion.div>
 
+              {/* ✅ 보조 CTA (로그인 숨김) */}
               <button
                 onClick={onSecondaryCTAClick}
-                className="text-sm text-zinc-500 hover:text-zinc-800 underline underline-offset-4"
+                className="text-sm font-medium text-[#6B7280] hover:text-[#171717] underline underline-offset-4"
               >
                 결혼식 리포트 보기
               </button>
             </div>
 
-            <p className="mt-3 text-xs sm:text-sm text-zinc-500">
-              예약은 모바일에서도 빠르게 가능해요. 리포트/축의금 조회는 PC에서 더 편해요.
+            <p className="mt-4 text-xs sm:text-sm text-[#9CA3AF]">
+              리포트와 축의금 정리는 PC에서 더 편하게 확인하실 수 있어요.
             </p>
+          </motion.div>
 
-            {/* ✅ 모바일에서 도식은 숨김(산만함 방지). 원하면 아래 버튼만 노출 */}
-            <div className="mt-6 lg:hidden">
-              <button
-                onClick={() => {
-                  // 모바일에서 도식이 꼭 필요하면 모달/아코디언으로 열게끔 추후 연결
-                  // 지금은 동작 없이 스타일만 제공해도 OK
-                }}
-                className="text-sm text-zinc-500 hover:text-zinc-800 underline underline-offset-4"
-              >
-                어떻게 정리되나요?
-              </button>
+          {/* Right Visual */}
+          <motion.div
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.75, delay: 0.15, ease: "easeOut" }}
+            className="order-1 lg:order-2 relative"
+          >
+            <div className="relative">
+              {/* Decorative gradient */}
+              <div className="absolute -inset-6 bg-gradient-to-br from-[#F7E3E6] via-transparent to-[rgba(215,179,120,0.25)] rounded-full blur-3xl opacity-70" />
+
+              {/* Slot */}
+              {rightSlot ? (
+                <div className="relative">{rightSlot}</div>
+              ) : (
+                <div className="relative w-full max-w-xl mx-auto h-[420px] rounded-3xl bg-white/60 border border-white/60 shadow-2xl" />
+              )}
             </div>
-          </div>
-
-          {/* RIGHT (PC only) */}
-          <div className="hidden lg:block">
-            {rightSlot ? (
-              rightSlot
-            ) : (
-              <div className="rounded-2xl border border-zinc-200 bg-white/70 backdrop-blur shadow-xl p-6">
-                <div className="text-sm text-zinc-500">관계 흐름 도식 자리</div>
-                <div className="mt-3 h-[340px] rounded-xl bg-zinc-50 border border-zinc-200" />
-              </div>
-            )}
-          </div>
+          </motion.div>
         </div>
       </div>
     </section>
   );
 };
+
+export default HeroSection;
