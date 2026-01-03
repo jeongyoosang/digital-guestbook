@@ -10,14 +10,7 @@ const Index = () => {
       <HeroSection
         onPrimaryCTAClick={() => navigate("/reserve")}
         onSecondaryCTAClick={() => navigate("/login")}
-        rightSlot={
-          <img
-            src="/landing-poster.jpg"
-            alt="디지털 방명록 리포트 미리보기"
-            className="block w-full h-auto object-cover"
-            loading="eager"
-          />
-        }
+        rightSlot={<LandingVideo />}
       />
       <Footer />
     </main>
