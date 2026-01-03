@@ -2,9 +2,9 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 
 interface HeroSectionProps {
-  onPrimaryCTAClick: () => void;   // 예약
+  onPrimaryCTAClick: () => void; // 예약
   onSecondaryCTAClick: () => void; // 리포트(로그인)
-  rightSlot?: React.ReactNode;     // 비주얼(이미지/영상/도식)
+  rightSlot?: React.ReactNode; // 비주얼(이미지/영상/도식)
 }
 
 const HeroSection = ({
@@ -13,17 +13,27 @@ const HeroSection = ({
   rightSlot,
 }: HeroSectionProps) => {
   return (
-    <section className="relative min-h-screen overflow-hidden bg-[#FBF7F4]">
+    <section className="relative overflow-hidden bg-[#FBF7F4]">
       {/* soft background glow */}
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-24 left-1/2 h-[380px] w-[380px] -translate-x-1/2 rounded-full bg-[#F7E3E6] blur-3xl opacity-60" />
-        <div className="absolute -bottom-24 right-[-60px] h-[420px] w-[420px] rounded-full bg-[rgba(215,179,120,0.25)] blur-3xl opacity-60" />
+        <div className="absolute -top-28 left-1/2 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-[#F7E3E6] blur-3xl opacity-70" />
+        <div className="absolute -bottom-28 right-[-80px] h-[460px] w-[460px] rounded-full bg-[rgba(215,179,120,0.25)] blur-3xl opacity-60" />
       </div>
 
-      {/* container */}
-      <div className="relative mx-auto max-w-7xl px-6 lg:px-10 pt-20 pb-14">
-        <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
-          {/* LEFT (always first) */}
+      <div className="relative mx-auto max-w-7xl px-6 lg:px-10 pt-10 lg:pt-12 pb-12 lg:pb-16">
+        {/* Top bar (웹에서만) */}
+        <div className="hidden lg:flex items-center justify-end">
+          <button
+            onClick={onSecondaryCTAClick}
+            className="inline-flex items-center gap-2 text-sm font-medium text-[#6B7280] hover:text-[#171717]"
+          >
+            <span aria-hidden>📄</span>
+            <span>리포트 보기</span>
+          </button>
+        </div>
+
+        <div className="mt-6 lg:mt-10 grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+          {/* LEFT */}
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
@@ -48,8 +58,11 @@ const HeroSection = ({
               예식이 끝나면 메시지와 축의금을 정리한 리포트를 받아보세요.
             </p>
 
-            {/* CTA */}
-            <div className="mt-8 flex flex-col sm:flex-row sm:items-center gap-4">
+            {/* CTA
+              - 모바일: 한 줄 (예약문의 왼쪽 / 리포트 오른쪽)
+              - 웹(lg): 리포트는 상단 우측으로 이동했으니 여기서 숨김
+            */}
+            <div className="mt-8 flex items-center justify-between gap-4 max-w-xl">
               <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                 <Button
                   size="lg"
@@ -60,11 +73,13 @@ const HeroSection = ({
                 </Button>
               </motion.div>
 
+              {/* 모바일/태블릿에서만 보조 CTA 노출 */}
               <button
                 onClick={onSecondaryCTAClick}
-                className="text-sm font-medium text-[#6B7280] hover:text-[#171717] underline underline-offset-4"
+                className="lg:hidden inline-flex items-center gap-2 text-sm font-medium text-[#6B7280] hover:text-[#171717]"
               >
-                결혼식 리포트 보기
+                <span aria-hidden>📄</span>
+                <span className="underline underline-offset-4">리포트 보기</span>
               </button>
             </div>
 
@@ -73,42 +88,30 @@ const HeroSection = ({
             </p>
           </motion.div>
 
-          {/* VISUAL */}
+          {/* RIGHT VISUAL (Luma 느낌: 프레임/카드 없이 크게) */}
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.1, ease: "easeOut" }}
             className="order-2"
           >
-            {/* 
-              ✅ 핵심: 모바일은 "텍스트 아래 비주얼"로 보여준다 (숨김 X)
-              PC는 우측 컬럼에서 자연스럽게 보임
-            */}
-            <div className="relative mx-auto w-full max-w-[520px]">
-              {/* 카드 외곽 */}
-              <div className="relative rounded-[28px] bg-white/55 backdrop-blur-xl border border-white/60 shadow-2xl overflow-hidden">
-                {/* 상단 바 느낌(아주 은근하게) */}
-                <div className="px-5 pt-4 pb-3 flex items-center justify-between">
-                  <div className="text-sm font-medium text-[#6B7280]">
-                    한 번의 결혼식, 한 번의 기록
-                  </div>
-                  <div className="text-xs text-[#9CA3AF]">자동 정리</div>
-                </div>
-
-                <div className="px-5 pb-5">
-                  {/* 내부 비주얼 슬롯 */}
-                  {rightSlot ? (
-                    <div className="rounded-2xl bg-white/60 border border-white/70 shadow-sm overflow-hidden">
-                      {rightSlot}
-                    </div>
-                  ) : (
-                    <div className="h-[340px] sm:h-[380px] rounded-2xl bg-white/65 border border-white/70" />
-                  )}
-                </div>
+            <div className="relative mx-auto w-full max-w-[640px] lg:max-w-[760px]">
+              {/* 비주얼 */}
+              <div className="relative overflow-hidden rounded-[28px] shadow-[0_24px_80px_rgba(23,23,23,0.10)]">
+                {rightSlot ? (
+                  rightSlot
+                ) : (
+                  <img
+                    src="/landing-poster.jpg"
+                    alt="디지털 방명록 리포트 미리보기"
+                    className="block w-full h-auto object-cover"
+                    loading="eager"
+                  />
+                )}
               </div>
 
-              {/* 카드 밑 그림자/글로우 */}
-              <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[36px] bg-gradient-to-br from-[#F7E3E6] via-transparent to-[rgba(215,179,120,0.18)] blur-3xl opacity-70" />
+              {/* 은근한 글로우 */}
+              <div className="pointer-events-none absolute -inset-10 -z-10 rounded-[42px] bg-gradient-to-br from-[#F7E3E6] via-transparent to-[rgba(215,179,120,0.18)] blur-3xl opacity-70" />
             </div>
           </motion.div>
         </div>

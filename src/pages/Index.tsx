@@ -1,7 +1,5 @@
-// src/pages/Index.tsx
 import { useNavigate } from "react-router-dom";
 import HeroSection from "@/components/HeroSection";
-import LandingVideo from "@/components/LandingVideo";
 import Footer from "@/components/Footer";
 
 const Index = () => {
@@ -12,7 +10,14 @@ const Index = () => {
       <HeroSection
         onPrimaryCTAClick={() => navigate("/reserve")}
         onSecondaryCTAClick={() => navigate("/login")}
-        rightSlot={<LandingVideo />}
+        rightSlot={
+          <img
+            src="/landing-poster.jpg"
+            alt="디지털 방명록 리포트 미리보기"
+            className="block w-full h-auto object-cover"
+            loading="eager"
+          />
+        }
       />
       <Footer />
     </main>
