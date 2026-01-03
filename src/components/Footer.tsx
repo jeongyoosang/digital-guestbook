@@ -57,7 +57,7 @@ export default function Footer() {
         {/* 사업자 정보 */}
         <p className="text-center text-sm text-muted-foreground leading-relaxed">
           ㈜고래유니버스 | 대표 정유상 | 사업자등록번호 : 521-81-03425 <br />
-          서대문구 연세로2나길 61 연세대학교 캠퍼스타운 에스큐브 204호
+          서울특별시 서대문구 연세로2나길 61 204호
         </p>
 
         <p className="mt-3 text-center text-xs text-muted-foreground">
