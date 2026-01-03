@@ -1,10 +1,11 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import type { ReactNode } from "react";
 
 interface HeroSectionProps {
   onPrimaryCTAClick: () => void; // 예약
   onSecondaryCTAClick: () => void; // 리포트(로그인)
-  rightSlot?: React.ReactNode; // 비주얼(이미지/영상/도식)
+  rightSlot?: ReactNode; // 비주얼(이미지/영상/도식)
 }
 
 const HeroSection = ({
@@ -13,7 +14,7 @@ const HeroSection = ({
   rightSlot,
 }: HeroSectionProps) => {
   return (
-    <section className="relative overflow-hidden bg-[#FBF7F4]">
+    <section className="relative min-h-screen overflow-hidden bg-[#FBF7F4]">
       {/* soft background glow */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-28 left-1/2 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-[#F7E3E6] blur-3xl opacity-70" />
@@ -58,10 +59,7 @@ const HeroSection = ({
               예식이 끝나면 메시지와 축의금을 정리한 리포트를 받아보세요.
             </p>
 
-            {/* CTA
-              - 모바일: 한 줄 (예약문의 왼쪽 / 리포트 오른쪽)
-              - 웹(lg): 리포트는 상단 우측으로 이동했으니 여기서 숨김
-            */}
+            {/* CTA: 모바일 한 줄 / 웹은 리포트 버튼 상단 */}
             <div className="mt-8 flex items-center justify-between gap-4 max-w-xl">
               <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                 <Button
@@ -73,7 +71,6 @@ const HeroSection = ({
                 </Button>
               </motion.div>
 
-              {/* 모바일/태블릿에서만 보조 CTA 노출 */}
               <button
                 onClick={onSecondaryCTAClick}
                 className="lg:hidden inline-flex items-center gap-2 text-sm font-medium text-[#6B7280] hover:text-[#171717]"
@@ -88,7 +85,7 @@ const HeroSection = ({
             </p>
           </motion.div>
 
-          {/* RIGHT VISUAL (Luma 느낌: 프레임/카드 없이 크게) */}
+          {/* RIGHT VISUAL */}
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
@@ -96,21 +93,19 @@ const HeroSection = ({
             className="order-2"
           >
             <div className="relative mx-auto w-full max-w-[640px] lg:max-w-[760px]">
-              {/* 비주얼 */}
-              <div className="relative overflow-hidden rounded-[28px] shadow-[0_24px_80px_rgba(23,23,23,0.10)]">
+              <div className="relative overflow-hidden rounded-[28px] shadow-[0_24px_80px_rgba(23,23,23,0.10)] aspect-[4/3]">
                 {rightSlot ? (
-                  rightSlot
+                  <div className="w-full h-full">{rightSlot}</div>
                 ) : (
                   <img
                     src="/landing-poster.jpg"
                     alt="디지털 방명록 리포트 미리보기"
-                    className="block w-full h-auto object-cover"
+                    className="block w-full h-full object-cover"
                     loading="eager"
                   />
                 )}
               </div>
 
-              {/* 은근한 글로우 */}
               <div className="pointer-events-none absolute -inset-10 -z-10 rounded-[42px] bg-gradient-to-br from-[#F7E3E6] via-transparent to-[rgba(215,179,120,0.18)] blur-3xl opacity-70" />
             </div>
           </motion.div>

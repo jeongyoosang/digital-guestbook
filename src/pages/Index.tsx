@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import HeroSection from "@/components/HeroSection";
+import LandingVideo from "@/components/LandingVideo";
 import Footer from "@/components/Footer";
 
 const Index = () => {

@@ -1,9 +1,9 @@
-// src/components/LandingVideo.tsx
 export default function LandingVideo() {
   return (
     <video
-      className="w-full h-full object-cover"
+      className="block w-full h-full object-cover"
       src="/landingvideo.mp4"
+      poster="/landing-poster.jpg"
       autoPlay
       loop
       muted
