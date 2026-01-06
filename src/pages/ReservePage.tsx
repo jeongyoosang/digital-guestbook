@@ -65,7 +65,7 @@ export default function ReservePage({ onServiceFlowClick, onReportClick }: Reser
         {/* 헤더 */}
         <header className="mt-10 sm:mt-12 text-center">
           <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground">
-            결혼식 예약 신청
+            디지털방명록 예약 문의
           </h1>
 
           <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
