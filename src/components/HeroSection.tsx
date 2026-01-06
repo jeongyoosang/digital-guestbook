@@ -63,17 +63,34 @@ export default function HeroSection({
             </div>
 
             <h1 className="mt-6 text-4xl leading-[1.08] tracking-tight text-foreground sm:text-5xl">
-              <span className="block">결혼식 축의금 QR로 간편히</span>
-              <span className="block wedding-gradient">식 종료 후 장부·방명록이 즉시 리포트로</span>
+              <span className="block">결혼식 축의금, QR로 간편히</span>
+              <span className="block wedding-gradient">
+                식 종료 후 장부·방명록이 즉시 리포트로
+              </span>
             </h1>
 
             <p className="mt-5 text-base leading-relaxed text-muted-foreground sm:text-lg">
-              하객은 <span className="text-foreground font-semibold">QR로 축하메시지와 축의금을 보내고</span> 
+            <span className="block">
+              하객은{" "}
+              <span className="text-foreground font-semibold">
+                QR로 축하메시지와 축의금을 보내고
+              </span>
+            </span>
+
+            <span className="block mt-1">
               예식이 끝나는 순간{" "}
-              <span className="text-foreground font-semibold">모든 참석자 방명록, 축의내역</span>이{" "}
-              <span className="text-foreground font-semibold">하나의 리포트로 즉시</span>{" "}
-              정리됩니다.
-            </p>
+              <span className="text-foreground font-semibold">
+                모든 참석자 방명록과 축의내역이
+              </span>
+            </span>
+
+            <span className="block mt-1">
+              <span className="text-foreground font-semibold">
+                하나의 리포트로 즉시 정리됩니다.
+              </span>
+            </span>
+          </p>
+
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <button
