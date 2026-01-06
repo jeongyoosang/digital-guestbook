@@ -86,6 +86,25 @@ export default function HeroSection({
                 예약문의 하기
               </button>
             </div>
+            {/* Mobile quick links (lg 이상에서는 기존 상단 버튼 사용) */}
+            <div className="mt-4 flex items-center gap-4 text-sm text-muted-foreground lg:hidden">
+              <button
+                type="button"
+                onClick={onServiceFlowClick}
+                className="underline-offset-4 hover:underline"
+              >
+                서비스 흐름
+              </button>
+              <span className="opacity-40">·</span>
+              <button
+                type="button"
+                onClick={onReportClick}
+                className="underline-offset-4 hover:underline"
+              >
+                내 리포트
+              </button>
+            </div>
+
           </motion.div>
 
           {/* RIGHT */}
@@ -158,7 +177,7 @@ export default function HeroSection({
                       stroke="url(#dgGlint)"
                       strokeWidth="1.4"
                       strokeLinecap="round"
-                      strokeDasharray="10 300"
+                      strokeDasharray="42 300"
                       filter="url(#dgGlow)"
                       opacity="0.95"
                     />
@@ -180,7 +199,7 @@ export default function HeroSection({
       {/* 컴포넌트 내부 CSS: 링 애니메이션(테두리만) */}
       <style>{`
         .dg-ring-glint {
-          animation: dgGlintMove 3.2s linear infinite;
+          animation: dgGlintMove 4.6s linear infinite;
           transform-origin: 50% 50%;
         }
         @keyframes dgGlintMove {
