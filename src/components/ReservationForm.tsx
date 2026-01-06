@@ -10,15 +10,20 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-import { CalendarIcon, Lock, MapPin, Search } from "lucide-react";
+import { CalendarIcon, Lock, MapPin, Search, X } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
-import { KakaoSection } from "@/components/KakaoSection";
 
 /** 카카오 전역 타입 선언 */
 declare global {
@@ -65,7 +70,7 @@ const baseSchema = z.object({
 
 const formSchema = baseSchema
   .refine((v) => (v.role !== "기타" ? true : !!v.relation?.trim()), {
-    message: "관계를 입력해주세요. (예: 신랑 친구, 신부 사촌 등)",
+    message: "관계를 입력해주세요. (예: 신랑 친구, 신랑 엄마, 제휴업체 등)",
     path: ["relation"],
   })
   .refine((v) => (v.dateStatus === "confirmed" ? !!v.weddingDate : true), {
@@ -87,10 +92,10 @@ const formSchema = baseSchema
     message: "예식장명을 선택해주세요. (검색 버튼으로 선택)",
     path: ["venueName"],
   })
-  .refine((v) => (v.dateStatus === "confirmed" ? !!v.venueAddress?.trim() : true), {
-    message: "예식장 위치를 선택해주세요. (검색 버튼으로 선택)",
-    path: ["venueAddress"],
-  });
+  .refine(
+    (v) => (v.dateStatus === "confirmed" ? !!v.venueAddress?.trim() : true),
+    { message: "예식장 위치를 선택해주세요. (검색 버튼으로 선택)", path: ["venueAddress"] }
+  );
 
 type FormData = z.infer<typeof formSchema>;
 
@@ -101,10 +106,7 @@ function useKakaoLoader() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!KAKAO_APP_KEY) {
-      console.warn("VITE_KAKAO_JS_APPKEY가 설정되지 않았습니다.");
-      return;
-    }
+    if (!KAKAO_APP_KEY) return;
 
     if (window.kakao?.maps) {
       setReady(true);
@@ -148,8 +150,8 @@ type Place = {
   place_name: string;
   address_name: string;
   road_address_name: string;
-  x: string;
-  y: string;
+  x: string; // lng
+  y: string; // lat
   place_url: string;
 };
 
@@ -173,6 +175,16 @@ function KakaoPlacePicker({ open, onClose, onSelect }: KakaoPickerProps) {
     }
   }, [open]);
 
+  // ✅ 모바일에서 “검게 이상한 바텀시트” 느낌 제거: 센터 모달 + 여백
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   const doSearch = () => {
     if (!ready || !window.kakao?.maps?.services) return;
     if (!query.trim()) return;
@@ -193,51 +205,55 @@ function KakaoPlacePicker({ open, onClose, onSelect }: KakaoPickerProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-6">
-      <div className="w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl overflow-hidden border border-border/60 bg-white shadow-xl">
-        <div className="p-4 sm:p-5 border-b border-border/60 bg-white/70">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 sm:p-6">
+      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-border/60 bg-white shadow-[0_30px_90px_rgba(0,0,0,0.25)]">
+        <div className="flex items-center justify-between border-b border-border/60 bg-white/80 px-4 py-3">
           <h3 className="text-base sm:text-lg font-semibold flex items-center gap-2">
             <Search className="w-4 h-4" /> 예식장 장소 검색
           </h3>
-
-          {!KAKAO_APP_KEY && (
-            <p className="text-[12px] text-red-600 mt-2">
-              환경변수 VITE_KAKAO_JS_APPKEY가 설정되지 않아 검색이 동작하지 않습니다.
-            </p>
-          )}
-
-          <form
-            className="mt-3 flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!isComposing) doSearch();
-            }}
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-foreground/5"
+            aria-label="Close"
           >
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="예: ○○성당 / △△호텔 웨딩홀"
-              onCompositionStart={() => setIsComposing(true)}
-              onCompositionEnd={() => setIsComposing(false)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !isComposing) {
-                  e.preventDefault();
-                  doSearch();
-                }
-              }}
-              className="bg-background border-border focus-visible:ring-ring"
-            />
-            <Button type="submit" disabled={!ready || !KAKAO_APP_KEY} className="bg-foreground text-background hover:opacity-90">
-              검색
-            </Button>
-          </form>
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
-        <div className="max-h-[60vh] overflow-auto">
+        {!KAKAO_APP_KEY && (
+          <div className="px-4 pt-3 text-[12px] text-red-600">
+            환경변수 VITE_KAKAO_JS_APPKEY가 설정되지 않아 검색이 동작하지 않습니다.
+          </div>
+        )}
+
+        <form
+          className="px-4 pt-3 pb-4 flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!isComposing) doSearch();
+          }}
+        >
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="예: ○○성당 / △△호텔 웨딩홀"
+            onCompositionStart={() => setIsComposing(true)}
+            onCompositionEnd={() => setIsComposing(false)}
+            className="bg-background/40 border-border/60 placeholder:text-zinc-400/80"
+          />
+          <Button type="submit" disabled={!ready || !KAKAO_APP_KEY} className="rounded-xl">
+            검색
+          </Button>
+        </form>
+
+        <div className="max-h-[60vh] overflow-auto border-t border-border/60">
           {loading ? (
             <div className="p-6 text-center text-muted-foreground">검색 중…</div>
           ) : results.length === 0 ? (
-            <div className="p-6 text-center text-muted-foreground">검색 결과가 여기에 표시됩니다.</div>
+            <div className="p-6 text-center text-muted-foreground">
+              검색 결과가 여기에 표시됩니다.
+            </div>
           ) : (
             <ul className="divide-y divide-border/60">
               {results.map((r) => {
@@ -246,7 +262,7 @@ function KakaoPlacePicker({ open, onClose, onSelect }: KakaoPickerProps) {
                   <li key={r.id}>
                     <button
                       type="button"
-                      className="w-full text-left p-4 hover:bg-muted/40"
+                      className="w-full text-left px-4 py-3 hover:bg-foreground/5"
                       onClick={() => {
                         onSelect({
                           name: r.place_name,
@@ -268,12 +284,10 @@ function KakaoPlacePicker({ open, onClose, onSelect }: KakaoPickerProps) {
           )}
         </div>
 
-        <div className="p-4 sm:p-5 border-t border-border/60 bg-white/70">
-          <div className="flex justify-end">
-            <Button type="button" variant="outline" onClick={onClose}>
-              닫기
-            </Button>
-          </div>
+        <div className="px-4 py-4 border-t border-border/60 bg-white">
+          <Button type="button" variant="outline" onClick={onClose} className="w-full rounded-xl">
+            닫기
+          </Button>
         </div>
       </div>
     </div>
@@ -335,15 +349,20 @@ export const ReservationForm = () => {
         role: data.role,
         relation: data.role === "기타" ? (data.relation || null) : null,
         phone,
-        event_date: data.dateStatus === "confirmed" && data.weddingDate ? format(data.weddingDate, "yyyy-MM-dd") : null,
+        event_date:
+          data.dateStatus === "confirmed" && data.weddingDate
+            ? format(data.weddingDate, "yyyy-MM-dd")
+            : null,
         wedding_time: data.weddingTime || null,
         date_status: data.dateStatus,
         tentative_date: data.dateStatus === "tentative" ? (data.tentativeDate || null) : null,
+
         venue_name: data.venueName || null,
         venue_address: data.venueAddress || null,
         venue_lat: data.venueLat ?? null,
         venue_lng: data.venueLng ?? null,
         venue_kakao_url: data.venueKakaoUrl || null,
+
         mobile_invitation_link: data.mobileInvitationLink || null,
         message: inquiryOnly,
         status: "new",
@@ -356,7 +375,10 @@ export const ReservationForm = () => {
       reset();
       setDate(undefined);
 
-      setTimeout(() => successRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+      setTimeout(
+        () => successRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+        50
+      );
       (document.activeElement as HTMLElement)?.blur?.();
     } catch (e) {
       console.error(e);
@@ -374,280 +396,277 @@ export const ReservationForm = () => {
     }
   }, [showSuccess]);
 
-  /* ✅ 성공 화면 (여기서 KakaoSection 바로 노출) */
   if (showSuccess) {
     return (
-      <div ref={successRef}>
-        <div className="rounded-2xl border border-border/60 bg-white/70 backdrop-blur-xl p-8 sm:p-10 text-center">
-          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight">감사합니다 💐</h2>
-          <p className="mt-3 text-sm sm:text-base text-muted-foreground leading-relaxed">
-            문의가 정상 접수되었습니다.
-            <br />
-            예약 확정 안내와 디지털 방명록 링크는
-            <br />
-            <span className="font-semibold text-foreground">카카오톡 공식채널</span>로 발송됩니다.
-          </p>
-        </div>
+      <section ref={successRef} className="py-10 sm:py-12">
+        <div className="mx-auto max-w-2xl text-center">
+          <div className="rounded-3xl border border-border/60 bg-white/75 backdrop-blur-xl p-10 sm:p-12 shadow-sm">
+            <h2 className="text-3xl sm:text-4xl font-semibold mb-4">감사합니다 💐</h2>
+            <p className="text-base sm:text-lg text-muted-foreground leading-relaxed">
+              문의가 정상 접수되었습니다.
+              <br />
+              예약 확정 안내와 디지털 방명록 링크는
+              <br />
+              <span className="font-semibold text-foreground/90">
+                디지털방명록 공식 카카오톡 채널
+              </span>
+              로 발송됩니다.
+            </p>
 
-        {/* ✅ “예약 후”에만 노출 */}
-        <KakaoSection />
-      </div>
+            {/* 여기서 다음 스텝(카카오 채널 등록) 붙일 거면,
+                ReservePage에서 showSuccess 이후 KakaoSection 렌더하거나,
+                여기 아래에 KakaoSection 컴포넌트 바로 넣으면 됨 */}
+          </div>
+        </div>
+      </section>
     );
   }
 
-  /* ✅ 폼 */
   return (
-    <div>
-      {/* 타이틀/설명 (카드 내부로 이동) */}
-      <header className="text-center">
-        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">결혼식 예약 신청</h1>
-        <p className="mt-3 text-sm sm:text-base text-muted-foreground leading-relaxed">
-          날짜와 기본 정보만 먼저 받아요.
-          <br />
-          예식 설정은 <span className="font-semibold text-foreground">예식 2주 전</span>에 진행됩니다.
-        </p>
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {/* 이름 + 역할 + (기타시 관계) */}
+      <div>
+        <Label htmlFor="name">이름</Label>
+        <Input
+          id="name"
+          {...register("name")}
+          className="mt-2 bg-background/40 border-border/60 placeholder:text-zinc-400/80"
+          placeholder="예: 홍길동"
+        />
+        {errors.name && <p className="text-sm text-destructive mt-1">{errors.name.message}</p>}
 
-        <div className="mt-5 rounded-2xl bg-foreground/[0.04] px-5 py-4 text-sm text-muted-foreground">
-          제출 후 <span className="font-semibold text-foreground">카카오톡</span>으로 입금 및 확정 안내를 드립니다.
-          <br />
-          입금 확인 후 예약이 확정됩니다.
+        <div className="flex gap-6 mt-3 text-sm">
+          {["신랑", "신부", "기타"].map((r) => (
+            <label key={r} className="flex items-center gap-2 text-foreground/80">
+              <input type="radio" value={r} {...register("role")} className="accent-black" />
+              {r}
+            </label>
+          ))}
         </div>
-      </header>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-6">
-        {/* 이름 + 역할 + (기타시 관계) */}
-        <div>
-          <Label htmlFor="name">이름</Label>
-          <Input id="name" {...register("name")} className="mt-2 bg-white/70 border-border focus-visible:ring-ring" />
-          {errors.name && <p className="text-sm text-destructive mt-1">{errors.name.message}</p>}
-
-          <div className="flex gap-6 mt-3 text-sm">
-            {["신랑", "신부", "기타"].map((r) => (
-              <label key={r} className="flex items-center gap-2 text-muted-foreground">
-                <input type="radio" value={r} {...register("role")} className="accent-black" />
-                <span className="text-foreground/80">{r}</span>
-              </label>
-            ))}
+        {role === "기타" && (
+          <div className="mt-3">
+            <Label htmlFor="relation">관계</Label>
+            <Input
+              id="relation"
+              placeholder="예: 신부 친구 / 신랑 엄마 / 제휴업체"
+              {...register("relation")}
+              className="mt-2 bg-background/40 border-border/60 placeholder:text-zinc-400/80"
+            />
+            {errors.relation && (
+              <p className="text-sm text-destructive mt-1">{errors.relation.message}</p>
+            )}
           </div>
+        )}
+      </div>
 
-          {role === "기타" && (
-            <div className="mt-3">
-              <Label htmlFor="relation">관계</Label>
-              <Input
-                id="relation"
-                placeholder="예: 신부 친구 / 신랑 엄마 / 제휴업체"
-                {...register("relation")}
-                className="mt-2 bg-white/70 border-border focus-visible:ring-ring"
-              />
-              {errors.relation && <p className="text-sm text-destructive mt-1">{errors.relation.message}</p>}
-            </div>
-          )}
-        </div>
+      {/* 연락처 */}
+      <div>
+        <Label htmlFor="phone">연락처</Label>
+        <Input
+          id="phone"
+          type="tel"
+          inputMode="numeric"
+          placeholder="예: 01012345678"
+          {...register("phone")}
+          className="mt-2 bg-background/40 border-border/60 placeholder:text-zinc-400/80"
+        />
+        <p className="text-sm text-muted-foreground mt-1">하이픈(-) 없이 숫자만 입력해주세요.</p>
+        {errors.phone && <p className="text-sm text-destructive mt-1">{errors.phone.message}</p>}
+      </div>
 
-        {/* 연락처 */}
-        <div>
-          <Label htmlFor="phone">연락처</Label>
-          <Input
-            id="phone"
-            type="tel"
-            inputMode="numeric"
-            placeholder="예: 01012345678"
-            {...register("phone")}
-            className="mt-2 bg-white/70 border-border focus-visible:ring-ring"
-          />
-          <p className="text-xs text-muted-foreground mt-1">하이픈(-) 없이 숫자만 입력해주세요.</p>
-          {errors.phone && <p className="text-sm text-destructive mt-1">{errors.phone.message}</p>}
-        </div>
+      {/* 날짜 확정 여부 */}
+      <div>
+        <Label>결혼 예정일</Label>
+        <RadioGroup
+          defaultValue="confirmed"
+          onValueChange={(value) => {
+            if (value === "tentative") {
+              setValue("venueName", undefined);
+              setValue("venueAddress", undefined);
+              setValue("venueLat", undefined);
+              setValue("venueLng", undefined);
+              setValue("venueKakaoUrl", undefined);
+            }
+            setValue("dateStatus", value as "confirmed" | "tentative");
+          }}
+          className="mt-2 space-y-2"
+        >
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="confirmed" id="confirmed" />
+            <Label htmlFor="confirmed" className="font-normal cursor-pointer">
+              날짜 확정
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="tentative" id="tentative" />
+            <Label htmlFor="tentative" className="font-normal cursor-pointer">
+              미정
+            </Label>
+          </div>
+        </RadioGroup>
+      </div>
 
-        {/* 날짜 확정 여부 */}
-        <div>
-          <Label>결혼 예정일</Label>
-          <RadioGroup
-            defaultValue="confirmed"
-            onValueChange={(value) => {
-              if (value === "tentative") {
-                setValue("venueName", undefined);
-                setValue("venueAddress", undefined);
-                setValue("venueLat", undefined);
-                setValue("venueLng", undefined);
-                setValue("venueKakaoUrl", undefined);
-              }
-              setValue("dateStatus", value as "confirmed" | "tentative");
-            }}
-            className="mt-2 space-y-2"
-          >
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="confirmed" id="confirmed" className="border-border" />
-              <Label htmlFor="confirmed" className="font-normal cursor-pointer text-foreground/80">
-                날짜 확정
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="tentative" id="tentative" className="border-border" />
-              <Label htmlFor="tentative" className="font-normal cursor-pointer text-foreground/80">
-                미정
-              </Label>
-            </div>
-          </RadioGroup>
-        </div>
-
-        {/* 확정일 때 */}
-        {dateStatus === "confirmed" && (
-          <>
-            <div className="grid md:grid-cols-2 gap-4">
-              {/* 날짜 */}
-              <div>
-                <Label>예식일자</Label>
-                <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal mt-2 border-border bg-white/70",
-                        !date && "text-muted-foreground"
-                      )}
-                      onClick={() => setDatePopoverOpen(true)}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {date ? format(date, "PPP", { locale: ko }) : "날짜 선택"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={date}
-                      onSelect={(newDate) => {
-                        setDate(newDate || undefined);
-                        setValue("weddingDate", newDate ?? undefined);
-                        setDatePopoverOpen(false);
-                      }}
-                      disabled={(d) => {
-                        const dd = new Date(d);
-                        dd.setHours(0, 0, 0, 0);
-                        return dd.getTime() < todayStart.getTime();
-                      }}
-                      fromDate={todayStart}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                {errors.weddingDate && <p className="text-sm text-destructive mt-1">{errors.weddingDate.message}</p>}
-              </div>
-
-              {/* 시간 */}
-              <div>
-                <Label>예식 시간</Label>
-                <Select onValueChange={(value) => setValue("weddingTime", value)}>
-                  <SelectTrigger className="mt-2 border-border bg-white/70">
-                    <SelectValue placeholder="시간 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {timeOptions.map(({ value, label }) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* 예식장 */}
+      {dateStatus === "confirmed" && (
+        <>
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* 날짜 */}
             <div>
-              <Label>예식장</Label>
-              <div className="mt-2 grid gap-2">
-                <div className="flex flex-col md:flex-row gap-2 md:items-start">
+              <Label>예식일자</Label>
+              <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+                <PopoverTrigger asChild>
                   <Button
-                    type="button"
                     variant="outline"
-                    onClick={() => setPickerOpen(true)}
-                    className="w-full md:w-auto border-border bg-white/70 hover:bg-muted/40 text-foreground"
+                    className={cn(
+                      "w-full justify-start text-left font-normal mt-2 border-border/60 bg-background/40",
+                      !date && "text-muted-foreground"
+                    )}
+                    onClick={() => setDatePopoverOpen(true)}
                   >
-                    <MapPin className="w-4 h-4 mr-2" />
-                    예식장 검색하기
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {date ? format(date, "PPP", { locale: ko }) : "날짜 선택"}
                   </Button>
-
-                  {venueName && (
-                    <div className="w-full md:flex-1 md:min-w-0 rounded-lg border border-border/60 p-3 text-sm bg-white/70 overflow-hidden">
-                      <div className="font-medium text-foreground truncate">{venueName}</div>
-                      <div className="text-muted-foreground text-xs truncate" title={venueAddress}>
-                        {venueAddress}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {errors.venueName && <p className="text-sm text-destructive">{errors.venueName.message}</p>}
-                {errors.venueAddress && <p className="text-sm text-destructive">{errors.venueAddress.message}</p>}
-              </div>
-            </div>
-
-            {/* 모바일 청첩장 링크 */}
-            <div className="mt-2">
-              <Label htmlFor="mobileInvitationLink">모바일 청첩장 링크 (선택)</Label>
-              <Input
-                id="mobileInvitationLink"
-                placeholder="예: https://m-card.com/your-link"
-                {...register("mobileInvitationLink")}
-                className="mt-2 bg-white/70 border-border focus-visible:ring-ring"
-              />
-              <p className="text-xs text-muted-foreground mt-1">아직 없으시면 비워두셔도 됩니다.</p>
-              {errors.mobileInvitationLink && (
-                <p className="text-sm text-destructive mt-1">{errors.mobileInvitationLink.message}</p>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={date}
+                    onSelect={(newDate) => {
+                      setDate(newDate || undefined);
+                      setValue("weddingDate", newDate ?? undefined);
+                      setDatePopoverOpen(false);
+                    }}
+                    disabled={(d) => {
+                      const dd = new Date(d);
+                      dd.setHours(0, 0, 0, 0);
+                      return dd.getTime() < todayStart.getTime();
+                    }}
+                    fromDate={todayStart}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              {errors.weddingDate && (
+                <p className="text-sm text-destructive mt-1">{errors.weddingDate.message}</p>
               )}
             </div>
-          </>
-        )}
 
-        {/* 미정일 때 */}
-        {dateStatus === "tentative" && (
-          <div>
-            <Label htmlFor="tentativeDate">예상 시기 (선택)</Label>
-            <Input
-              id="tentativeDate"
-              placeholder="예: 2026년 봄 / 내년 하반기 / 미정"
-              {...register("tentativeDate")}
-              className="mt-2 bg-white/70 border-border focus-visible:ring-ring"
-            />
+            {/* 시간 */}
+            <div>
+              <Label>예식 시간</Label>
+              <Select onValueChange={(value) => setValue("weddingTime", value)}>
+                <SelectTrigger className="mt-2 border-border/60 bg-background/40">
+                  <SelectValue placeholder="시간 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  {timeOptions.map(({ value, label }) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        )}
 
-        {/* 문의내용 */}
+          {/* 예식장 */}
+          <div>
+            <Label>예식장</Label>
+            <div className="mt-2 grid gap-2">
+              <div className="flex flex-col md:flex-row gap-2 md:items-start">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setPickerOpen(true)}
+                  className="w-full md:w-auto border-border/60 bg-white/60 hover:bg-white/70"
+                >
+                  <MapPin className="w-4 h-4 mr-2" />
+                  예식장 검색하기
+                </Button>
+
+                {venueName && (
+                  <div className="w-full md:flex-1 md:min-w-0 rounded-xl border border-border/60 p-3 text-sm bg-white/60 overflow-hidden">
+                    <div className="font-medium truncate">{venueName}</div>
+                    <div className="text-muted-foreground text-xs truncate" title={venueAddress}>
+                      {venueAddress}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {errors.venueName && <p className="text-sm text-destructive">{errors.venueName.message}</p>}
+              {errors.venueAddress && (
+                <p className="text-sm text-destructive">{errors.venueAddress.message}</p>
+              )}
+            </div>
+          </div>
+
+          {/* 모바일 청첩장 링크 */}
+          <div className="mt-4">
+            <Label htmlFor="mobileInvitationLink">모바일 청첩장 링크 (선택)</Label>
+            <Input
+              id="mobileInvitationLink"
+              placeholder="예: https://m-card.com/your-link"
+              {...register("mobileInvitationLink")}
+              className="mt-2 bg-background/40 border-border/60 placeholder:text-zinc-400/80"
+            />
+            <p className="text-sm text-muted-foreground mt-1">아직 없으시면 비워두셔도 됩니다.</p>
+            {errors.mobileInvitationLink && (
+              <p className="text-sm text-destructive mt-1">{errors.mobileInvitationLink.message}</p>
+            )}
+          </div>
+        </>
+      )}
+
+      {dateStatus === "tentative" && (
         <div>
-          <Label htmlFor="inquiry">문의내용 (선택)</Label>
-          <Textarea
-            id="inquiry"
-            placeholder="간단히 궁금한 점을 남겨주세요."
-            {...register("inquiry")}
-            rows={4}
-            className="mt-2 bg-white/70 border-border focus-visible:ring-ring"
+          <Label htmlFor="tentativeDate">예상 시기 (선택)</Label>
+          <Input
+            id="tentativeDate"
+            placeholder="예: 2026년 봄 / 내년 하반기 / 미정"
+            {...register("tentativeDate")}
+            className="mt-2 bg-background/40 border-border/60 placeholder:text-zinc-400/80"
           />
         </div>
+      )}
 
-        {/* 동의 */}
-        <div className="rounded-xl bg-white/70 border border-border/60 p-4">
-          <label className="flex items-start gap-3">
-            <input type="checkbox" {...register("agree")} className="mt-1 h-4 w-4 accent-black" />
-            <span className="text-sm leading-6 text-foreground/80">
-              <span className="inline-flex items-center gap-2 font-medium">
-                <Lock className="w-4 h-4" aria-hidden="true" />
-                개인정보 및 얼굴 이미지 처리에 동의합니다.
-              </span>
-              <br />
-              <span className="text-muted-foreground">
-                입력하신 정보와 얼굴 이미지는 예약 상담 및 서비스 제공 목적 외에는 사용하지 않으며,
-                외부 공유나 마케팅에 활용하지 않습니다. 동의 철회 요청 시 지체 없이 삭제합니다.
-              </span>
+      {/* 문의내용 */}
+      <div>
+        <Label htmlFor="inquiry">문의내용 (선택)</Label>
+        <Textarea
+          id="inquiry"
+          placeholder="간단히 궁금한 점을 남겨주세요."
+          {...register("inquiry")}
+          rows={4}
+          className="mt-2 bg-background/40 border-border/60 placeholder:text-zinc-400/80"
+        />
+      </div>
+
+      {/* 동의 */}
+      <div className="rounded-2xl bg-white/60 border border-border/60 p-4">
+        <label className="flex items-start gap-3">
+          <input type="checkbox" {...register("agree")} className="mt-1 h-4 w-4 accent-black" />
+          <span className="text-sm leading-6 text-foreground/80">
+            <span className="inline-flex items-center gap-2 font-medium text-foreground/90">
+              <Lock className="w-4 h-4" aria-hidden="true" />
+              개인정보 및 얼굴 이미지 처리에 동의합니다.
             </span>
-          </label>
-          {errors.agree && <p className="text-sm text-destructive mt-2">{errors.agree.message}</p>}
-        </div>
+            <br />
+            <span className="text-muted-foreground">
+              입력하신 정보와 얼굴 이미지는 예약 상담 및 서비스 제공 목적 외에는 사용하지 않으며,
+              외부 공유나 마케팅에 활용하지 않습니다. 동의 철회 요청 시 지체 없이 삭제합니다.
+            </span>
+          </span>
+        </label>
+        {errors.agree && <p className="text-sm text-destructive mt-2">{errors.agree.message}</p>}
+      </div>
 
-        <Button type="submit" size="lg" disabled={submitting} className="w-full rounded-full bg-foreground text-background hover:opacity-90">
-          {submitting ? "전송 중..." : "예약 문의 보내기 💌"}
-        </Button>
-      </form>
+      {/* 제출 */}
+      <Button type="submit" size="lg" disabled={submitting} className="w-full rounded-full">
+        {submitting ? "전송 중..." : "예약 문의 보내기 💌"}
+      </Button>
 
+      {/* 카카오 장소 검색 모달 */}
       <KakaoPlacePicker
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
@@ -659,6 +678,6 @@ export const ReservationForm = () => {
           setValue("venueKakaoUrl", p.kakaoUrl);
         }}
       />
-    </div>
+    </form>
   );
 };

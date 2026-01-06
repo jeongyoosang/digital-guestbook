@@ -80,7 +80,7 @@ export default function HeroSection({
             <span className="block mt-1">
               예식이 끝나는 순간{" "}
               <span className="text-foreground font-semibold">
-                모든 참석자 방명록과 축의내역이
+                모든 참석자 방명록과 축의금 내역이
               </span>
             </span>
 
