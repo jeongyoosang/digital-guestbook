@@ -1,148 +1,124 @@
 import { motion } from "framer-motion";
-import { Button } from "@/components/ui/button";
-import type { ReactNode } from "react";
 
-interface HeroSectionProps {
-  onPrimaryCTAClick: () => void; // 예약
-  onSecondaryCTAClick: () => void; // 내 리포트(로그인)
-  rightSlot?: ReactNode; // 비주얼(포스터/영상)
-}
+type HeroSectionProps = {
+  onPrimaryCTAClick?: () => void;
+  onSecondaryCTAClick?: () => void; // "내 리포트"
+};
 
-const HeroSection = ({
+export default function HeroSection({
   onPrimaryCTAClick,
   onSecondaryCTAClick,
-  rightSlot,
-}: HeroSectionProps) => {
+}: HeroSectionProps) {
   return (
-    <section className="relative overflow-hidden bg-[#FBF7F4]">
-      {/* background glow (soft) */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-28 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-[#F7E3E6] blur-3xl opacity-70" />
-        <div className="absolute -bottom-28 right-[-120px] h-[560px] w-[560px] rounded-full bg-[rgba(215,179,120,0.22)] blur-3xl opacity-60" />
-      </div>
+    <section className="relative overflow-hidden">
+      {/* Luma 같은 은은한 배경 */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(120,119,198,0.18),transparent_55%),radial-gradient(circle_at_80%_20%,rgba(244,114,182,0.18),transparent_55%),radial-gradient(circle_at_50%_80%,rgba(253,224,71,0.10),transparent_60%)]" />
+      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-background" />
 
-      <div className="relative mx-auto max-w-7xl px-6 lg:px-10 pt-10 lg:pt-12 pb-10 lg:pb-14">
-        {/* Top right (desktop): 내 리포트 */}
-        <div className="hidden lg:flex items-center justify-end">
+      <div className="relative mx-auto max-w-7xl px-6 pt-16 pb-10 lg:pt-20">
+        {/* Top-right "내 리포트" */}
+        <div className="flex items-start justify-end">
           <button
+            type="button"
             onClick={onSecondaryCTAClick}
-            className="inline-flex items-center gap-2 text-sm font-semibold text-[#6B7280] hover:text-[#171717] transition"
+            className="hidden lg:inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition"
           >
-            <span aria-hidden>📄</span>
-            <span>내 리포트</span>
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-foreground/5">
+              📄
+            </span>
+            <span className="font-medium">내 리포트</span>
           </button>
         </div>
 
-        <div className="mt-6 lg:mt-10 grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+        <div className="mt-8 grid items-center gap-10 lg:mt-10 lg:grid-cols-2">
           {/* LEFT */}
           <motion.div
-            initial={{ opacity: 0, y: 16 }}
+            initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.65, ease: "easeOut" }}
+            transition={{ duration: 0.55, ease: "easeOut" }}
+            className="max-w-xl"
           >
-            {/* Brand (Luma 느낌: 작은 로고 + 이름) */}
-            <div className="mb-6 flex items-center justify-center lg:justify-start gap-3">
-              <div className="h-10 w-10 rounded-full bg-[#171717] text-white flex items-center justify-center font-extrabold tracking-tight">
-                DG
-              </div>
-              <div className="leading-tight">
-                <div className="text-[15px] font-extrabold text-[#171717]">
-                  Digital Guestbook
-                </div>
-                <div className="text-[13px] font-medium text-[#6B7280]">
-                  디지털 방명록
-                </div>
-              </div>
+            {/* Brand pill (Luma처럼 로고 느낌) */}
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-4 py-2 shadow-sm">
+              <span className="text-sm font-semibold tracking-tight">
+                Digital Guestbook
+              </span>
+              <span className="text-sm text-muted-foreground">· 디지털 방명록</span>
             </div>
 
-            {/* Headline */}
-            <h1 className="text-center lg:text-left text-[44px] sm:text-6xl lg:text-[72px] font-black leading-[0.96] tracking-tight text-[#171717]">
-              현금·종이 없이,
-              <br />
-              <span className="text-[#C84B5B]">예식 끝나면 즉시 정리.</span>
+            {/* Headline: 과감히 MZ/테크 톤 */}
+            <h1 className="mt-6 text-4xl leading-[1.08] tracking-tight text-foreground sm:text-5xl">
+              <span className="block">현금·종이 없이,</span>
+              <span className="block wedding-gradient">식 끝나자마자 정리 끝.</span>
             </h1>
 
-            {/* Description */}
-            <p className="mt-5 text-center lg:text-left text-[17px] sm:text-xl text-[#6B7280] leading-relaxed max-w-xl mx-auto lg:mx-0">
-              하객은 QR로 축하 메시지를 남기고,
+            {/* Description: “즉시 리포트” 강조 */}
+            <p className="mt-5 text-base leading-relaxed text-muted-foreground sm:text-lg">
+              하객은 QR로 <span className="text-foreground font-semibold">축하 메시지</span>를 남기고,
+              예식이 끝나는 순간 <span className="text-foreground font-semibold">방명록·축의금</span>이
+              <span className="text-foreground font-semibold"> 하나의 리포트로 즉시</span> 정리돼요.
               <br className="hidden sm:block" />
-              예식이 끝나는 순간 <span className="font-extrabold text-[#171717]">방명록·축의금·메시지</span>가
-              <span className="font-extrabold text-[#171717]"> 리포트로 즉시 정리</span>돼요.
+              <span className="text-foreground/80 font-medium">
+                ATM 대기 없이, QR로 마음 전하기.
+              </span>
             </p>
-
-            {/* mini flow (간단 다이어그램 느낌) */}
-            <div className="mt-5 flex items-center justify-center lg:justify-start gap-2 text-[13px] sm:text-sm text-[#6B7280]">
-              <span className="rounded-full border border-black/10 bg-white/60 px-3 py-1">
-                축하 메시지
-              </span>
-              <span className="opacity-60">→</span>
-              <span className="rounded-full border border-black/10 bg-white/60 px-3 py-1">
-                방명록
-              </span>
-              <span className="opacity-60">→</span>
-              <span className="rounded-full border border-black/10 bg-white/60 px-3 py-1">
-                축의금
-              </span>
-              <span className="opacity-60">→</span>
-              <span className="rounded-full border border-black/10 bg-[#171717] text-white px-3 py-1">
-                Wedding Report
-              </span>
-            </div>
 
             {/* CTA */}
-            <div className="mt-8 flex items-center justify-center lg:justify-start gap-4">
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <Button
-                  size="lg"
-                  onClick={onPrimaryCTAClick}
-                  className="rounded-full px-8 py-6 text-base font-bold bg-[#C84B5B] hover:bg-[#B74352] text-white shadow-lg shadow-[rgba(200,75,91,0.25)]"
-                >
-                  예약문의 하기
-                </Button>
-              </motion.div>
-
-              {/* mobile only: 내 리포트 */}
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <button
-                onClick={onSecondaryCTAClick}
-                className="lg:hidden inline-flex items-center gap-2 text-sm font-semibold text-[#6B7280] hover:text-[#171717] transition"
+                type="button"
+                onClick={onPrimaryCTAClick}
+                className="inline-flex h-12 items-center justify-center rounded-full bg-foreground px-6 text-base font-semibold text-background shadow-sm transition hover:opacity-90"
               >
-                <span aria-hidden>📄</span>
-                <span className="underline underline-offset-4">내 리포트</span>
+                예약문의 하기
+              </button>
+
+              <button
+                type="button"
+                onClick={onSecondaryCTAClick}
+                className="inline-flex h-12 items-center justify-center rounded-full border border-border/80 bg-background/70 px-6 text-base font-semibold text-foreground shadow-sm transition hover:bg-background"
+              >
+                내 리포트 보기
               </button>
             </div>
-
-            <p className="mt-4 text-center lg:text-left text-xs sm:text-sm text-[#9CA3AF]">
-              리포트/축의금 정리는 PC에서 더 편하게 확인하실 수 있어요.
-            </p>
           </motion.div>
 
-          {/* RIGHT VISUAL (Luma: huge circle) */}
+          {/* RIGHT */}
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.65, delay: 0.05, ease: "easeOut" }}
-            className="flex justify-center lg:justify-end"
+            transition={{ duration: 0.6, delay: 0.05, ease: "easeOut" }}
+            className="relative"
           >
-            <div className="relative w-full max-w-[760px]">
-              {/* circle container */}
-              <div className="relative mx-auto aspect-square w-[min(560px,90vw)] lg:w-[560px] overflow-hidden rounded-full shadow-[0_30px_90px_rgba(23,23,23,0.12)] ring-1 ring-black/5">
-                {rightSlot}
-                {/* soft highlight */}
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.55),rgba(255,255,255,0)_55%)]" />
+            <div className="relative mx-auto w-full max-w-[620px]">
+              {/* 메인 이미지 카드 */}
+              <div className="relative overflow-hidden rounded-[999px] border border-border/60 bg-background/50 shadow-[0_20px_60px_rgba(15,23,42,0.10)]">
+                <div className="aspect-[1/1] w-full">
+                  <img
+                    src="/landing-poster.jpg"
+                    alt="Wedding report preview"
+                    className="h-full w-full object-cover"
+                    loading="eager"
+                  />
+                </div>
               </div>
 
-              {/* subtle floating sparkles */}
-              <div className="pointer-events-none absolute -inset-6 opacity-50">
-                <div className="absolute left-6 top-10 h-2 w-2 rounded-full bg-white/70 blur-[1px]" />
-                <div className="absolute right-10 top-24 h-3 w-3 rounded-full bg-white/60 blur-[1px]" />
-                <div className="absolute left-14 bottom-16 h-3 w-3 rounded-full bg-white/60 blur-[1px]" />
+              {/* 작은 정보 배지 */}
+              <div className="pointer-events-none absolute -left-2 top-6 hidden rounded-2xl border border-border/70 bg-background/80 px-4 py-3 shadow-sm sm:block">
+                <p className="text-sm font-semibold">식 끝나면 바로 리포트</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  메시지 + 방명록 + 축의금 정리
+                </p>
               </div>
             </div>
           </motion.div>
         </div>
       </div>
+
+      {/* 아래 섹션과 구분선 (Luma처럼) */}
+      <div className="mx-auto max-w-7xl px-6">
+        <div className="h-px bg-border/60" />
+      </div>
     </section>
   );
-};
-
-export default HeroSection;
+}
