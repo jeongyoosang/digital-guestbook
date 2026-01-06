@@ -1,12 +1,9 @@
 export default function Footer() {
   return (
-    <footer className="px-6">
-      <div className="mx-auto max-w-7xl">
-        {/* Luma 느낌: 얇은 선 */}
-        <div className="h-px bg-border/60" />
-
-        <div className="flex flex-col gap-4 py-6 sm:flex-row sm:items-center sm:justify-between">
-          {/* Left */}
+    <footer className="border-t border-border/40 bg-background">
+      <div className="mx-auto max-w-7xl px-6 py-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          {/* Left: policies */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
             <span className="cursor-default hover:text-foreground transition">
               이용약관
@@ -19,14 +16,15 @@ export default function Footer() {
             </span>
           </div>
 
-          {/* Right icons */}
+          {/* Right: icons */}
           <div className="flex items-center gap-3 sm:justify-end">
+            {/* Instagram */}
             <a
               href="https://www.instagram.com/digital_guestbook"
               target="_blank"
               rel="noreferrer"
               aria-label="Instagram"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-background hover:bg-foreground/5 transition"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background/60 hover:bg-foreground/5 transition"
               title="Instagram"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -49,12 +47,13 @@ export default function Footer() {
               </svg>
             </a>
 
+            {/* Kakao */}
             <a
               href="https://pf.kakao.com/_UyaHn"
               target="_blank"
               rel="noreferrer"
               aria-label="KakaoTalk Channel"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-background hover:bg-foreground/5 transition"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background/60 hover:bg-foreground/5 transition"
               title="KakaoTalk Channel"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -69,15 +68,10 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* 사업자 정보: 더 컴팩트 */}
-        <div className="pb-8">
-          <p className="text-center text-xs text-muted-foreground leading-relaxed">
-            ㈜고래유니버스 | 대표 정유상 | 사업자등록번호 : 521-81-03425 <br />
-            서울특별시 서대문구 연세로2나길 61 204호
-          </p>
-          <p className="mt-2 text-center text-[11px] text-muted-foreground">
-            © 2025 GORAE UNIVERSE. All rights reserved.
-          </p>
+        <div className="mt-5 text-center text-xs text-muted-foreground leading-relaxed">
+          ㈜고래유니버스 | 대표 정유상 | 사업자등록번호 : 521-81-03425 <br />
+          서울특별시 서대문구 연세로2나길 61 204호
+          <div className="mt-2">© 2025 GORAE UNIVERSE. All rights reserved.</div>
         </div>
       </div>
     </footer>
