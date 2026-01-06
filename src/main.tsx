@@ -1,4 +1,4 @@
-import "pretendard/dist/web/static/pretendard.css";
+import "@suit/fonts/variable/woff2/SUIT-Variable.css";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
