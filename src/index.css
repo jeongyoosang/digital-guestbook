@@ -215,3 +215,52 @@
     animation: none !important;
   }
 }
+
+/* ============================
+   Hero color grading (lux / vivid)
+   ============================ */
+.dg-hero-grade {
+  /* ✅ 파스텔 톤 → 더 진하고 고급스럽게 */
+  filter: saturate(1.45) contrast(1.16) brightness(1.03);
+  transform: translateZ(0);
+}
+
+/* 톤을 한 번 더 “프리미엄”으로 잡아주는 컬러 레이어 */
+.dg-hero-color {
+  mix-blend-mode: soft-light;
+  opacity: 0.42;
+  background:
+    radial-gradient(circle at 25% 20%, rgba(99,102,241,0.35), transparent 55%),
+    radial-gradient(circle at 78% 22%, rgba(236,72,153,0.28), transparent 60%),
+    radial-gradient(circle at 55% 82%, rgba(245,158,11,0.18), transparent 58%),
+    linear-gradient(180deg, rgba(0,0,0,0.06), rgba(0,0,0,0.02));
+}
+
+/* 화려하지만 촌스럽지 않게: “프리즘 광택”이 천천히 흐르는 레이어 */
+.dg-hero-prism {
+  opacity: 0.20;
+  background:
+    conic-gradient(
+      from 180deg at 50% 50%,
+      rgba(99,102,241,0.0),
+      rgba(99,102,241,0.40),
+      rgba(236,72,153,0.34),
+      rgba(245,158,11,0.20),
+      rgba(34,211,238,0.24),
+      rgba(99,102,241,0.0)
+    );
+  filter: blur(22px);
+  mix-blend-mode: screen;
+  animation: dg-prism 7.2s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes dg-prism {
+  0%   { transform: translate3d(-2%, 1%, 0) rotate(-4deg) scale(1.02); opacity: 0.16; }
+  50%  { transform: translate3d(2%, -1%, 0) rotate(4deg) scale(1.06); opacity: 0.24; }
+  100% { transform: translate3d(-2%, 1%, 0) rotate(-4deg) scale(1.02); opacity: 0.16; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dg-hero-prism { animation: none !important; }
+}

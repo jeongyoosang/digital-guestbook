@@ -57,7 +57,7 @@ export default function HeroSection({
           >
             {/* Brand */}
             <div className="flex items-baseline gap-3">
-              <span className="text-lg font-semibold tracking-tight text-foreground">
+              <span className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
                 Digital Guestbook
               </span>
               <span className="text-sm text-muted-foreground">디지털 방명록</span>
@@ -102,7 +102,8 @@ export default function HeroSection({
             <div className="relative mx-auto w-full max-w-[620px]">
               {/* 원형 메인이미지 */}
               <motion.div
-                className="relative overflow-hidden rounded-[999px] border border-border/60 bg-background/50 shadow-[0_20px_60px_rgba(15,23,42,0.10)]"
+                className="relative overflow-hidden rounded-[999px] border border-border/60 bg-background/50
+                           shadow-[0_20px_60px_rgba(15,23,42,0.10)]"
                 animate={
                   reduceMotion
                     ? undefined
@@ -122,12 +123,12 @@ export default function HeroSection({
                   <img
                     src="/landing-poster.jpg"
                     alt="Wedding report preview"
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-cover dg-hero-grade"
                     loading="eager"
                   />
                 </div>
 
-                {/* 동적 레이어들 (B안: index.css 유틸 사용) */}
+                {/* 동적 레이어들 (index.css의 dg-* / dg-hero-* 유틸 사용) */}
                 <div className="pointer-events-none absolute inset-0">
                   {/* 보케 */}
                   <div className="absolute inset-0 opacity-[0.45]">
@@ -141,4 +142,35 @@ export default function HeroSection({
 
                   {/* sheen */}
                   <div
-                    className="ab
+                    className="absolute -inset-24 opacity-[0.26]"
+                    style={{
+                      background:
+                        "linear-gradient(120deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.85) 45%, rgba(255,255,255,0) 70%)",
+                      transform: "rotate(12deg)",
+                      animation: reduceMotion
+                        ? "none"
+                        : "dg-sheen 5.2s ease-in-out infinite",
+                    }}
+                  />
+
+                  {/* ✅ color grading overlay (고급 채색/톤) */}
+                  <div className="absolute inset-0 dg-hero-color" />
+                  {/* ✅ prism glow (화려함 + 고급 광택) */}
+                  <div className="absolute -inset-20 dg-hero-prism pointer-events-none" />
+
+                  {/* grain */}
+                  <div className="absolute inset-0 dg-grain" />
+                </div>
+              </motion.div>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+
+      {/* 아래 섹션과 구분선 */}
+      <div className="mx-auto max-w-7xl px-6">
+        <div className="h-px bg-border/60" />
+      </div>
+    </section>
+  );
+}
