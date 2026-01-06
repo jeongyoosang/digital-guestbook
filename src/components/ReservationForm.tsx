@@ -435,7 +435,7 @@ export const ReservationForm = () => {
               <Label htmlFor="relation">관계</Label>
               <Input
                 id="relation"
-                placeholder="예: 신랑 친구 / 신부 사촌 / 웨딩플래너"
+                placeholder="예: 신부 친구 / 신랑 엄마 / 제휴업체"
                 {...register("relation")}
                 className="mt-2 bg-white/70 border-border focus-visible:ring-ring"
               />
