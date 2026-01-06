@@ -152,3 +152,66 @@
     background-clip: text;
   }
 }
+
+/* ============================
+   Hero motion utilities (B안)
+   ============================ */
+@keyframes dg-sheen {
+  0%   { transform: translateX(-28%) rotate(12deg); opacity: 0; }
+  18%  { opacity: 0.22; }
+  50%  { transform: translateX(18%) rotate(12deg); opacity: 0.34; }
+  82%  { opacity: 0.14; }
+  100% { transform: translateX(34%) rotate(12deg); opacity: 0; }
+}
+
+.dg-bokeh {
+  position: absolute;
+  inset: 0;
+  filter: blur(22px);
+  mix-blend-mode: screen;
+}
+.dg-bokeh span {
+  position: absolute;
+  display: block;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.9), rgba(255,255,255,0) 62%);
+  opacity: 0.7;
+  transform: translate3d(0,0,0);
+  animation: dg-float 8.6s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+.dg-bokeh span:nth-child(1) { animation-duration: 8.8s;  animation-delay: -1.6s; }
+.dg-bokeh span:nth-child(2) { animation-duration: 10.2s; animation-delay: -5.2s; opacity: 0.62; }
+.dg-bokeh span:nth-child(3) { animation-duration: 9.4s;  animation-delay: -3.8s; opacity: 0.66; }
+.dg-bokeh span:nth-child(4) { animation-duration: 11.0s; animation-delay: -7.0s; opacity: 0.58; }
+
+@keyframes dg-float {
+  0%   { transform: translate3d(0px, 0px, 0) scale(1); opacity: 0.58; }
+  35%  { transform: translate3d(18px, -22px, 0) scale(1.10); opacity: 0.82; }
+  70%  { transform: translate3d(-20px, 18px, 0) scale(1.06); opacity: 0.68; }
+  100% { transform: translate3d(0px, 0px, 0) scale(1); opacity: 0.58; }
+}
+
+.dg-grain {
+  opacity: 0.14;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E");
+  background-size: 220px 220px;
+  mix-blend-mode: overlay;
+  animation: dg-grain-move 5.2s steps(6) infinite;
+  will-change: transform;
+}
+@keyframes dg-grain-move {
+  0%   { transform: translate3d(0,0,0); }
+  20%  { transform: translate3d(-2%, 1%, 0); }
+  40%  { transform: translate3d(1%, -2%, 0); }
+  60%  { transform: translate3d(2%, 1%, 0); }
+  80%  { transform: translate3d(-1%, 2%, 0); }
+  100% { transform: translate3d(0,0,0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dg-bokeh span,
+  .dg-grain {
+    animation: none !important;
+  }
+}
