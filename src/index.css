@@ -360,3 +360,13 @@
     animation: none !important;
   }
 }
+/* ============================
+   Global placeholder tone
+   ============================ */
+@layer base {
+  input::placeholder,
+  textarea::placeholder {
+    color: hsl(var(--muted-foreground));
+    opacity: 0.6; /* ✅ 흐릿하게 */
+  }
+}
