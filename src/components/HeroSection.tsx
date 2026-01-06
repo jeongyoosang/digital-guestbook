@@ -15,12 +15,12 @@ export default function HeroSection({
 
   return (
     <section className="relative overflow-hidden">
-      {/* Luma 같은 은은한 배경 (그대로 유지) */}
+      {/* Luma 같은 은은한 배경 */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(120,119,198,0.18),transparent_55%),radial-gradient(circle_at_80%_20%,rgba(244,114,182,0.18),transparent_55%),radial-gradient(circle_at_50%_80%,rgba(253,224,71,0.10),transparent_60%)]" />
       <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-background" />
 
       <div className="relative mx-auto max-w-7xl px-6 pt-16 pb-10 lg:pt-20">
-        {/* Top-right actions: 내 리포트 + 서비스 흐름 */}
+        {/* Top-right actions */}
         <div className="flex items-start justify-end">
           <div className="hidden lg:flex items-center gap-6">
             <button
@@ -55,7 +55,6 @@ export default function HeroSection({
             transition={{ duration: 0.55, ease: "easeOut" }}
             className="max-w-xl"
           >
-            {/* Brand */}
             <div className="flex items-baseline gap-3">
               <span className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
                 Digital Guestbook
@@ -63,13 +62,11 @@ export default function HeroSection({
               <span className="text-sm text-muted-foreground">디지털 방명록</span>
             </div>
 
-            {/* Headline */}
             <h1 className="mt-6 text-4xl leading-[1.08] tracking-tight text-foreground sm:text-5xl">
               <span className="block">현금·종이 없는 결혼식,</span>
               <span className="block wedding-gradient">식 끝나자마자 정리 끝.</span>
             </h1>
 
-            {/* Description */}
             <p className="mt-5 text-base leading-relaxed text-muted-foreground sm:text-lg">
               하객은 <span className="text-foreground font-semibold">ATM 대기 없이</span> QR로{" "}
               <span className="text-foreground font-semibold">축의</span>와{" "}
@@ -80,7 +77,6 @@ export default function HeroSection({
               정리돼요.
             </p>
 
-            {/* CTA */}
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <button
                 type="button"
@@ -100,25 +96,8 @@ export default function HeroSection({
             className="relative"
           >
             <div className="relative mx-auto w-full max-w-[620px]">
-              {/* 원형 메인이미지 */}
-              <motion.div
-                className="relative overflow-hidden rounded-[999px] border border-border/60 bg-background/50
-                           shadow-[0_20px_60px_rgba(15,23,42,0.10)]"
-                animate={
-                  reduceMotion
-                    ? undefined
-                    : {
-                        y: [0, -7, 0],
-                        rotate: [0, 0.6, 0],
-                        scale: [1, 1.02, 1],
-                      }
-                }
-                transition={
-                  reduceMotion
-                    ? undefined
-                    : { duration: 6.8, repeat: Infinity, ease: "easeInOut" }
-                }
-              >
+              {/* 이미지 완전 고정 */}
+              <div className="relative overflow-hidden rounded-[999px] border border-border/60 bg-background/50 shadow-[0_20px_60px_rgba(15,23,42,0.10)]">
                 <div className="aspect-[1/1] w-full">
                   <img
                     src="/landing-poster.jpg"
@@ -128,49 +107,92 @@ export default function HeroSection({
                   />
                 </div>
 
-                {/* 동적 레이어들 (index.css의 dg-* / dg-hero-* 유틸 사용) */}
+                {/* ✅ 애플식 링 하이라이트: 원 안쪽 영향 0% */}
                 <div className="pointer-events-none absolute inset-0">
-                  {/* 보케 */}
-                  <div className="absolute inset-0 opacity-[0.45]">
-                    <div className="dg-bokeh">
-                      <span style={{ left: "12%", top: "18%", width: 220, height: 220 }} />
-                      <span style={{ left: "62%", top: "14%", width: 180, height: 180 }} />
-                      <span style={{ left: "22%", top: "62%", width: 240, height: 240 }} />
-                      <span style={{ left: "68%", top: "58%", width: 200, height: 200 }} />
-                    </div>
-                  </div>
+                  {/* base ring */}
+                  <svg
+                    className="absolute inset-0 h-full w-full"
+                    viewBox="0 0 100 100"
+                    aria-hidden="true"
+                  >
+                    <defs>
+                      <linearGradient id="dgBase" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0" stopColor="rgba(255,255,255,0.55)" />
+                        <stop offset="0.5" stopColor="rgba(255,255,255,0.18)" />
+                        <stop offset="1" stopColor="rgba(255,255,255,0.45)" />
+                      </linearGradient>
 
-                  {/* sheen */}
-                  <div
-                    className="absolute -inset-24 opacity-[0.26]"
-                    style={{
-                      background:
-                        "linear-gradient(120deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.85) 45%, rgba(255,255,255,0) 70%)",
-                      transform: "rotate(12deg)",
-                      animation: reduceMotion
-                        ? "none"
-                        : "dg-sheen 5.2s ease-in-out infinite",
-                    }}
-                  />
+                      <linearGradient id="dgGlint" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0" stopColor="rgba(255,255,255,0)" />
+                        <stop offset="0.35" stopColor="rgba(255,255,255,0.95)" />
+                        <stop offset="0.7" stopColor="rgba(255,255,255,0)" />
+                      </linearGradient>
 
-                  {/* ✅ color grading overlay (고급 채색/톤) */}
-                  <div className="absolute inset-0 dg-hero-color" />
-                  {/* ✅ prism glow (화려함 + 고급 광택) */}
-                  <div className="absolute -inset-20 dg-hero-prism pointer-events-none" />
+                      <filter id="dgGlow" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation="0.7" result="blur" />
+                        <feMerge>
+                          <feMergeNode in="blur" />
+                          <feMergeNode in="SourceGraphic" />
+                        </feMerge>
+                      </filter>
+                    </defs>
 
-                  {/* grain */}
-                  <div className="absolute inset-0 dg-grain" />
+                    {/* 얇은 기본 테두리 */}
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="49"
+                      fill="none"
+                      stroke="url(#dgBase)"
+                      strokeWidth="0.9"
+                      opacity="0.55"
+                    />
+
+                    {/* 움직이는 하이라이트(짧은 스트로크만 이동) */}
+                    <circle
+                      className={reduceMotion ? "" : "dg-ring-glint"}
+                      cx="50"
+                      cy="50"
+                      r="49"
+                      fill="none"
+                      stroke="url(#dgGlint)"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                      strokeDasharray="10 300"
+                      filter="url(#dgGlow)"
+                      opacity="0.95"
+                    />
+                  </svg>
+
+                  {/* 아주 약한 비네팅(집중도) */}
+                  <div className="absolute inset-0 dg-apple-vignette" />
                 </div>
-              </motion.div>
+              </div>
             </div>
           </motion.div>
         </div>
       </div>
 
-      {/* 아래 섹션과 구분선 */}
       <div className="mx-auto max-w-7xl px-6">
         <div className="h-px bg-border/60" />
       </div>
+
+      {/* 컴포넌트 내부 CSS: 링 애니메이션(테두리만) */}
+      <style>{`
+        .dg-ring-glint {
+          animation: dgGlintMove 3.2s linear infinite;
+          transform-origin: 50% 50%;
+        }
+        @keyframes dgGlintMove {
+          from { stroke-dashoffset: 0; }
+          to   { stroke-dashoffset: -310; }
+        }
+        .dg-apple-vignette {
+          background: radial-gradient(circle at 50% 45%, rgba(0,0,0,0.00) 58%, rgba(0,0,0,0.12) 100%);
+          opacity: 0.28;
+          mix-blend-mode: multiply;
+        }
+      `}</style>
     </section>
   );
 }
