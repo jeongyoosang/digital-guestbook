@@ -144,7 +144,7 @@ const HeroSection = ({
               {/* subtle glow edge */}
               <div className="pointer-events-none absolute -inset-10 opacity-40 blur-3xl bg-[radial-gradient(circle_at_30%_20%,rgba(200,75,91,0.25),transparent_55%),radial-gradient(circle_at_70%_60%,rgba(67,139,255,0.18),transparent_60%)]" />
               <div className="relative h-full w-full">
-                {rightSlot ?? <PosterVisual />}
+                <PosterVisual />
               </div>
             </div>
           </motion.div>

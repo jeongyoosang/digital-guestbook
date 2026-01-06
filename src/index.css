@@ -98,13 +98,15 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans;
-    /* ✅ Luma 느낌: 더 매끈하고 살짝 타이트 */
-    letter-spacing: -0.02em;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    font-variant-numeric: tabular-nums;
-  }
+  @apply bg-background text-foreground;
+  font-family: Pretendard, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+  letter-spacing: -0.02em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-variant-numeric: tabular-nums;
+}
+
 
   h1,
   h2,
