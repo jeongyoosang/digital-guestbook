@@ -104,8 +104,9 @@
   letter-spacing: -0.02em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-variant-numeric: tabular-nums;
 }
+
+
 
 
   h1,
@@ -114,7 +115,7 @@
   h4,
   h5,
   h6 {
-    @apply font-bold;
+    @apply font-semibold;
     letter-spacing: -0.03em;
   }
 }
