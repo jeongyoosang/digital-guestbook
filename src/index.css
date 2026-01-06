@@ -99,6 +99,11 @@
 
   body {
     @apply bg-background text-foreground font-sans;
+    /* ✅ Luma 느낌: 더 매끈하고 살짝 타이트 */
+    letter-spacing: -0.02em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-variant-numeric: tabular-nums;
   }
 
   h1,
@@ -108,6 +113,7 @@
   h5,
   h6 {
     @apply font-bold;
+    letter-spacing: -0.03em;
   }
 }
 
@@ -406,6 +412,7 @@
 .instagram-handle {
   letter-spacing: 0.02em;
 }
+
 /* ============================================
    ✨ 메시지 페이드 인/아웃 애니메이션
    ============================================ */
