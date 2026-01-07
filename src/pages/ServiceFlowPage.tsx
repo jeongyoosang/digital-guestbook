@@ -1,3 +1,4 @@
+// src/pages/ServiceFlowPage.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useReducedMotion } from "framer-motion";
@@ -5,7 +6,7 @@ import { useReducedMotion } from "framer-motion";
 import Footer from "@/components/Footer";
 import { FeaturesSection } from "@/components/FeaturesSection";
 import { GallerySection } from "@/components/GallerySection";
-import { DeliverySection } from "@/components/DeliverySection"; // ✅ named export로 수정
+import { DeliverySection } from "@/components/DeliverySection";
 
 type FlowNode =
   | "guest"
@@ -16,6 +17,39 @@ type FlowNode =
   | "report"
   | "couple";
 
+function useInViewIds(ids: string[], rootMargin = "-40% 0px -55% 0px") {
+  const [activeId, setActiveId] = useState<string>(ids[0] ?? "");
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  useEffect(() => {
+    const elements = ids
+      .map((id) => document.getElementById(id))
+      .filter(Boolean) as HTMLElement[];
+
+    if (!elements.length) return;
+
+    observerRef.current?.disconnect();
+
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => (b.intersectionRatio ?? 0) - (a.intersectionRatio ?? 0));
+
+        if (visible[0]?.target?.id) setActiveId(visible[0].target.id);
+      },
+      { root: null, threshold: [0.15, 0.25, 0.35, 0.5], rootMargin }
+    );
+
+    elements.forEach((el) => obs.observe(el));
+    observerRef.current = obs;
+
+    return () => obs.disconnect();
+  }, [ids, rootMargin]);
+
+  return activeId;
+}
+
 function FlowDiagram({ active }: { active: FlowNode }) {
   const reduceMotion = useReducedMotion();
   const on = (node: FlowNode) => active === node;
@@ -25,7 +59,6 @@ function FlowDiagram({ active }: { active: FlowNode }) {
   const activeFx = reduceMotion
     ? "ring-2 ring-foreground/25"
     : "ring-2 ring-foreground/25 shadow-[0_18px_60px_rgba(15,23,42,0.14)] scale-[1.015]";
-
   const mutedFx = "opacity-85";
 
   const cls = (node: FlowNode, base: string) =>
@@ -37,64 +70,60 @@ function FlowDiagram({ active }: { active: FlowNode }) {
   const green = "bg-[#3FAE2A] text-white border-white/10";
   const green2 = "bg-[#2FA83E] text-white border-white/10";
 
-  // 메인 흐름 강조(항상 느껴지게)
   const mainOn =
-    active === "qr" || active === "report" || active === "couple" ? "opacity-100" : "opacity-70";
+    active === "qr" || active === "report" || active === "couple"
+      ? "opacity-100"
+      : "opacity-70";
 
   return (
     <div className="relative">
       <div className="relative rounded-3xl border bg-background/75 backdrop-blur p-6 sm:p-7 shadow-[0_18px_60px_rgba(15,23,42,0.08)] overflow-hidden">
-        {/* 배경 */}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(120,119,198,0.16),transparent_58%),radial-gradient(circle_at_82%_22%,rgba(244,114,182,0.14),transparent_58%),radial-gradient(circle_at_50%_90%,rgba(253,224,71,0.10),transparent_62%)]" />
+
         <div className="relative">
           {/* PC */}
           <div className="hidden md:grid grid-cols-[200px_360px_160px_160px_160px] gap-4 items-center">
-            {/* 하객 */}
             <div className={cls("guest", lightBlue)}>
               <div className="text-sm font-semibold opacity-90">하객</div>
               <div className="mt-1 text-xs font-normal opacity-80">QR로 참여</div>
             </div>
 
-            {/* 하객 입력 3개 그룹 */}
             <div className="relative rounded-3xl border bg-background/55 backdrop-blur p-4">
               <div className="text-xs font-semibold text-muted-foreground mb-3">
                 하객이 남기는 3가지
               </div>
+
               <div className="grid grid-rows-3 gap-2">
                 <div className={cls("congrats", deepBlue)}>축하메시지</div>
                 <div className={cls("attendance", deepBlue)}>현장참석 방명록</div>
                 <div className={cls("gift", deepBlue)}>축의금</div>
               </div>
 
-              {/* 그룹 → QR 화살표 느낌 */}
               <div className="pointer-events-none absolute -right-5 top-1/2 -translate-y-1/2">
                 <div className="h-[2px] w-10 bg-foreground/25" />
               </div>
             </div>
 
-            {/* QR */}
             <div className={`${cls("qr", orange)} ${mainOn}`}>
               <div className="text-sm font-semibold">현장 QR</div>
-              <div className="mt-1 text-xs font-normal opacity-85">모든 입력이 모이는 곳</div>
+              <div className="mt-1 text-xs font-normal opacity-85">
+                모든 입력이 모이는 곳
+              </div>
             </div>
 
-            {/* 리포트 */}
             <div className={`${cls("report", green)} ${mainOn}`}>
               <div className="text-sm font-semibold">웨딩 리포트</div>
               <div className="mt-1 text-xs font-normal opacity-85">Excel · 영상 · 링크</div>
             </div>
 
-            {/* 신랑신부 */}
             <div className={`${cls("couple", green2)} ${mainOn}`}>
               <div className="text-sm font-semibold">신랑 신부</div>
               <div className="mt-1 text-xs font-normal opacity-85">정산·감사·보관</div>
             </div>
           </div>
 
-          {/* 메인 흐름 라인(PC 전용) */}
+          {/* 흐름 라인(PC 전용) */}
           <div className="hidden md:block pointer-events-none">
-            {/* QR → 리포트 */}
-            <div className={`absolute left-[200px+360px+16px] top-1/2 ${mainOn}`} />
             <svg
               className="absolute inset-0 h-full w-full"
               viewBox="0 0 1000 160"
@@ -107,23 +136,23 @@ function FlowDiagram({ active }: { active: FlowNode }) {
                 </marker>
               </defs>
 
-              {/* 대략적인 위치: 좌측 입력그룹(중앙) → QR → 리포트 → 신랑신부 */}
+              {/* 입력그룹 → QR → 리포트 → 신랑신부 */}
               <path
-                d="M560 80 L700 80"
-                stroke="rgba(15,23,42,0.28)"
+                d="M540 80 L660 80"
+                stroke="rgba(15,23,42,0.26)"
                 strokeWidth="2"
                 markerEnd="url(#arrow)"
               />
               <path
-                d="M720 80 L860 80"
-                stroke="rgba(15,23,42,0.28)"
+                d="M700 80 L820 80"
+                stroke="rgba(15,23,42,0.26)"
                 strokeWidth="2"
                 markerEnd="url(#arrow)"
               />
             </svg>
           </div>
 
-          {/* Mobile: 세로로 더 깔끔하게 */}
+          {/* Mobile */}
           <div className="md:hidden grid gap-3">
             <div className={cls("guest", lightBlue)}>하객</div>
 
@@ -145,7 +174,6 @@ function FlowDiagram({ active }: { active: FlowNode }) {
             </div>
           </div>
 
-          {/* 설명 */}
           <p className="mt-5 text-xs sm:text-sm text-muted-foreground">
             <span className="text-foreground font-semibold">하객의 3가지 입력</span>이{" "}
             <span className="text-foreground font-semibold">현장 QR</span>로 모이고,
@@ -158,7 +186,6 @@ function FlowDiagram({ active }: { active: FlowNode }) {
   );
 }
 
-
 export default function ServiceFlowPage() {
   const navigate = useNavigate();
 
@@ -166,6 +193,7 @@ export default function ServiceFlowPage() {
     () => ["sf-qr", "sf-features", "sf-gallery", "sf-delivery"],
     []
   );
+
   const activeSection = useInViewIds(sectionIds);
 
   const activeNode: FlowNode = useMemo(() => {
@@ -193,11 +221,11 @@ export default function ServiceFlowPage() {
             <div>
               <p className="text-sm text-muted-foreground">서비스 흐름</p>
               <h1 className="mt-2 text-3xl sm:text-4xl font-bold tracking-tight">
-                하객의 마음이 <span className="wedding-gradient">QR → 리포트</span>로 정리됩니다
+                하객의 마음이{" "}
+                <span className="wedding-gradient">QR → 리포트</span>로 정리됩니다
               </h1>
               <p className="mt-3 text-base text-muted-foreground max-w-2xl">
                 “하객 → (축하메시지/참석/축의금) → 현장 QR → 웨딩 리포트 → 신랑신부”
-                이 한 줄로 모든 사용자가 이해하게 만드는 게 목표입니다.
               </p>
             </div>
 
