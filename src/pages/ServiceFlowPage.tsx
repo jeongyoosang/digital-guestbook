@@ -136,7 +136,6 @@ function FlowDiagram({ active }: { active: FlowNode }) {
                 </marker>
               </defs>
 
-              {/* 입력그룹 → QR → 리포트 → 신랑신부 */}
               <path
                 d="M540 80 L660 80"
                 stroke="rgba(15,23,42,0.26)"
@@ -189,6 +188,7 @@ function FlowDiagram({ active }: { active: FlowNode }) {
 export default function ServiceFlowPage() {
   const navigate = useNavigate();
 
+  // 스크롤 섹션 id
   const sectionIds = useMemo(
     () => ["sf-qr", "sf-features", "sf-gallery", "sf-delivery"],
     []
@@ -196,6 +196,7 @@ export default function ServiceFlowPage() {
 
   const activeSection = useInViewIds(sectionIds);
 
+  // 섹션 → 다이어그램 하이라이트 매핑
   const activeNode: FlowNode = useMemo(() => {
     switch (activeSection) {
       case "sf-qr":
@@ -213,16 +214,16 @@ export default function ServiceFlowPage() {
 
   return (
     <main className="min-h-screen">
+      {/* 상단 헤더 영역 */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(120,119,198,0.18),transparent_55%),radial-gradient(circle_at_80%_20%,rgba(244,114,182,0.18),transparent_55%),radial-gradient(circle_at_50%_80%,rgba(253,224,71,0.10),transparent_60%)]" />
 
-        <div className="relative mx-auto max-w-7xl px-6 pt-14 pb-6 lg:pt-18">
+        <div className="relative mx-auto max-w-7xl px-6 pt-14 pb-6">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm text-muted-foreground">서비스 흐름</p>
               <h1 className="mt-2 text-3xl sm:text-4xl font-bold tracking-tight">
-                하객의 마음이{" "}
-                <span className="wedding-gradient">QR → 리포트</span>로 정리됩니다
+                하객의 마음이 <span className="wedding-gradient">QR → 리포트</span>로 정리됩니다
               </h1>
               <p className="mt-3 text-base text-muted-foreground max-w-2xl">
                 “하객 → (축하메시지/참석/축의금) → 현장 QR → 웨딩 리포트 → 신랑신부”
@@ -246,37 +247,53 @@ export default function ServiceFlowPage() {
           </div>
         </div>
 
-        <div className="sticky top-0 z-30 border-b bg-background/70 backdrop-blur">
+        {/* ✅ 모바일에서는 상단 sticky 다이어그램 */}
+        <div className="lg:hidden sticky top-0 z-30 border-b bg-background/80 backdrop-blur">
           <div className="mx-auto max-w-7xl px-6 py-4">
             <FlowDiagram active={activeNode} />
           </div>
         </div>
       </section>
 
-      <section id="sf-qr" className="mx-auto max-w-7xl px-6 py-14">
-        <div className="max-w-3xl">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
-            1) 현장 QR 하나로 시작
-          </h2>
-          <p className="mt-3 text-muted-foreground leading-relaxed">
-            하객은 QR만 스캔하면 즉시 참여합니다. 별도 앱 설치 없이,
-            축하메시지/참석 방명록/축의금 입력이{" "}
-            <span className="text-foreground font-semibold">한 흐름</span>으로 연결됩니다.
-          </p>
+      {/* ✅ 본문: 데스크탑은 좌(콘텐츠) / 우(sticky 다이어그램) */}
+      <section className="mx-auto max-w-7xl px-6 py-10">
+        <div className="grid gap-10 lg:grid-cols-[1fr_460px] lg:items-start">
+          {/* LEFT: scroll contents */}
+          <div className="min-w-0">
+            <section id="sf-qr" className="py-10">
+              <div className="max-w-3xl">
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+                  1) 현장 QR 하나로 시작
+                </h2>
+                <p className="mt-3 text-muted-foreground leading-relaxed">
+                  하객은 QR만 스캔하면 즉시 참여합니다. 별도 앱 설치 없이,
+                  축하메시지/참석 방명록/축의금 입력이{" "}
+                  <span className="text-foreground font-semibold">한 흐름</span>으로 연결됩니다.
+                </p>
+              </div>
+            </section>
+
+            <div id="sf-features" className="py-10">
+              <FeaturesSection />
+            </div>
+
+            <div id="sf-gallery" className="py-10">
+              <GallerySection />
+            </div>
+
+            <div id="sf-delivery" className="py-10">
+              <DeliverySection />
+            </div>
+          </div>
+
+          {/* RIGHT: sticky diagram (desktop only) */}
+          <aside className="hidden lg:block">
+            <div className="sticky top-24">
+              <FlowDiagram active={activeNode} />
+            </div>
+          </aside>
         </div>
       </section>
-
-      <div id="sf-features">
-        <FeaturesSection />
-      </div>
-
-      <div id="sf-gallery">
-        <GallerySection />
-      </div>
-
-      <div id="sf-delivery">
-        <DeliverySection />
-      </div>
 
       <Footer />
     </main>
