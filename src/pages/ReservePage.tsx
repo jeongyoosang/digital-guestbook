@@ -72,7 +72,7 @@ export default function ReservePage({ onServiceFlowClick, onReportClick }: Reser
             날짜와 기본 정보만 먼저 받아요.
             <br />
             <span className="text-foreground/80 font-medium">
-              예식 설정은 예식 2주 전에 진행됩니다.
+              세부설정은 예식 2주 전에 진행됩니다.
             </span>
           </p>
 

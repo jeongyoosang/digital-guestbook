@@ -25,6 +25,11 @@ import ReportPage from "./pages/app/ReportPage";
 import LegacyConfirmRedirect from "./pages/LegacyConfirmRedirect";
 import LegacyResultRedirect from "./pages/LegacyResultRedirect";
 
+import ServiceFlowPage from "./pages/ServiceFlowPage";
+
+<Route path="/service-flow" element={<ServiceFlowPage />} />
+
+
 const queryClient = new QueryClient();
 
 const App = () => (

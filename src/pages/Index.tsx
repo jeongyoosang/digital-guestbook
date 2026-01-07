@@ -18,6 +18,9 @@ export default function Index() {
     // (나중에 모달/페이지 붙일 예정)
     console.log("service flow clicked");
   };
+  const handleServiceFlow = () => {
+  navigate("/service-flow");
+  };
 
   return (
     <main>
