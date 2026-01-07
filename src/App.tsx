@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import Index from "./pages/Index";
-import ReservePage from "./pages/ReservePage"; // ✅ 추가
+import ReservePage from "./pages/ReservePage";
 import NotFound from "./pages/NotFound";
 import GuestPage from "./pages/GuestPage";
 import DisplayPage from "./pages/DisplayPage";
@@ -25,10 +25,8 @@ import ReportPage from "./pages/app/ReportPage";
 import LegacyConfirmRedirect from "./pages/LegacyConfirmRedirect";
 import LegacyResultRedirect from "./pages/LegacyResultRedirect";
 
+// ✅ Service Flow
 import ServiceFlowPage from "./pages/ServiceFlowPage";
-
-<Route path="/service-flow" element={<ServiceFlowPage />} />
-
 
 const queryClient = new QueryClient();
 
@@ -42,6 +40,9 @@ const App = () => (
         <Routes>
           {/* 랜딩 */}
           <Route path="/" element={<Index />} />
+
+          {/* ✅ 서비스 흐름 */}
+          <Route path="/service-flow" element={<ServiceFlowPage />} />
 
           {/* 예약 */}
           <Route path="/reserve" element={<ReservePage />} />

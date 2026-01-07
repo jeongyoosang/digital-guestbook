@@ -14,12 +14,7 @@ export default function Index() {
   };
 
   const handleServiceFlow = () => {
-    // 지금은 버튼만 존재, 동작 없음
-    // (나중에 모달/페이지 붙일 예정)
-    console.log("service flow clicked");
-  };
-  const handleServiceFlow = () => {
-  navigate("/service-flow");
+    navigate("/service-flow");
   };
 
   return (
@@ -29,7 +24,6 @@ export default function Index() {
         onReportClick={handleReport}
         onServiceFlowClick={handleServiceFlow}
       />
-
       <Footer />
     </main>
   );
