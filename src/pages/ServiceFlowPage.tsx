@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "framer-motion";
 
 import Footer from "@/components/Footer";
 import { FeaturesSection } from "@/components/FeaturesSection";
 import { GallerySection } from "@/components/GallerySection";
-import DeliverySection from "@/components/DeliverySection"; // 너 프로젝트에 이미 있다고 했으니 그대로 사용
+import { DeliverySection } from "@/components/DeliverySection"; // ✅ named export로 수정
 
 type FlowNode =
   | "guest"
@@ -18,7 +18,7 @@ type FlowNode =
 
 function useInViewIds(ids: string[], rootMargin = "-40% 0px -55% 0px") {
   const [activeId, setActiveId] = useState<string>(ids[0] ?? "");
-  const observers = useRef<IntersectionObserver | null>(null);
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   useEffect(() => {
     const elements = ids
@@ -27,11 +27,10 @@ function useInViewIds(ids: string[], rootMargin = "-40% 0px -55% 0px") {
 
     if (!elements.length) return;
 
-    observers.current?.disconnect();
+    observerRef.current?.disconnect();
 
     const obs = new IntersectionObserver(
       (entries) => {
-        // 화면 중앙에 가장 “많이” 들어온 섹션을 active로
         const visible = entries
           .filter((e) => e.isIntersecting)
           .sort((a, b) => (b.intersectionRatio ?? 0) - (a.intersectionRatio ?? 0));
@@ -42,7 +41,7 @@ function useInViewIds(ids: string[], rootMargin = "-40% 0px -55% 0px") {
     );
 
     elements.forEach((el) => obs.observe(el));
-    observers.current = obs;
+    observerRef.current = obs;
 
     return () => obs.disconnect();
   }, [ids, rootMargin]);
@@ -52,25 +51,7 @@ function useInViewIds(ids: string[], rootMargin = "-40% 0px -55% 0px") {
 
 function FlowDiagram({ active }: { active: FlowNode }) {
   const reduceMotion = useReducedMotion();
-
   const on = (node: FlowNode) => active === node;
-
-  // 라인 강조 규칙(“과정” 느낌을 주기 위해)
-  const lineOn = (from: FlowNode, to: FlowNode) => {
-    const order: FlowNode[] = ["guest", "qr", "report", "couple"];
-    // 메인 파이프라인(하객→QR→리포트→신랑신부)은 항상 강조 기준
-    if (
-      (from === "guest" && to === "qr" && (active === "qr" || active === "report" || active === "couple")) ||
-      (from === "qr" && to === "report" && (active === "report" || active === "couple")) ||
-      (from === "report" && to === "couple" && active === "couple")
-    ) return true;
-
-    // 서브 입력(축하/방명록/축의금 → QR)은 해당 단계에서만 강조
-    if (to === "qr" && (active === "congrats" || active === "attendance" || active === "gift" || active === "qr"))
-      return true;
-
-    return false;
-  };
 
   const baseNode =
     "rounded-2xl px-5 py-4 text-sm sm:text-base font-semibold shadow-sm border transition";
@@ -81,43 +62,31 @@ function FlowDiagram({ active }: { active: FlowNode }) {
   const green2 = "bg-[#2FA83E] text-white border-white/10";
 
   const nodeCls = (node: FlowNode, base: string) =>
-    `${baseNode} ${base} ${on(node) ? "ring-2 ring-foreground/30 scale-[1.01]" : "opacity-80"} ${
-      reduceMotion ? "" : "will-change-transform"
-    }`;
-
-  const lineCls = (enabled: boolean) =>
-    `absolute h-[2px] bg-foreground/20 ${enabled ? "bg-foreground/60" : ""}`;
+    `${baseNode} ${base} ${
+      on(node) ? "ring-2 ring-foreground/30 scale-[1.01]" : "opacity-80"
+    } ${reduceMotion ? "" : "will-change-transform"}`;
 
   return (
     <div className="relative">
-      {/* 다이어그램 영역 */}
       <div className="relative rounded-3xl border bg-background/70 backdrop-blur p-5 sm:p-6 shadow-[0_18px_60px_rgba(15,23,42,0.08)] overflow-hidden">
-        {/* 은은한 배경 */}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(120,119,198,0.14),transparent_55%),radial-gradient(circle_at_80%_20%,rgba(244,114,182,0.12),transparent_55%),radial-gradient(circle_at_50%_85%,rgba(253,224,71,0.08),transparent_60%)]" />
         <div className="relative">
-          {/* PC 레이아웃 */}
+          {/* PC */}
           <div className="hidden md:grid grid-cols-[180px_1fr_140px_140px_140px] gap-4 items-center">
-            {/* 하객 */}
             <div className={nodeCls("guest", lightBlue)}>하객</div>
 
-            {/* 입력 3개 */}
             <div className="grid grid-rows-3 gap-3">
               <div className={nodeCls("congrats", deepBlue)}>축하메시지</div>
               <div className={nodeCls("attendance", deepBlue)}>현장참석 방명록</div>
               <div className={nodeCls("gift", deepBlue)}>축의금</div>
             </div>
 
-            {/* QR */}
             <div className={nodeCls("qr", orange)}>현장 QR</div>
-
-            {/* 리포트 */}
             <div className={nodeCls("report", green)}>웨딩 리포트</div>
-
-            {/* 신랑신부 */}
             <div className={nodeCls("couple", green2)}>신랑 신부</div>
           </div>
 
-          {/* 모바일 레이아웃(세로) */}
+          {/* Mobile */}
           <div className="md:hidden grid gap-3">
             <div className={nodeCls("guest", lightBlue)}>하객</div>
 
@@ -134,11 +103,14 @@ function FlowDiagram({ active }: { active: FlowNode }) {
             </div>
           </div>
 
-          {/* 설명 한 줄 */}
           <p className="mt-4 text-xs sm:text-sm text-muted-foreground">
-            하객의 <span className="text-foreground font-semibold">축하메시지 · 참석 방명록 · 축의금</span>이
-            <span className="text-foreground font-semibold"> 현장 QR</span>로 모이고,
-            <span className="text-foreground font-semibold"> 웨딩 리포트</span>로 정리되어 신랑신부에게 전달됩니다.
+            하객의{" "}
+            <span className="text-foreground font-semibold">
+              축하메시지 · 참석 방명록 · 축의금
+            </span>
+            이 <span className="text-foreground font-semibold">현장 QR</span>로 모이고,
+            <span className="text-foreground font-semibold"> 웨딩 리포트</span>로 정리되어
+            신랑신부에게 전달됩니다.
           </p>
         </div>
       </div>
@@ -149,24 +121,22 @@ function FlowDiagram({ active }: { active: FlowNode }) {
 export default function ServiceFlowPage() {
   const navigate = useNavigate();
 
-  // 아래 섹션 id 목록(스크롤스파이)
   const sectionIds = useMemo(
     () => ["sf-qr", "sf-features", "sf-gallery", "sf-delivery"],
     []
   );
   const activeSection = useInViewIds(sectionIds);
 
-  // 섹션 → 다이어그램 하이라이트 매핑
   const activeNode: FlowNode = useMemo(() => {
     switch (activeSection) {
       case "sf-qr":
         return "qr";
       case "sf-features":
-        return "congrats"; // 기능 설명은 “하객 입력/QR” 파트로 묶여서 보여주기 좋음
+        return "congrats";
       case "sf-gallery":
-        return "attendance"; // 현장 장면 = 참석 방명록/메시지가 피어나는 구간
+        return "attendance";
       case "sf-delivery":
-        return "report"; // 전달/정리 = 웨딩 리포트
+        return "report";
       default:
         return "qr";
     }
@@ -174,9 +144,9 @@ export default function ServiceFlowPage() {
 
   return (
     <main className="min-h-screen">
-      {/* 상단 Hero + Sticky diagram */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(120,119,198,0.18),transparent_55%),radial-gradient(circle_at_80%_20%,rgba(244,114,182,0.18),transparent_55%),radial-gradient(circle_at_50%_80%,rgba(253,224,71,0.10),transparent_60%)]" />
+
         <div className="relative mx-auto max-w-7xl px-6 pt-14 pb-6 lg:pt-18">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -207,7 +177,6 @@ export default function ServiceFlowPage() {
           </div>
         </div>
 
-        {/* ✅ Sticky Diagram */}
         <div className="sticky top-0 z-30 border-b bg-background/70 backdrop-blur">
           <div className="mx-auto max-w-7xl px-6 py-4">
             <FlowDiagram active={activeNode} />
@@ -215,13 +184,15 @@ export default function ServiceFlowPage() {
         </div>
       </section>
 
-      {/* 스크롤 섹션들 */}
       <section id="sf-qr" className="mx-auto max-w-7xl px-6 py-14">
         <div className="max-w-3xl">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">1) 현장 QR 하나로 시작</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+            1) 현장 QR 하나로 시작
+          </h2>
           <p className="mt-3 text-muted-foreground leading-relaxed">
             하객은 QR만 스캔하면 즉시 참여합니다. 별도 앱 설치 없이,
-            축하메시지/참석 방명록/축의금 입력이 <span className="text-foreground font-semibold">한 흐름</span>으로 연결됩니다.
+            축하메시지/참석 방명록/축의금 입력이{" "}
+            <span className="text-foreground font-semibold">한 흐름</span>으로 연결됩니다.
           </p>
         </div>
       </section>
