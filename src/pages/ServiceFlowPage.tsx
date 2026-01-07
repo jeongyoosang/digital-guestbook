@@ -4,24 +4,27 @@ import { useNavigate } from "react-router-dom";
 import { useReducedMotion } from "framer-motion";
 
 import Footer from "@/components/Footer";
-import { FeaturesSection } from "@/components/FeaturesSection";
-import { GallerySection } from "@/components/GallerySection";
-import { DeliverySection } from "@/components/DeliverySection";
+
+// (지금은 아래 섹션들은 “서비스기능” 아래에서 너가 전부 갈아엎을 거라 했으니,
+// 일단 import는 빼고, 자리만 남겨둠. 필요하면 다시 붙이면 됨.)
+// import { FeaturesSection } from "@/components/FeaturesSection";
+// import { GallerySection } from "@/components/GallerySection";
+// import { DeliverySection } from "@/components/DeliverySection";
 
 type FlowNode =
-  | "pre_reserve"
-  | "pre_settings"
+  | "reserve"
+  | "setup"
   | "guest"
-  | "congrats"
+  | "message"
   | "guestbook"
   | "gift"
-  | "ticket" // 준비중 (점선)
   | "qr"
   | "report"
   | "couple"
-  | "thanks"; // 준비중 (점선)
+  | "ticket" // 준비중(점선)
+  | "thanks"; // 준비중(점선)
 
-function useInViewIds(ids: string[], rootMargin = "-35% 0px -55% 0px") {
+function useInViewIds(ids: string[], rootMargin = "-40% 0px -55% 0px") {
   const [activeId, setActiveId] = useState<string>(ids[0] ?? "");
   const observerRef = useRef<IntersectionObserver | null>(null);
 
@@ -42,7 +45,7 @@ function useInViewIds(ids: string[], rootMargin = "-35% 0px -55% 0px") {
 
         if (visible[0]?.target?.id) setActiveId(visible[0].target.id);
       },
-      { root: null, threshold: [0.15, 0.25, 0.35, 0.5], rootMargin }
+      { root: null, threshold: [0.12, 0.2, 0.35, 0.5], rootMargin }
     );
 
     elements.forEach((el) => obs.observe(el));
@@ -54,253 +57,315 @@ function useInViewIds(ids: string[], rootMargin = "-35% 0px -55% 0px") {
   return activeId;
 }
 
+/** Stripe 느낌: 밝은 카드 + 얇은 보더 + 은은한 섀도우 + 포인트 라인 */
 function FlowDiagram({ active }: { active: FlowNode }) {
   const reduceMotion = useReducedMotion();
-  const isOn = (node: FlowNode) => active === node;
+  const on = (n: FlowNode) => active === n;
+
+  const card =
+    "rounded-3xl border border-border/60 bg-white/65 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.10)]";
 
   const nodeBase =
-    "relative rounded-2xl px-4 py-3 text-sm sm:text-[15px] font-semibold border transition";
-  const activeFx = reduceMotion
-    ? "ring-2 ring-foreground/25"
-    : "ring-2 ring-foreground/25 shadow-[0_18px_60px_rgba(15,23,42,0.14)] scale-[1.015]";
-  const mutedFx = "opacity-85";
+    "relative rounded-2xl border px-4 py-3 text-sm font-semibold transition select-none";
+  const nodeMuted = "bg-white/70 border-border/60 text-foreground/80";
+  const nodeHot = reduceMotion
+    ? "ring-2 ring-foreground/15"
+    : "ring-2 ring-foreground/15 shadow-[0_18px_40px_rgba(15,23,42,0.16)] -translate-y-[1px]";
 
-  const cls = (node: FlowNode, base: string, dashed = false) =>
-    [
-      nodeBase,
-      base,
-      isOn(node) ? activeFx : mutedFx,
-      dashed ? "border-dashed" : "",
-      reduceMotion ? "" : "will-change-transform",
-    ].join(" ");
+  const pill =
+    "inline-flex items-center rounded-full border border-border/60 bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-foreground/70";
 
-  const lightBlue = "bg-[#A8D4FF]/55 text-[#0B3553] border-[#7DBEF7]/70";
-  const slate = "bg-background/60 backdrop-blur text-foreground border-border/70";
-  const deepBlue = "bg-[#0C5A78] text-white border-white/10";
-  const orange = "bg-[#F07C3D] text-white border-white/10";
-  const green = "bg-[#3FAE2A] text-white border-white/10";
-  const green2 = "bg-[#2FA83E] text-white border-white/10";
+  const dashedNode =
+    "bg-white/55 border-dashed border-border/70 text-foreground/60";
 
-  const pendingBadge = (
-    <span className="ml-2 inline-flex items-center rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-      준비중
-    </span>
-  );
+  const nodeCls = (id: FlowNode, extra?: string) =>
+    `${nodeBase} ${extra ?? nodeMuted} ${on(id) ? nodeHot : "opacity-90"}`;
 
-  // 메인 파이프라인 느낌(항상 살아있게)
-  const mainOn =
-    active === "qr" || active === "report" || active === "couple" || active === "thanks"
-      ? "opacity-100"
-      : "opacity-80";
+  // 선 색상(Stripe 느낌의 차분한 포인트)
+  const line = (enabled: boolean) =>
+    enabled ? "stroke-[rgba(17,24,39,0.42)]" : "stroke-[rgba(17,24,39,0.18)]";
 
-  // 선 색/스타일 (active에 따라 조금 진해짐)
-  const lineStroke = (enabled: boolean) => (enabled ? "rgba(15,23,42,0.38)" : "rgba(15,23,42,0.22)");
-  const lineWidth = (enabled: boolean) => (enabled ? 2.4 : 2);
+  const glow = (enabled: boolean) =>
+    enabled ? "drop-shadow-[0_10px_18px_rgba(99,102,241,0.22)]" : "";
 
-  // 어떤 구간에서 어떤 선을 강조할지(대략적인 룰)
-  const onPre = active === "pre_reserve" || active === "pre_settings";
-  const onInputs =
-    active === "guest" || active === "congrats" || active === "guestbook" || active === "gift" || active === "ticket";
-  const onPipe = active === "qr" || active === "report" || active === "couple" || active === "thanks";
+  // 활성 단계가 어디까지 “파이프”를 타고 왔는지
+  const reached = (target: FlowNode) => {
+    const order: FlowNode[] = [
+      "reserve",
+      "setup",
+      "guest",
+      "message",
+      "guestbook",
+      "gift",
+      "qr",
+      "report",
+      "couple",
+    ];
+    const a = order.indexOf(active);
+    const t = order.indexOf(target);
+    if (a === -1 || t === -1) return false;
+    return a >= t;
+  };
+
+  const mainLineOn = (from: FlowNode, to: FlowNode) => {
+    // 메인 흐름: 예약 → 상세설정 → 하객 → QR → 리포트 → 신랑신부
+    const key: [FlowNode, FlowNode][] = [
+      ["reserve", "setup"],
+      ["setup", "guest"],
+      ["guest", "qr"],
+      ["qr", "report"],
+      ["report", "couple"],
+    ];
+    const isKey = key.some(([a, b]) => a === from && b === to);
+    if (!isKey) return false;
+
+    // active가 to 단계 이후면 켜짐
+    const order: FlowNode[] = ["reserve", "setup", "guest", "qr", "report", "couple"];
+    const a = order.indexOf(active as any);
+    const toIdx = order.indexOf(to as any);
+    if (a === -1 || toIdx === -1) return false;
+    return a >= toIdx;
+  };
 
   return (
-    <div className="relative">
-      <div className="relative rounded-3xl border bg-background/75 backdrop-blur p-5 sm:p-6 shadow-[0_18px_60px_rgba(15,23,42,0.08)] overflow-hidden">
-        {/* 배경 */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(120,119,198,0.16),transparent_58%),radial-gradient(circle_at_82%_20%,rgba(244,114,182,0.14),transparent_58%),radial-gradient(circle_at_50%_88%,rgba(253,224,71,0.10),transparent_62%)]" />
-        <div className="relative">
-          {/* ===== 예식 전 (상단) ===== */}
-          <div className="mb-4 rounded-3xl border bg-background/55 backdrop-blur p-4">
-            <div className="text-xs font-semibold text-muted-foreground mb-3">예식 전</div>
+    <div className={card}>
+      <div className="p-5 sm:p-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground">서비스 흐름</p>
+            <p className="mt-1 text-base font-semibold tracking-tight">
+              예식 전 준비부터 <span className="wedding-gradient">QR → 리포트</span>까지
+            </p>
+          </div>
+          <div className={pill}>실시간 강조</div>
+        </div>
 
-            <div className="grid grid-cols-[1fr_28px_1fr] items-center gap-3">
-              <div className={cls("pre_reserve", slate)}>
-                예약
-                <div className="mt-1 text-[11px] font-normal text-muted-foreground">예약 문의 접수</div>
-              </div>
-
-              <div className="flex items-center justify-center text-muted-foreground">→</div>
-
-              <div className={cls("pre_settings", slate)}>
-                예식 상세 설정
-                <div className="mt-1 text-[11px] font-normal text-muted-foreground">시간·수령인·템플릿</div>
-              </div>
-            </div>
-
-            {/* Pre 선 (SVG) */}
-            <svg className="mt-3 h-6 w-full" viewBox="0 0 1000 60" preserveAspectRatio="none" aria-hidden="true">
+        <div className="mt-4 rounded-2xl border border-border/60 bg-white/55 p-4">
+          {/* 다이어그램 캔버스 */}
+          <div className="relative">
+            {/* SVG 라인 (레이아웃 고정) */}
+            <svg
+              className={`absolute left-0 top-0 h-full w-full ${glow(
+                active === "qr" || active === "report" || active === "couple"
+              )}`}
+              viewBox="0 0 520 520"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
               <defs>
-                <marker id="arrow-pre" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto">
-                  <path d="M0,0 L10,5 L0,10 Z" fill={lineStroke(onPre)} />
+                <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+                  <path d="M0,0 L8,4 L0,8 Z" fill="rgba(17,24,39,0.35)" />
                 </marker>
               </defs>
+
+              {/* 예약 -> 상세설정 */}
               <path
-                d="M120 30 L880 30"
-                stroke={lineStroke(onPre)}
-                strokeWidth={lineWidth(onPre)}
-                markerEnd="url(#arrow-pre)"
+                d="M110 110 L250 110"
+                className={line(mainLineOn("reserve", "setup"))}
+                strokeWidth="2"
+                fill="none"
+                markerEnd="url(#arr)"
+              />
+
+              {/* 상세설정 -> 하객 */}
+              <path
+                d="M340 110 L340 210"
+                className={line(mainLineOn("setup", "guest"))}
+                strokeWidth="2"
+                fill="none"
+                markerEnd="url(#arr)"
+              />
+
+              {/* 하객 -> QR */}
+              <path
+                d="M110 260 L250 260"
+                className={line(mainLineOn("guest", "qr"))}
+                strokeWidth="2"
+                fill="none"
+                markerEnd="url(#arr)"
+              />
+
+              {/* QR -> 리포트 */}
+              <path
+                d="M340 260 L340 350"
+                className={line(mainLineOn("qr", "report"))}
+                strokeWidth="2"
+                fill="none"
+                markerEnd="url(#arr)"
+              />
+
+              {/* 리포트 -> 신랑신부 */}
+              <path
+                d="M110 420 L250 420"
+                className={line(mainLineOn("report", "couple"))}
+                strokeWidth="2"
+                fill="none"
+                markerEnd="url(#arr)"
+              />
+
+              {/* 하객이 남기는 것 -> QR (3갈래 느낌) */}
+              <path
+                d="M430 220 L430 245 L360 245"
+                className={line(reached("qr") || active === "message" || active === "guestbook" || active === "gift")}
+                strokeWidth="2"
+                fill="none"
+                markerEnd="url(#arr)"
+              />
+              <path
+                d="M430 260 L360 260"
+                className={line(reached("qr") || active === "message" || active === "guestbook" || active === "gift")}
+                strokeWidth="2"
+                fill="none"
+                markerEnd="url(#arr)"
+              />
+              <path
+                d="M430 300 L430 275 L360 275"
+                className={line(reached("qr") || active === "message" || active === "guestbook" || active === "gift")}
+                strokeWidth="2"
+                fill="none"
+                markerEnd="url(#arr)"
+              />
+
+              {/* 점선: 식권(축의금 기반) */}
+              <path
+                d="M430 320 L430 352"
+                stroke="rgba(17,24,39,0.26)"
+                strokeWidth="2"
+                strokeDasharray="4 4"
+                fill="none"
+                markerEnd="url(#arr)"
+              />
+
+              {/* 점선: 감사인사(신랑신부 -> 하객) */}
+              <path
+                d="M320 430 C 360 430, 430 430, 430 310"
+                stroke="rgba(17,24,39,0.26)"
+                strokeWidth="2"
+                strokeDasharray="5 5"
                 fill="none"
               />
             </svg>
-          </div>
 
-          {/* ===== 예식 당일 (하단) ===== */}
-          <div className="rounded-3xl border bg-background/55 backdrop-blur p-4">
-            <div className="text-xs font-semibold text-muted-foreground mb-3">예식 당일</div>
-
-            {/* PC 레이아웃 */}
-            <div className="hidden md:grid grid-cols-[200px_330px_150px_150px_150px] gap-4 items-center">
-              {/* 하객 */}
-              <div className={cls("guest", lightBlue)}>
-                하객
-                <div className="mt-1 text-[11px] font-normal opacity-80">QR로 참여</div>
+            {/* 노드 배치(absolute) */}
+            <div className="relative h-[520px] w-full">
+              {/* 예식 전 */}
+              <div className="absolute left-3 top-3 text-[11px] font-semibold text-muted-foreground">
+                예식 전
               </div>
 
-              {/* 입력 3 + (준비중 식권) */}
-              <div className="relative rounded-3xl border bg-background/55 backdrop-blur p-4">
-                <div className="text-[11px] font-semibold text-muted-foreground mb-3">하객이 남기는 것</div>
-                <div className="grid grid-rows-3 gap-2">
-                  <div className={cls("congrats", deepBlue)}>축하메시지</div>
-                  <div className={cls("guestbook", deepBlue)}>방명록</div>
-                  <div className={cls("gift", deepBlue)}>
-                    축의금
-                    {/* 축의금 하위 준비중: 식권 */}
-                    <div className="mt-2">
-                      <div className={cls("ticket", slate, true)}>
-                        식권 {pendingBadge}
-                        <div className="mt-1 text-[11px] font-normal text-muted-foreground">
-                          (축의금 연동 기반 서비스)
-                        </div>
-                      </div>
-                    </div>
+              <div className="absolute left-3 top-12 w-[200px]">
+                <div className={nodeCls("reserve")}>
+                  예약
+                  <div className="mt-1 text-[11px] font-normal text-foreground/60">
+                    예약 문의 접수
                   </div>
                 </div>
+              </div>
 
-                {/* 그룹 → QR 연결 가이드 */}
-                <div className="pointer-events-none absolute -right-5 top-1/2 -translate-y-1/2">
-                  <div className="h-[2px] w-10 bg-foreground/25" />
+              <div className="absolute left-[245px] top-12 w-[240px]">
+                <div className={nodeCls("setup")}>
+                  예식 상세 설정
+                  <div className="mt-1 text-[11px] font-normal text-foreground/60">
+                    시간 · 수령인 · 템플릿
+                  </div>
+                </div>
+              </div>
+
+              {/* 예식 당일 */}
+              <div className="absolute left-3 top-[175px] text-[11px] font-semibold text-muted-foreground">
+                예식 당일
+              </div>
+
+              <div className="absolute left-3 top-[225px] w-[200px]">
+                <div className={nodeCls("guest")}>
+                  하객
+                  <div className="mt-1 text-[11px] font-normal text-foreground/60">
+                    QR로 참여
+                  </div>
+                </div>
+              </div>
+
+              {/* 하객이 남기는 것(3가지) */}
+              <div className="absolute left-[285px] top-[205px] w-[220px] rounded-2xl border border-border/60 bg-white/70 p-3">
+                <div className="text-[11px] font-semibold text-muted-foreground">
+                  하객이 남기는 것
+                </div>
+                <div className="mt-2 grid gap-2">
+                  <div className={nodeCls("message", "bg-[#0C5A78]/90 border-white/10 text-white")}>
+                    축하메시지
+                  </div>
+                  <div className={nodeCls("guestbook", "bg-[#0C5A78]/90 border-white/10 text-white")}>
+                    방명록
+                  </div>
+                  <div className={nodeCls("gift", "bg-[#0C5A78]/90 border-white/10 text-white")}>
+                    축의금
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className={`${pill} border-white/20 bg-white/15 text-white/90`}>식권</span>
+                      <span className={`${pill} border-white/20 bg-white/15 text-white/90`}>준비중</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               {/* QR */}
-              <div className={`${cls("qr", orange)} ${mainOn}`}>
-                현장 QR
-                <div className="mt-1 text-[11px] font-normal opacity-85">수렴점</div>
-              </div>
-
-              {/* 리포트 */}
-              <div className={`${cls("report", green)} ${mainOn}`}>
-                웨딩 리포트
-                <div className="mt-1 text-[11px] font-normal opacity-85">정리·다운로드</div>
-              </div>
-
-              {/* 신랑신부 */}
-              <div className={`${cls("couple", green2)} ${mainOn}`}>
-                신랑·신부
-                <div className="mt-1 text-[11px] font-normal opacity-85">수령·보관</div>
-              </div>
-            </div>
-
-            {/* PC: 연결선 + 감사루프(점선) */}
-            <div className="hidden md:block pointer-events-none relative mt-2">
-              <svg className="h-[110px] w-full" viewBox="0 0 1000 220" preserveAspectRatio="none" aria-hidden="true">
-                <defs>
-                  <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto">
-                    <path d="M0,0 L10,5 L0,10 Z" fill={lineStroke(onPipe)} />
-                  </marker>
-                  <marker id="arrow-muted" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto">
-                    <path d="M0,0 L10,5 L0,10 Z" fill={lineStroke(onInputs)} />
-                  </marker>
-                </defs>
-
-                {/* 입력들 → QR */}
-                <path
-                  d="M390 55 L520 55"
-                  stroke={lineStroke(onInputs)}
-                  strokeWidth={lineWidth(onInputs)}
-                  markerEnd="url(#arrow-muted)"
-                  fill="none"
-                />
-
-                {/* QR → 리포트 → 신랑신부 */}
-                <path
-                  d="M540 55 L690 55"
-                  stroke={lineStroke(onPipe)}
-                  strokeWidth={lineWidth(onPipe)}
-                  markerEnd="url(#arrow)"
-                  fill="none"
-                />
-                <path
-                  d="M710 55 L860 55"
-                  stroke={lineStroke(onPipe)}
-                  strokeWidth={lineWidth(onPipe)}
-                  markerEnd="url(#arrow)"
-                  fill="none"
-                />
-
-                {/* 감사 인사 루프 (준비중: 점선) : 신랑신부 → 하객 */}
-                <path
-                  d="M860 95 C860 190, 160 190, 160 105"
-                  stroke="rgba(15,23,42,0.22)"
-                  strokeWidth="2"
-                  strokeDasharray="6 6"
-                  fill="none"
-                  markerEnd="url(#arrow-muted)"
-                />
-
-                {/* loop label */}
-                <text x="500" y="205" textAnchor="middle" fontSize="12" fill="rgba(15,23,42,0.55)">
-                  감사 인사 (준비중)
-                </text>
-              </svg>
-            </div>
-
-            {/* Mobile 레이아웃 */}
-            <div className="md:hidden grid gap-3">
-              <div className={cls("guest", lightBlue)}>하객</div>
-
-              <div className="rounded-3xl border bg-background/55 backdrop-blur p-4">
-                <div className="text-[11px] font-semibold text-muted-foreground mb-3">하객이 남기는 것</div>
-                <div className="grid gap-2">
-                  <div className={cls("congrats", deepBlue)}>축하메시지</div>
-                  <div className={cls("guestbook", deepBlue)}>방명록</div>
-                  <div className={cls("gift", deepBlue)}>
-                    축의금
-                    <div className="mt-2">
-                      <div className={cls("ticket", slate, true)}>
-                        식권 {pendingBadge}
-                        <div className="mt-1 text-[11px] font-normal text-muted-foreground">
-                          (준비중)
-                        </div>
-                      </div>
-                    </div>
+              <div className="absolute left-[245px] top-[245px] w-[200px]">
+                <div className={nodeCls("qr", "bg-[#F07C3D]/95 border-white/10 text-white")}>
+                  현장 QR
+                  <div className="mt-1 text-[11px] font-normal text-white/85">
+                    흐름이 끊기지 않게
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <div className={`${cls("qr", orange)} ${mainOn}`}>현장 QR</div>
-                <div className={`${cls("report", green)} ${mainOn}`}>웨딩 리포트</div>
-                <div className={`${cls("couple", green2)} ${mainOn}`}>신랑·신부</div>
-              </div>
-
-              {/* mobile loop label only */}
-              <div className={cls("thanks", slate, true)}>
-                감사 인사 {pendingBadge}
-                <div className="mt-1 text-[11px] font-normal text-muted-foreground">
-                  (신랑·신부 → 하객)
+              {/* 리포트 */}
+              <div className="absolute left-[245px] top-[345px] w-[240px]">
+                <div className={nodeCls("report", "bg-[#2FA83E]/92 border-white/10 text-white")}>
+                  웨딩 리포트
+                  <div className="mt-1 text-[11px] font-normal text-white/85">
+                    메시지·방명록·정산
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <p className="mt-4 text-xs sm:text-sm text-muted-foreground">
-              예식 당일, 하객의 <span className="text-foreground font-semibold">축하메시지·방명록·축의금</span>이
-              <span className="text-foreground font-semibold"> 현장 QR</span>로 모이고,
-              <span className="text-foreground font-semibold"> 웨딩 리포트</span>로 정리되어
-              <span className="text-foreground font-semibold"> 신랑·신부</span>에게 전달됩니다.{" "}
-              <span className="ml-1 text-muted-foreground">(식권/감사 인사는 준비중)</span>
-            </p>
+              {/* 신랑신부 */}
+              <div className="absolute left-3 top-[395px] w-[200px]">
+                <div className={nodeCls("couple", "bg-[#3FAE2A]/92 border-white/10 text-white")}>
+                  신랑 · 신부
+                  <div className="mt-1 text-[11px] font-normal text-white/85">
+                    보관·정리·공유
+                  </div>
+                </div>
+
+                {/* 감사인사(준비중) */}
+                <div className="mt-2 rounded-2xl border border-dashed border-border/70 bg-white/55 px-4 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm font-semibold text-foreground/70">감사인사</div>
+                    <span className={pill}>준비중</span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-foreground/55">
+                    리포트 기반 자동 발송(예정)
+                  </div>
+                </div>
+              </div>
+
+              {/* 하단 설명 */}
+              <div className="absolute left-0 right-0 bottom-0 px-1">
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  예식 당일, 하객의 축하메시지·방명록·축의금이 <span className="font-semibold text-foreground/80">현장 QR</span>로 모이고,
+                  <span className="font-semibold text-foreground/80"> 웨딩 리포트</span>로 정리되어 신랑·신부에게 전달됩니다.
+                  <span className="ml-1">(식권/감사 인사는 준비중)</span>
+                </p>
+              </div>
+            </div>
           </div>
+        </div>
+
+        {/* 한 줄 요약 */}
+        <div className="mt-4 rounded-2xl border border-border/60 bg-white/55 px-4 py-3">
+          <p className="text-sm text-foreground/80">
+            <span className="font-semibold">예식 전</span>에 준비를 끝내고,
+            <span className="font-semibold"> 예식 당일</span>엔 <span className="wedding-gradient font-semibold">QR</span>로만 운영되게 만듭니다.
+          </p>
         </div>
       </div>
     </div>
@@ -310,77 +375,59 @@ function FlowDiagram({ active }: { active: FlowNode }) {
 export default function ServiceFlowPage() {
   const navigate = useNavigate();
 
-  // 스크롤 섹션 목록
+  // 왼쪽 스텝 섹션 id
   const sectionIds = useMemo(
     () => [
-      "sf-pre-reserve",
-      "sf-pre-settings",
-      "sf-day-guest",
-      "sf-day-congrats",
-      "sf-day-guestbook",
-      "sf-day-gift",
-      "sf-day-ticket",
-      "sf-day-qr",
-      "sf-day-report",
-      "sf-day-couple",
-      "sf-post-thanks",
-      "sf-features",
-      "sf-gallery",
-      "sf-delivery",
+      "sf-reserve",
+      "sf-setup",
+      "sf-guest",
+      "sf-message",
+      "sf-guestbook",
+      "sf-gift",
+      "sf-qr",
+      "sf-report",
+      "sf-couple",
     ],
     []
   );
+
   const activeSection = useInViewIds(sectionIds);
 
-  // 섹션 → 노드 매핑
   const activeNode: FlowNode = useMemo(() => {
     switch (activeSection) {
-      case "sf-pre-reserve":
-        return "pre_reserve";
-      case "sf-pre-settings":
-        return "pre_settings";
-
-      case "sf-day-guest":
+      case "sf-reserve":
+        return "reserve";
+      case "sf-setup":
+        return "setup";
+      case "sf-guest":
         return "guest";
-      case "sf-day-congrats":
-        return "congrats";
-      case "sf-day-guestbook":
+      case "sf-message":
+        return "message";
+      case "sf-guestbook":
         return "guestbook";
-      case "sf-day-gift":
+      case "sf-gift":
         return "gift";
-      case "sf-day-ticket":
-        return "ticket";
-
-      case "sf-day-qr":
+      case "sf-qr":
         return "qr";
-      case "sf-day-report":
+      case "sf-report":
         return "report";
-      case "sf-day-couple":
+      case "sf-couple":
         return "couple";
-      case "sf-post-thanks":
-        return "thanks";
-
-      // 기존 섹션들(너가 이미 만든 것들)
-      case "sf-features":
-        return "qr"; // 기능 = 참여/수집 구간 느낌
-      case "sf-gallery":
-        return "guestbook"; // 현장 갤러리 = 방명록/메시지 구간 느낌
-      case "sf-delivery":
-        return "report"; // 전달/정리 = 리포트
       default:
-        return "qr";
+        return "reserve";
     }
   }, [activeSection]);
 
   return (
-    <main className="relative min-h-screen overflow-hidden">
+    <main className="relative min-h-screen">
       {/* 배경 */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(120,119,198,0.18),transparent_55%),radial-gradient(circle_at_80%_20%,rgba(244,114,182,0.18),transparent_55%),radial-gradient(circle_at_50%_80%,rgba(253,224,71,0.10),transparent_60%)]" />
-      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-background" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(120,119,198,0.18),transparent_55%),radial-gradient(circle_at_80%_20%,rgba(244,114,182,0.18),transparent_55%),radial-gradient(circle_at_50%_80%,rgba(253,224,71,0.10),transparent_60%)]" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-background" />
 
-      {/* 상단 헤더(ReservePage와 통일감) */}
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-10">
+      {/* 상단 바: ReservePage랑 동일 톤 */}
+      <div className="relative mx-auto max-w-7xl px-6 pt-10">
         <div className="flex items-center justify-between">
+          {/* 왼쪽 로고(랜딩 이동) */}
           <button
             type="button"
             onClick={() => navigate("/")}
@@ -392,6 +439,7 @@ export default function ServiceFlowPage() {
             </span>
           </button>
 
+          {/* 오른쪽: 예약문의 / 리포트 */}
           <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
@@ -416,162 +464,153 @@ export default function ServiceFlowPage() {
             </button>
           </div>
         </div>
-
-        {/* 타이틀 */}
-        <header className="mt-10 pb-6">
-          <p className="text-sm text-muted-foreground">서비스 흐름</p>
-          <h1 className="mt-2 text-3xl sm:text-4xl font-bold tracking-tight">
-            예식 전 준비부터 <span className="wedding-gradient">QR → 리포트</span>까지
-          </h1>
-          <p className="mt-3 text-base text-muted-foreground max-w-2xl">
-            “예약 → 예식 상세 설정(예식 전) → 하객(예식 당일) → 메시지/방명록/축의금 → QR → 웨딩 리포트 → 신랑·신부”
-            <br />
-            <span className="text-muted-foreground">
-              * 식권/감사 인사는 준비중(점선)으로 표기합니다.
-            </span>
-          </p>
-        </header>
       </div>
 
-      {/* ===== 레이아웃: PC는 2컬럼(왼쪽 스크롤 / 오른쪽 sticky), Mobile은 상단 sticky ===== */}
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pb-16">
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-10 items-start">
-          {/* LEFT: 스크롤 컨텐츠 */}
-          <div className="min-w-0">
-            {/* Mobile sticky diagram */}
-            <div className="lg:hidden sticky top-0 z-30 border-b bg-background/70 backdrop-blur">
-              <div className="py-4">
+      {/* Hero */}
+      <section className="relative mx-auto max-w-7xl px-6 pt-10 pb-8">
+        <p className="text-sm text-muted-foreground">서비스 흐름</p>
+        <h1 className="mt-2 text-3xl sm:text-4xl font-bold tracking-tight">
+          예식 전 준비부터 <span className="wedding-gradient">QR → 리포트</span>까지
+        </h1>
+        <p className="mt-3 text-base text-muted-foreground max-w-3xl leading-relaxed">
+          “예약 → 예식 상세 설정(예식 전) → 하객(예식 당일) → 메시지/방명록/축의금 → QR → 웨딩 리포트 → 신랑·신부”
+          <br />
+          <span className="text-foreground/70">
+            * 식권/감사 인사는 <span className="font-semibold">준비중(점선)</span>으로 표시합니다.
+          </span>
+        </p>
+      </section>
+
+      {/* Desktop: 좌(콘텐츠) / 우(Sticky Diagram) */}
+      <section className="relative mx-auto max-w-7xl px-6 pb-16">
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_460px]">
+          {/* LEFT: steps */}
+          <div className="space-y-12">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">예식 전</h2>
+              <div className="mt-4 space-y-4">
+                <StepCard
+                  id="sf-reserve"
+                  title="1) 예약"
+                  desc="예식 날짜·기본 정보만 먼저 받고, 확정 안내는 카카오톡으로 진행됩니다."
+                />
+                <StepCard
+                  id="sf-setup"
+                  title="2) 예식 상세 설정"
+                  desc="예식 시간, 수령인(혼주/스태프 포함), 화면 템플릿 등 실제 운영에 필요한 설정을 확정합니다."
+                />
+              </div>
+            </div>
+
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">예식 당일</h2>
+              <div className="mt-4 space-y-4">
+                <StepCard
+                  id="sf-guest"
+                  title="3) 하객"
+                  desc="하객은 별도 앱 설치 없이 QR로 바로 참여합니다. (현장 흐름이 끊기지 않는 게 핵심)"
+                />
+                <StepCard
+                  id="sf-message"
+                  title="4) 축하메시지"
+                  desc="짧고 빠르게 남길 수 있도록 UX를 단순하게 유지합니다."
+                />
+                <StepCard
+                  id="sf-guestbook"
+                  title="5) 방명록"
+                  desc="‘현장 참석 기록’으로 남고, 리포트에서 정리됩니다."
+                />
+                <StepCard
+                  id="sf-gift"
+                  title="6) 축의금"
+                  desc="축의금 내역이 리포트로 정리됩니다. (식권 연동은 준비중)"
+                  badge="식권 준비중"
+                  dashedBadge
+                />
+                <StepCard
+                  id="sf-qr"
+                  title="7) 현장 QR"
+                  desc="메시지/방명록/축의금이 QR 한 흐름으로 모이게 설계합니다."
+                />
+                <StepCard
+                  id="sf-report"
+                  title="8) 웨딩 리포트"
+                  desc="예식 직후 메시지·방명록·정산을 한 번에 정리해 전달합니다."
+                />
+                <StepCard
+                  id="sf-couple"
+                  title="9) 신랑·신부"
+                  desc="보관·정리·공유까지 이어집니다. (감사 인사 자동화는 준비중)"
+                  badge="감사인사 준비중"
+                  dashedBadge
+                />
+              </div>
+            </div>
+
+            {/* TODO: 여기 아래(서비스기능 이하)는 너가 전부 갈아엎는 구간 */}
+            <div className="pt-6 border-t border-border/60">
+              <p className="text-sm text-muted-foreground">
+                아래 구간(서비스 기능/갤러리/딜리버리)은 다음 단계에서 전체 재구성.
+              </p>
+            </div>
+          </div>
+
+          {/* RIGHT: sticky diagram (Desktop) */}
+          <div className="hidden lg:block">
+            <div className="sticky top-24">
+              {/* 잘림 방지: 화면 작으면 카드 내부 스크롤 */}
+              <div className="max-h-[calc(100vh-7.5rem)] overflow-auto pr-1">
                 <FlowDiagram active={activeNode} />
               </div>
             </div>
-
-            {/* 예식 전 */}
-            <section id="sf-pre-reserve" className="pt-10">
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">예식 전</h2>
-              <div className="mt-5 rounded-3xl border bg-white/70 backdrop-blur-xl shadow-[0_20px_60px_rgba(15,23,42,0.10)] p-6">
-                <h3 className="text-xl font-semibold">1) 예약</h3>
-                <p className="mt-2 text-muted-foreground leading-relaxed">
-                  예식 날짜·기본 정보만 먼저 받고, 확정 안내는 카카오톡으로 진행됩니다.
-                </p>
-              </div>
-            </section>
-
-            <section id="sf-pre-settings" className="pt-10">
-              <div className="rounded-3xl border bg-white/70 backdrop-blur-xl shadow-[0_20px_60px_rgba(15,23,42,0.10)] p-6">
-                <h3 className="text-xl font-semibold">2) 예식 상세 설정</h3>
-                <p className="mt-2 text-muted-foreground leading-relaxed">
-                  예식 시간, 수령인(혼주/스태프 포함), 화면 템플릿 등 실제 운영에 필요한 설정을 확정합니다.
-                </p>
-              </div>
-            </section>
-
-            {/* 예식 당일 */}
-            <section id="sf-day-guest" className="pt-14">
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">예식 당일</h2>
-              <div className="mt-5 rounded-3xl border bg-white/70 backdrop-blur-xl shadow-[0_20px_60px_rgba(15,23,42,0.10)] p-6">
-                <h3 className="text-xl font-semibold">3) 하객</h3>
-                <p className="mt-2 text-muted-foreground leading-relaxed">
-                  하객은 별도 앱 설치 없이 QR로 바로 참여합니다. (현장 흐름이 끊기지 않는 게 핵심)
-                </p>
-              </div>
-            </section>
-
-            <section id="sf-day-congrats" className="pt-10">
-              <div className="rounded-3xl border bg-white/70 backdrop-blur-xl shadow-[0_20px_60px_rgba(15,23,42,0.10)] p-6">
-                <h3 className="text-xl font-semibold">4) 축하메시지</h3>
-                <p className="mt-2 text-muted-foreground leading-relaxed">
-                  짧고 빠르게 남길 수 있도록 UX를 단순하게 유지합니다.
-                </p>
-              </div>
-            </section>
-
-            <section id="sf-day-guestbook" className="pt-10">
-              <div className="rounded-3xl border bg-white/70 backdrop-blur-xl shadow-[0_20px_60px_rgba(15,23,42,0.10)] p-6">
-                <h3 className="text-xl font-semibold">5) 방명록</h3>
-                <p className="mt-2 text-muted-foreground leading-relaxed">
-                  ‘현장 참석 기록’으로 남고, 리포트에서 정리됩니다.
-                </p>
-              </div>
-            </section>
-
-            <section id="sf-day-gift" className="pt-10">
-              <div className="rounded-3xl border bg-white/70 backdrop-blur-xl shadow-[0_20px_60px_rgba(15,23,42,0.10)] p-6">
-                <h3 className="text-xl font-semibold">6) 축의금</h3>
-                <p className="mt-2 text-muted-foreground leading-relaxed">
-                  축의금 내역을 리포트로 정리하는 흐름까지 연결됩니다.
-                </p>
-              </div>
-            </section>
-
-            <section id="sf-day-ticket" className="pt-10">
-              <div className="rounded-3xl border border-dashed bg-white/70 backdrop-blur-xl shadow-[0_20px_60px_rgba(15,23,42,0.08)] p-6">
-                <h3 className="text-xl font-semibold">
-                  6-1) 식권 <span className="ml-2 text-xs text-muted-foreground">(준비중)</span>
-                </h3>
-                <p className="mt-2 text-muted-foreground leading-relaxed">
-                  축의금 흐름과 연결되는 부가 서비스로 준비중입니다. (점선으로 표시)
-                </p>
-              </div>
-            </section>
-
-            <section id="sf-day-qr" className="pt-10">
-              <div className="rounded-3xl border bg-white/70 backdrop-blur-xl shadow-[0_20px_60px_rgba(15,23,42,0.10)] p-6">
-                <h3 className="text-xl font-semibold">7) 현장 QR (수렴점)</h3>
-                <p className="mt-2 text-muted-foreground leading-relaxed">
-                  축하메시지/방명록/축의금이 하나의 흐름으로 모이는 지점입니다.
-                </p>
-              </div>
-            </section>
-
-            <section id="sf-day-report" className="pt-10">
-              <div className="rounded-3xl border bg-white/70 backdrop-blur-xl shadow-[0_20px_60px_rgba(15,23,42,0.10)] p-6">
-                <h3 className="text-xl font-semibold">8) 웨딩 리포트</h3>
-                <p className="mt-2 text-muted-foreground leading-relaxed">
-                  예식이 끝나면 메시지/방명록/축의금을 하나의 리포트로 정리해 전달합니다.
-                </p>
-              </div>
-            </section>
-
-            <section id="sf-day-couple" className="pt-10">
-              <div className="rounded-3xl border bg-white/70 backdrop-blur-xl shadow-[0_20px_60px_rgba(15,23,42,0.10)] p-6">
-                <h3 className="text-xl font-semibold">9) 신랑·신부</h3>
-                <p className="mt-2 text-muted-foreground leading-relaxed">
-                  정산/보관/공유를 한 번에 끝내는 것이 목적입니다.
-                </p>
-              </div>
-            </section>
-
-            <section id="sf-post-thanks" className="pt-10">
-              <div className="rounded-3xl border border-dashed bg-white/70 backdrop-blur-xl shadow-[0_20px_60px_rgba(15,23,42,0.08)] p-6">
-                <h3 className="text-xl font-semibold">
-                  10) 감사 인사 <span className="ml-2 text-xs text-muted-foreground">(준비중)</span>
-                </h3>
-                <p className="mt-2 text-muted-foreground leading-relaxed">
-                  리포트 기반으로 하객에게 감사 인사를 자동화하는 기능은 준비중입니다. (점선 루프)
-                </p>
-              </div>
-            </section>
-
-            {/* 기존 섹션(이미 만들어둔 컴포넌트 연결) */}
-            <div id="sf-features" className="pt-16">
-              <FeaturesSection />
-            </div>
-            <div id="sf-gallery" className="pt-10">
-              <GallerySection />
-            </div>
-            <div id="sf-delivery" className="pt-10">
-              <DeliverySection />
-            </div>
-
-            <Footer />
           </div>
+        </div>
+      </section>
 
-          {/* RIGHT: PC sticky diagram */}
-          <aside className="hidden lg:block sticky top-20">
+      {/* Mobile: top sticky diagram */}
+      <div className="lg:hidden sticky top-0 z-30 border-b border-border/60 bg-background/70 backdrop-blur">
+        <div className="mx-auto max-w-7xl px-4 py-3">
+          <div className="max-h-[55vh] overflow-auto">
             <FlowDiagram active={activeNode} />
-          </aside>
+          </div>
         </div>
       </div>
+
+      <Footer />
     </main>
+  );
+}
+
+function StepCard({
+  id,
+  title,
+  desc,
+  badge,
+  dashedBadge,
+}: {
+  id: string;
+  title: string;
+  desc: string;
+  badge?: string;
+  dashedBadge?: boolean;
+}) {
+  return (
+    <section
+      id={id}
+      className="rounded-3xl bg-white/65 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.08)] border border-border/60 p-5 sm:p-6 scroll-mt-28"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="text-base sm:text-lg font-semibold tracking-tight">{title}</h3>
+        {badge ? (
+          <span
+            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold
+            ${dashedBadge ? "border border-dashed border-border/70 bg-white/55 text-foreground/70" : "border border-border/60 bg-white/70 text-foreground/70"}`}
+          >
+            {badge}
+          </span>
+        ) : null}
+      </div>
+      <p className="mt-2 text-sm sm:text-base text-muted-foreground leading-relaxed">{desc}</p>
+    </section>
   );
 }
