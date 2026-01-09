@@ -26,7 +26,7 @@ const STEPS: StepData[] = [
     dDay: "D-30 ~ 180", 
     icon: "📅", 
     label: "예약하기",
-    images: ["/serviceflow1.jpg", "/serviceflow1-2.jpg"], // 순서: 카톡(왼쪽), 예약폼(오른쪽)
+    images: ["/serviceflow1.jpg", "/serviceflow1-2.jpg"], 
     theme: "prep" 
   },
   { id: "setup", sectionId: "sf-setup", title: "02. 상세 설정", desc: "신랑·신부 정보, 감사 문구, 계좌 등 우리만의 예식 페이지를 맞춤 구성합니다.", dDay: "D-14 ~ 30", icon: "⚙️", label: "상세 설정", images: ["https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=1000"], theme: "prep" },
@@ -61,18 +61,8 @@ export default function ServiceFlowPage() {
         </div>
       </header>
 
-      {/* Mobile Nav */}
-      <div className="sticky top-[65px] z-40 flex w-full justify-around bg-white/90 p-3 backdrop-blur-md border-b border-slate-100 lg:hidden">
-        {STEPS.map((step) => (
-          <div key={step.id} className={`flex h-11 w-11 items-center justify-center rounded-xl border-2 transition-all ${activeId === step.id ? "border-pink-400 bg-white shadow-md scale-110" : "border-transparent opacity-20"}`}>
-            <span className="text-xl">{step.icon}</span>
-          </div>
-        ))}
-      </div>
-
       <div className="mx-auto max-w-7xl px-6 py-16 lg:py-24">
         <div className="grid gap-16 lg:grid-cols-[1fr_380px]">
-          {/* LEFT: Content Cards */}
           <div className="space-y-40 lg:space-y-64">
             {STEPS.map((step) => (
               <section key={step.id} id={step.sectionId} className="scroll-mt-48">
@@ -82,26 +72,35 @@ export default function ServiceFlowPage() {
                   <p className="text-lg leading-relaxed text-slate-500">{step.desc}</p>
                 </div>
 
-                {/* 중앙 정렬된 폰 프레임 이미지 섹션 */}
-                <div className={`flex flex-wrap gap-6 ${step.id === "reserve" ? "justify-center" : "justify-start"}`}>
+                <div className={`flex flex-wrap gap-8 ${step.id === "reserve" ? "justify-center" : "justify-start"}`}>
                   {step.images.map((img, idx) => (
                     <div 
                       key={idx} 
-                      className={`overflow-hidden transition-all duration-500 bg-white shadow-2xl
+                      className={`overflow-hidden transition-all duration-500 bg-white
                         ${step.id === "reserve" 
-                          ? "w-[42%] lg:w-[240px] aspect-[9/19] rounded-[2.5rem] border-[10px] border-slate-900 relative" 
-                          : `rounded-[2.5rem] border border-slate-100 ${step.images.length >= 3 && idx === 0 ? "w-full aspect-video" : "w-[48%] aspect-[4/3]"}`
+                          ? "w-[42%] lg:w-[250px] aspect-[9/19] rounded-[3rem] border-[12px] border-slate-200 shadow-[0_20px_50px_rgba(0,0,0,0.1)] relative" 
+                          : `rounded-[2.5rem] border border-slate-100 ${step.images.length >= 3 && idx === 0 ? "w-full aspect-video" : "w-[48%] aspect-[4/3] shadow-lg"}`
                         }`}
                     >
-                      {/* 폰 프레임 상단 스피커 홀 (디테일) */}
+                      {/* 폰 상단 상태바 디자인 추가 */}
                       {step.id === "reserve" && (
-                        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1 bg-slate-800 rounded-full z-10" />
+                        <>
+                          <div className="absolute top-0 left-0 right-0 h-8 flex items-center justify-between px-6 z-20 text-[10px] font-bold text-slate-900">
+                            <span>9:41</span>
+                            <div className="flex gap-1.5">
+                              <span>📶</span>
+                              <span>🔋</span>
+                            </div>
+                          </div>
+                          {/* 노치 디자인 */}
+                          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 h-6 bg-slate-200 rounded-b-2xl z-10" />
+                        </>
                       )}
                       
                       <img 
                         src={img} 
                         alt={step.title} 
-                        className={`h-full w-full ${step.id === "reserve" ? "object-contain" : "object-cover"}`} 
+                        className={`h-full w-full ${step.id === "reserve" ? "object-contain pt-6" : "object-cover"}`} 
                       />
                     </div>
                   ))}
@@ -110,7 +109,7 @@ export default function ServiceFlowPage() {
             ))}
           </div>
 
-          {/* RIGHT: Interactive 3D Diagram (유지) */}
+          {/* RIGHT: Diagram (3D Flip 적용 버전 유지) */}
           <div className="hidden lg:block">
             <div className="sticky top-44 flex flex-col items-center rounded-[4rem] bg-slate-50/40 p-12 backdrop-blur-xl border border-slate-100 shadow-sm h-auto">
               <DiagramNode active={activeId === "reserve"} icon="📅" label="예약하기" theme="prep" />
@@ -140,8 +139,7 @@ export default function ServiceFlowPage() {
   );
 }
 
-// --- Flip & Arrow Components (기존 유지하되 텍스트 크기 14px 적용) ---
-
+// --- Flip & Arrow Helpers (기존과 동일) ---
 function FlipIcon({ icon, label }: { icon: string; label: string }) {
   const [isHover, setIsHover] = useState(false);
   return (
@@ -159,7 +157,7 @@ function DiagramNode({ active, icon, label, theme }: any) {
   const activeStyles = {
     prep: "border-indigo-400 shadow-[0_10px_25px_rgba(99,102,241,0.2)] ring-4 ring-indigo-50",
     event: "border-pink-400 shadow-[0_10px_25px_rgba(244,114,182,0.2)] ring-4 ring-pink-50",
-    post: "border-emerald-400 shadow-[0_10px_25px_rgba(16,185,129,0.2)] ring-4 ring-emerald-50",
+    post: "border-emerald-400 shadow-[0_10px_25 tax_rgba(16,185,129,0.2)] ring-4 ring-emerald-50",
   }[theme as "prep"|"event"|"post"];
 
   return (
