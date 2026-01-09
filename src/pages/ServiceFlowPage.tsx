@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import Footer from "@/components/Footer";
 
-// --- Types ---
+// --- Types & Data ---
 type FlowNode = "reserve" | "setup" | "guest" | "message" | "report" | "couple";
 
 interface StepData {
@@ -11,62 +11,72 @@ interface StepData {
   sectionId: string;
   title: string;
   desc: string;
-  icon: string;
-  imgSrc?: string; // 여기에 실제 촬영하신 이미지 경로를 넣으세요
+  images: string[]; // 다중 이미지 대응
 }
 
 const STEPS: StepData[] = [
   {
     id: "reserve",
     sectionId: "sf-reserve",
-    title: "01. 간편한 예약",
-    desc: "예식 날짜와 기본 정보만으로 1분 만에 예약을 완료하세요. 확정 안내는 카카오톡 알림톡으로 즉시 발송됩니다.",
-    icon: "📅",
-    imgSrc: "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?q=80&w=1000&auto=format&fit=crop", // 예시 이미지
+    title: "01. 예약하기",
+    desc: "예식 일자와 기본 연락처만으로 간편하게 시작하세요. 카카오톡으로 예약 확정 메시지가 발송됩니다.",
+    images: ["https://images.unsplash.com/photo-1511795409834-ef04bbd61622?q=80&w=1000"],
   },
   {
     id: "setup",
     sectionId: "sf-setup",
-    title: "02. 우리만의 맞춤 설정",
-    desc: "신랑·신부님의 사진, 감사 문구, 계좌 정보까지 예식 분위기에 맞춰 자유롭게 커스텀할 수 있습니다.",
-    icon: "⚙️",
-    imgSrc: "https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=1000&auto=format&fit=crop",
+    title: "02. 상세 설정",
+    desc: "신랑·신부 정보, 감사 문구, 송금 계좌 등 우리만의 예식 페이지를 맞춤형으로 구성합니다.",
+    images: ["https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=1000"],
   },
   {
-    id: "message",
-    sectionId: "sf-message",
-    title: "03. 현장 QR 참여",
-    desc: "하객들은 앱 설치 없이 QR 스캔만으로 축하 메시지와 사진을 남깁니다. 현장의 감동을 실시간으로 기록하세요.",
-    icon: "✍️",
-    imgSrc: "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?q=80&w=1000&auto=format&fit=crop",
+    id: "guest",
+    sectionId: "sf-guest",
+    title: "03. 하객 참여 및 현장 이벤트",
+    desc: "현장에서 QR을 스캔하여 방명록 작성, 축하 메시지 전송, 축의금 송금을 한 번에 해결합니다. 피로연장 대형 화면과 실시간으로 연동됩니다.",
+    images: [
+      "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?q=80&w=1000", // QR 스캔 장면
+      "https://images.unsplash.com/photo-1513151233558-d860c5398176?q=80&w=1000", // 축하 메시지 장면
+      "https://images.unsplash.com/photo-1519225495806-7d522f228302?q=80&w=1000", // 피로연 화면 장면
+    ],
   },
   {
     id: "report",
     sectionId: "sf-report",
-    title: "04. 스마트한 웨딩 리포트",
-    desc: "예식이 끝나면 하객 명단, 메시지, 축의금 내역이 정돈된 리포트로 자동 생성되어 전달됩니다.",
-    icon: "📊",
-    imgSrc: "https://images.unsplash.com/photo-1450101499163-c8848c66ca85?q=80&w=1000&auto=format&fit=crop",
+    title: "04. 웨딩 리포트",
+    desc: "예식 종료와 동시에 모든 하객 명단, 메시지, 축의 정산 내역이 깔끔한 리포트로 생성됩니다.",
+    images: ["https://images.unsplash.com/photo-1450101499163-c8848c66ca85?q=80&w=1000"],
   },
   {
     id: "couple",
     sectionId: "sf-couple",
-    title: "05. 영원한 보관",
-    desc: "정리된 데이터는 언제든 다시 꺼내 볼 수 있으며, 하객들에게 보낼 감사 인사 카드까지 한 번에 관리하세요.",
-    icon: "💍",
-    imgSrc: "https://images.unsplash.com/photo-1519225495806-7d522f228302?q=80&w=1000&auto=format&fit=crop",
+    title: "05. 신랑 · 신부",
+    desc: "소중한 기록을 영구 보관하고, 하객들에게 보낼 감사 인사까지 간편하게 마무리하세요.",
+    images: ["https://images.unsplash.com/photo-1583939003579-730e3918a45a?q=80&w=1000"],
   },
 ];
 
-// --- Components ---
+// --- Helper Components ---
 
-function IconNode({ active, icon, label }: { active: boolean; icon: string; label: string }) {
-  return (
-    <div className={`flex flex-col items-center gap-3 transition-all duration-500 ${active ? "scale-110 opacity-100" : "scale-90 opacity-20 grayscale"}`}>
-      <div className={`flex h-20 w-20 items-center justify-center rounded-[2rem] border-2 transition-all duration-500 ${active ? "border-pink-400 bg-white shadow-[0_0_30px_rgba(244,114,182,0.3)]" : "border-slate-200 bg-slate-50"}`}>
-        <span className="text-3xl">{icon}</span>
+function StepImage({ images }: { images: string[] }) {
+  if (images.length >= 3) {
+    return (
+      <div className="grid grid-cols-2 grid-rows-2 gap-4 aspect-[4/3] w-full">
+        <div className="col-span-1 row-span-2 overflow-hidden rounded-3xl border border-slate-200">
+          <img src={images[0]} className="h-full w-full object-cover" alt="flow" />
+        </div>
+        <div className="overflow-hidden rounded-3xl border border-slate-200">
+          <img src={images[1]} className="h-full w-full object-cover" alt="flow" />
+        </div>
+        <div className="overflow-hidden rounded-3xl border border-slate-200">
+          <img src={images[2]} className="h-full w-full object-cover" alt="flow" />
+        </div>
       </div>
-      <span className={`text-xs font-bold tracking-tight ${active ? "text-slate-900" : "text-slate-400"}`}>{label}</span>
+    );
+  }
+  return (
+    <div className="aspect-[4/3] w-full overflow-hidden rounded-[2.5rem] border border-slate-200 shadow-xl">
+      <img src={images[0]} className="h-full w-full object-cover" alt="flow" />
     </div>
   );
 }
@@ -85,70 +95,77 @@ export default function ServiceFlowPage() {
           }
         });
       },
-      { rootMargin: "-30% 0px -60% 0px", threshold: 0.1 }
+      { rootMargin: "-30% 0px -55% 0px", threshold: 0.1 }
     );
-
-    STEPS.forEach((step) => {
-      const el = document.getElementById(step.sectionId);
+    STEPS.forEach((s) => {
+      const el = document.getElementById(s.sectionId);
       if (el) observer.observe(el);
     });
-
     return () => observer.disconnect();
   }, []);
 
   return (
-    <main className="relative min-h-screen bg-[#fafafa]">
+    <main className="relative min-h-screen bg-white font-sans selection:bg-pink-100">
       {/* Header */}
-      <nav className="sticky top-0 z-50 border-b border-slate-100 bg-white/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <button onClick={() => navigate("/")} className="text-lg font-bold tracking-tighter text-slate-900">Digital Guestbook</button>
-          <button onClick={() => navigate("/reserve")} className="rounded-full bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 transition">시작하기</button>
+      <header className="sticky top-0 z-50 border-b border-slate-100 bg-white/80 backdrop-blur-md px-6 py-4">
+        <div className="mx-auto flex max-w-7xl items-center justify-between">
+          <button onClick={() => navigate("/")} className="text-xl font-bold tracking-tighter">Digital Guestbook</button>
+          <div className="flex gap-4">
+            <button onClick={() => navigate("/login")} className="text-sm font-medium text-slate-500">로그인</button>
+            <button onClick={() => navigate("/reserve")} className="rounded-full bg-slate-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-slate-800">시작하기</button>
+          </div>
         </div>
-      </nav>
+      </header>
 
-      <div className="mx-auto max-w-7xl px-6 py-20">
-        <div className="grid gap-16 lg:grid-cols-[1fr_420px]">
+      <div className="mx-auto max-w-7xl px-6 py-24">
+        <div className="grid gap-20 lg:grid-cols-[1fr_420px]">
           
-          {/* LEFT: 이미지 + 상세 설명 */}
-          <div className="space-y-32">
+          {/* LEFT: 시간 흐름 설명 섹션 */}
+          <div className="space-y-48">
             {STEPS.map((step) => (
-              <section key={step.id} id={step.sectionId} className="scroll-mt-40">
-                <div className="mb-8 space-y-4">
-                  <h2 className="text-3xl font-bold tracking-tight text-slate-900">{step.title}</h2>
-                  <p className="text-lg leading-relaxed text-slate-500 max-w-xl">{step.desc}</p>
+              <section key={step.id} id={step.sectionId} className="scroll-mt-48">
+                <div className="mb-10 space-y-4">
+                  <div className="inline-flex rounded-full bg-pink-50 px-3 py-1 text-xs font-bold text-pink-500 uppercase tracking-widest">
+                    {step.id === "reserve" || step.id === "setup" ? "예식 전" : step.id === "couple" || step.id === "report" ? "예식 후" : "예식 당일"}
+                  </div>
+                  <h2 className="text-4xl font-extrabold tracking-tight text-slate-900">{step.title}</h2>
+                  <p className="text-xl leading-relaxed text-slate-500 max-w-xl">{step.desc}</p>
                 </div>
-                
-                {/* 실제 사진 영역 */}
-                <div className="aspect-[4/3] w-full overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white shadow-2xl transition-transform duration-700 hover:scale-[1.02]">
-                  {step.imgSrc ? (
-                    <img src={step.imgSrc} alt={step.title} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-slate-100 text-slate-400">사진 준비 중</div>
-                  )}
-                </div>
+                <StepImage images={step.images} />
               </section>
             ))}
           </div>
 
-          {/* RIGHT: 고정 다이어그램 (Stripe Style) */}
+          {/* RIGHT: 동적 다이어그램 (Stripe/Bridge 스타일) */}
           <div className="hidden lg:block">
-            <div className="sticky top-40 flex h-[600px] flex-col items-center justify-center rounded-[3rem] border border-slate-100 bg-white/50 p-12 backdrop-blur-xl">
-              <div className="relative grid grid-cols-1 gap-12">
-                {/* SVG 선 (배경) */}
-                <div className="absolute inset-0 -z-10 flex flex-col items-center justify-between py-10">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="h-16 w-[2px] bg-gradient-to-b from-slate-100 to-slate-200" />
-                  ))}
+            <div className="sticky top-40 flex h-[650px] flex-col items-center justify-center rounded-[3rem] border border-slate-100 bg-slate-50/50 p-12 backdrop-blur-2xl">
+              <div className="relative flex flex-col items-center gap-10">
+                
+                {/* [준비 단계] 흐름 */}
+                <div className="flex flex-col items-center gap-6">
+                  <DiagramNode active={activeId === "reserve"} icon="📅" label="예약" />
+                  <DiagramLine active={activeId === "setup"} />
+                  <DiagramNode active={activeId === "setup"} icon="⚙️" label="상세 설정" />
                 </div>
 
-                {STEPS.map((step) => (
-                  <IconNode 
-                    key={step.id}
-                    active={activeId === step.id}
-                    icon={step.icon}
-                    label={step.title.split(". ")[1]}
-                  />
-                ))}
+                {/* 흐름 끊기 구분선 (Stripe 스타일) */}
+                <div className="my-4 h-[1px] w-24 bg-slate-200" />
+
+                {/* [실전 단계] 흐름 시작 */}
+                <div className="flex flex-col items-center gap-6">
+                  <DiagramNode active={activeId === "guest"} icon="📱" label="하객(QR)" />
+                  <div className="relative flex h-16 w-32 items-center justify-center">
+                    <DiagramLine active={activeId === "guest"} className="absolute -top-6 h-10" />
+                    {/* 분기되는 선 표현 (Bridge 스타일) */}
+                    <svg className="absolute inset-0 h-full w-full overflow-visible">
+                      <path d="M64,0 L64,20 L20,40 M64,20 L64,40 M64,20 L108,40" fill="none" 
+                            stroke={activeId === "guest" ? "#f472b6" : "#e2e8f0"} strokeWidth="2" strokeDasharray="4 4" />
+                    </svg>
+                  </div>
+                  <DiagramNode active={activeId === "report"} icon="📊" label="리포트" />
+                  <DiagramLine active={activeId === "couple"} />
+                  <DiagramNode active={activeId === "couple"} icon="💍" label="신랑 · 신부" />
+                </div>
               </div>
             </div>
           </div>
@@ -156,5 +173,30 @@ export default function ServiceFlowPage() {
       </div>
       <Footer />
     </main>
+  );
+}
+
+// --- Internal UI Components ---
+
+function DiagramNode({ active, icon, label }: { active: boolean; icon: string; label: string }) {
+  return (
+    <div className={`flex flex-col items-center gap-2 transition-all duration-500 ${active ? "scale-110 opacity-100" : "scale-90 opacity-10 grayscale"}`}>
+      <div className={`flex h-16 w-16 items-center justify-center rounded-2xl border-2 bg-white transition-all duration-500 ${active ? "border-pink-400 shadow-[0_0_25px_rgba(244,114,182,0.4)]" : "border-slate-100 shadow-sm"}`}>
+        <span className="text-2xl">{icon}</span>
+      </div>
+      <span className="text-[10px] font-bold text-slate-800 tracking-tighter uppercase">{label}</span>
+    </div>
+  );
+}
+
+function DiagramLine({ active, className }: { active: boolean; className?: string }) {
+  return (
+    <div className={`h-12 w-[2px] bg-slate-100 transition-all duration-700 overflow-hidden ${className}`}>
+      <motion.div 
+        animate={{ y: active ? "0%" : "-100%" }}
+        transition={{ duration: 0.8 }}
+        className="h-full w-full bg-pink-400"
+      />
+    </div>
   );
 }
