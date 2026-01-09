@@ -18,7 +18,17 @@ interface StepData {
 }
 
 const STEPS: StepData[] = [
-  { id: "reserve", sectionId: "sf-reserve", title: "01. 예약하기", desc: "예식 일자와 연락처만으로 간편하게 시작하세요. 예약 확정 알림이 즉시 발송됩니다.", dDay: "D-30 ~ 180", icon: "📅", label: "예약하기", images: ["https://images.unsplash.com/photo-1511795409834-ef04bbd61622?q=80&w=1000"], theme: "prep" },
+  { 
+    id: "reserve", 
+    sectionId: "sf-reserve", 
+    title: "01. 예약하기", 
+    desc: "예식 일자와 연락처만으로 간편하게 시작하세요. 예약 양식을 제출하면 카카오톡으로 즉시 안내 메시지가 발송됩니다.", 
+    dDay: "D-30 ~ 180", 
+    icon: "📅", 
+    label: "예약하기",
+    images: ["/serviceflow1-2.jpg", "/serviceflow1.jpg"], // public 폴더 이미지 참조
+    theme: "prep" 
+  },
   { id: "setup", sectionId: "sf-setup", title: "02. 상세 설정", desc: "신랑·신부 정보, 감사 문구, 계좌 등 우리만의 예식 페이지를 맞춤 구성합니다.", dDay: "D-14 ~ 30", icon: "⚙️", label: "상세 설정", images: ["https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=1000"], theme: "prep" },
   { id: "guest", sectionId: "sf-guest", title: "03. 하객 참여 및 현장 이벤트", desc: "QR 스캔으로 방명록, 메시지, 축의금 송금을 한 번에. 피로연장 화면과 실시간 연동됩니다.", dDay: "D-Day", icon: "👥", label: "하객 참여", images: ["https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?q=80&w=1000", "https://images.unsplash.com/photo-1513151233558-d860c5398176?q=80&w=1000", "https://images.unsplash.com/photo-1519225495806-7d522f228302?q=80&w=1000"], theme: "event" },
   { id: "report", sectionId: "sf-report", title: "04. 웨딩 리포트", desc: "예식 종료와 동시에 명단, 메시지, 정산 내역이 깔끔한 리포트로 생성됩니다.", dDay: "D-Day (종료)", icon: "📊", label: "웨딩 리포트", images: ["https://images.unsplash.com/photo-1450101499163-c8848c66ca85?q=80&w=1000"], theme: "post" },
@@ -51,7 +61,7 @@ export default function ServiceFlowPage() {
         </div>
       </header>
 
-      {/* Mobile Nav (기존 유지) */}
+      {/* Mobile Nav (상단 고정 아이콘 바) */}
       <div className="sticky top-[65px] z-40 flex w-full justify-around bg-white/90 p-3 backdrop-blur-md border-b border-slate-100 lg:hidden">
         {STEPS.map((step) => (
           <div key={step.id} className={`flex h-11 w-11 items-center justify-center rounded-xl border-2 transition-all ${activeId === step.id ? "border-pink-400 bg-white shadow-md scale-110" : "border-transparent opacity-20"}`}>
@@ -62,7 +72,7 @@ export default function ServiceFlowPage() {
 
       <div className="mx-auto max-w-7xl px-6 py-16 lg:py-24">
         <div className="grid gap-16 lg:grid-cols-[1fr_380px]">
-          {/* LEFT: Cards */}
+          {/* LEFT: Content Cards */}
           <div className="space-y-40 lg:space-y-64">
             {STEPS.map((step) => (
               <section key={step.id} id={step.sectionId} className="scroll-mt-48">
@@ -71,10 +81,23 @@ export default function ServiceFlowPage() {
                   <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 lg:text-4xl">{step.title}</h2>
                   <p className="text-lg leading-relaxed text-slate-500">{step.desc}</p>
                 </div>
-                <div className={step.images.length >= 3 ? "grid grid-cols-2 gap-3" : "block"}>
+
+                {/* 이미지 레이아웃 조절: 예약하기 섹션만 듀얼 폰 프레임 적용 */}
+                <div className={step.id === "reserve" ? "flex gap-6 justify-start" : (step.images.length >= 3 ? "grid grid-cols-2 gap-3" : "block")}>
                   {step.images.map((img, idx) => (
-                    <div key={idx} className={`overflow-hidden rounded-[2.5rem] border border-slate-100 shadow-xl ${step.images.length >= 3 && idx === 0 ? "row-span-2" : ""}`}>
-                      <img src={img} alt={step.title} className="h-full w-full object-cover aspect-[4/3]" />
+                    <div 
+                      key={idx} 
+                      className={`overflow-hidden border border-slate-100 shadow-2xl transition-all duration-500
+                        ${step.id === "reserve" 
+                          ? "w-[45%] lg:w-[240px] rounded-[2.5rem] aspect-[9/19] max-h-[500px] ring-8 ring-slate-900/5" 
+                          : `rounded-[2.5rem] ${step.images.length >= 3 && idx === 0 ? "row-span-2" : ""}`
+                        }`}
+                    >
+                      <img 
+                        src={img} 
+                        alt={step.title} 
+                        className={`h-full w-full object-cover ${step.id === "reserve" ? "object-top" : "object-center"}`} 
+                      />
                     </div>
                   ))}
                 </div>
@@ -82,7 +105,7 @@ export default function ServiceFlowPage() {
             ))}
           </div>
 
-          {/* RIGHT: Fixed Diagram (3D FLIP) */}
+          {/* RIGHT: Interactive 3D Diagram */}
           <div className="hidden lg:block">
             <div className="sticky top-44 flex flex-col items-center rounded-[4rem] bg-slate-50/40 p-12 backdrop-blur-xl border border-slate-100 shadow-sm h-auto">
               
@@ -94,6 +117,7 @@ export default function ServiceFlowPage() {
               <DiagramNode active={activeId === "guest"} icon="👥" label="하객 참여" theme="event" />
               <Arrow active={activeId === "guest"} />
               
+              {/* QR Zone Area */}
               <div className={`relative p-6 rounded-[2.5rem] border-2 border-dashed transition-all duration-500 ${activeId === "guest" ? "border-pink-300 bg-white shadow-xl scale-105" : "border-slate-200 opacity-50 bg-white/30"}`}>
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-pink-400 text-[9px] text-white px-3 py-1 rounded-full font-black uppercase tracking-wider">QR Zone</div>
                 <div className="flex gap-6">
@@ -119,28 +143,15 @@ export default function ServiceFlowPage() {
   );
 }
 
-// --- 3D Flip Components ---
+// --- Interaction Components (3D Flip & Arrows) ---
 
 function FlipIcon({ icon, label }: { icon: string; label: string }) {
   const [isHover, setIsHover] = useState(false);
   return (
-    <div 
-      className="relative h-12 w-16 cursor-default [perspective:1000px]" 
-      onMouseEnter={() => setIsHover(true)} 
-      onMouseLeave={() => setIsHover(false)}
-    >
-      <motion.div 
-        className="relative h-full w-full transition-all duration-500 [transform-style:preserve-3d]"
-        animate={{ rotateY: isHover ? 180 : 0 }}
-      >
-        {/* Front: Icon */}
-        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden]">
-          <span className="text-3xl">{icon}</span>
-        </div>
-        {/* Back: Text */}
-        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden] [transform:rotateY(180deg)]">
-          <span className="text-[12px] font-bold text-slate-800 whitespace-nowrap">{label}</span>
-        </div>
+    <div className="relative h-12 w-16 cursor-default [perspective:1000px]" onMouseEnter={() => setIsHover(true)} onMouseLeave={() => setIsHover(false)}>
+      <motion.div className="relative h-full w-full transition-all duration-500 [transform-style:preserve-3d]" animate={{ rotateY: isHover ? 180 : 0 }}>
+        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden]"><span className="text-3xl">{icon}</span></div>
+        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden] [transform:rotateY(180deg)]"><span className="text-[12px] font-bold text-slate-800 whitespace-nowrap">{label}</span></div>
       </motion.div>
     </div>
   );
@@ -148,7 +159,6 @@ function FlipIcon({ icon, label }: { icon: string; label: string }) {
 
 function DiagramNode({ active, icon, label, theme }: any) {
   const [isHover, setIsHover] = useState(false);
-  
   const activeStyles = {
     prep: "border-indigo-400 shadow-[0_10px_25px_rgba(99,102,241,0.2)] ring-4 ring-indigo-50",
     event: "border-pink-400 shadow-[0_10px_25px_rgba(244,114,182,0.2)] ring-4 ring-pink-50",
@@ -156,28 +166,14 @@ function DiagramNode({ active, icon, label, theme }: any) {
   }[theme as "prep"|"event"|"post"];
 
   return (
-    <div 
-      className="relative [perspective:1000px] w-28 h-16" 
-      onMouseEnter={() => setIsHover(true)} 
-      onMouseLeave={() => setIsHover(false)}
-    >
+    <div className="relative [perspective:1000px] w-28 h-16" onMouseEnter={() => setIsHover(true)} onMouseLeave={() => setIsHover(false)}>
       <motion.div 
-        animate={{ 
-          rotateY: isHover ? 180 : 0,
-          scale: active ? 1.1 : 1,
-          opacity: active ? 1 : 0.6
-        }}
+        animate={{ rotateY: isHover ? 180 : 0, scale: active ? 1.1 : 1, opacity: active ? 1 : 0.6 }}
         className={`relative h-full w-full rounded-2xl border-2 bg-white transition-all duration-500 [transform-style:preserve-3d] ${active ? activeStyles : "border-slate-100"}`}
       >
-        {/* Front: Icon */}
-        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden]">
-          <span className="text-3xl">{icon}</span>
-        </div>
-        {/* Back: Text (폰트 크기 키움) */}
+        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden]"><span className="text-3xl">{icon}</span></div>
         <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden] [transform:rotateY(180deg)] bg-white rounded-2xl">
-          <span className="text-[13px] font-black text-slate-800 text-center leading-tight">
-            {label}
-          </span>
+          <span className="text-[14px] font-black text-slate-800 text-center leading-tight">{label}</span>
         </div>
       </motion.div>
     </div>
@@ -188,12 +184,7 @@ function Arrow({ active }: { active?: boolean }) {
   return (
     <div className="flex justify-center my-1.5">
       <svg width="24" height="40" viewBox="0 0 24 40" fill="none">
-        <path 
-          d="M12 0V38M12 38L6 32M12 38L18 32" 
-          stroke={active ? "#94a3b8" : "#cbd5e1"} 
-          strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" 
-          className="transition-colors duration-500"
-        />
+        <path d="M12 0V38M12 38L6 32M12 38L18 32" stroke={active ? "#94a3b8" : "#cbd5e1"} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="transition-colors duration-500" />
       </svg>
     </div>
   );
