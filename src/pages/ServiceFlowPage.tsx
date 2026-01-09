@@ -64,7 +64,7 @@ export default function ServiceFlowPage() {
         </div>
       </header>
 
-      {/* 모바일 탭 */}
+      {/* 모바일 탭 내비게이션 */}
       <div className="sticky top-[65px] z-40 flex w-full justify-around bg-white/90 p-3 backdrop-blur-md border-b border-slate-100 lg:hidden">
         {STEPS.map((step) => (
           <div key={step.id} className={`flex h-10 w-10 items-center justify-center rounded-xl border-2 transition-all duration-300 ${activeId === step.id ? `${themeColor} bg-white shadow-md scale-110` : "border-transparent opacity-30"}`}>
@@ -79,59 +79,65 @@ export default function ServiceFlowPage() {
           <div className="space-y-40 lg:space-y-64">
             {STEPS.map((step) => (
               <section key={step.id} id={step.sectionId} className="scroll-mt-48">
-                <div className="mb-8 space-y-3">
+                <div className="mb-10 space-y-3">
                   <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${step.theme === 'prep' ? 'bg-indigo-50 text-indigo-600' : step.theme === 'event' ? 'bg-pink-50 text-pink-600' : 'bg-emerald-50 text-emerald-600'}`}>{step.dDay}</span>
                   <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 lg:text-4xl">{step.title}</h2>
-                  <p className="text-lg leading-relaxed text-slate-500">{step.desc}</p>
+                  <p className="max-w-2xl text-lg leading-relaxed text-slate-500">{step.desc}</p>
                   {step.id === "guest" && (
                     <p className="mt-2 text-sm font-medium text-slate-400">*기본 스탠드형 디스플레이 1대가 제공됩니다</p>
                   )}
                 </div>
 
-                {/* 이미지 구성 복구 영역 */}
+                {/* 이미지 배치 최적화 */}
                 {step.id === "reserve" ? (
-                  <div className="grid grid-cols-2 gap-4 items-end lg:max-w-3xl">
-                    <div className="block lg:hidden h-full">
-                        <img src="/serviceflow1.jpg" className="rounded-[2rem] border ring-2 ring-black aspect-[9/19] object-cover shadow-2xl bg-white" alt="mobile-view-1" />
+                  <div className="flex flex-row items-end gap-6 lg:max-w-3xl">
+                    <div className="flex-1">
+                      <div className="block lg:hidden h-full">
+                        <img src="/serviceflow1.jpg" className="rounded-[2.5rem] border ring-2 ring-black aspect-[9/19] object-cover shadow-2xl bg-white" alt="mobile-1" />
+                      </div>
+                      <div className="hidden lg:block">
+                        <img src="/serviceflow1-0.jpg" className="rounded-3xl border shadow-xl object-contain bg-slate-50 w-full" alt="web-1" />
+                      </div>
                     </div>
-                    <div className="hidden lg:block">
-                        <img src="/serviceflow1-0.jpg" className="rounded-2xl border shadow-lg object-contain bg-slate-50 w-full" alt="web-view-1" />
+                    <div className="w-[35%] lg:w-[30%]">
+                      <img src="/serviceflow1-2.jpg" className="rounded-[2.5rem] border ring-2 ring-black aspect-[9/19] object-cover shadow-2xl bg-white" alt="mobile-2" />
                     </div>
-                    <img src="/serviceflow1-2.jpg" className="rounded-[2rem] border ring-2 ring-black aspect-[9/19] object-cover shadow-2xl bg-white" alt="mobile-view-2" />
                   </div>
                 ) : step.id === "setup" ? (
-                  <div className="space-y-6 lg:max-w-3xl">
-                    <img src="/serviceflow2-1.jpg" className="w-full rounded-2xl border shadow-lg object-contain bg-slate-50" alt="setup-main" />
-                    <div className="grid grid-cols-2 gap-4">
-                      <img src="/serviceflow2.jpg" className="rounded-2xl border shadow-sm object-cover aspect-square bg-slate-50" alt="setup-sub-1" />
-                      <img src="/serviceflow2-2.jpg" className="rounded-2xl border shadow-sm object-cover aspect-square bg-slate-50" alt="setup-sub-2" />
+                  <div className="space-y-8 lg:max-w-3xl">
+                    <img src="/serviceflow2-1.jpg" className="w-full rounded-3xl border shadow-xl object-contain bg-slate-50" alt="setup-main" />
+                    <div className="grid grid-cols-2 gap-8 px-4">
+                      <div className="flex flex-col items-center gap-2">
+                        <img src="/serviceflow2.jpg" className="rounded-[2rem] border ring-2 ring-black aspect-[9/19] object-cover shadow-xl bg-white" alt="setup-sub-1" />
+                      </div>
+                      <div className="flex flex-col items-center gap-2">
+                        <img src="/serviceflow2-2.jpg" className="rounded-[2rem] border ring-2 ring-black aspect-[9/19] object-cover shadow-xl bg-white" alt="setup-sub-2" />
+                      </div>
                     </div>
                   </div>
                 ) : step.id === "guest" ? (
-                  <div className="space-y-6 lg:max-w-3xl">
-                    <div className="w-full overflow-hidden rounded-[1.75rem] border bg-black shadow-lg">
+                  <div className="space-y-8 lg:max-w-3xl">
+                    <div className="w-full overflow-hidden rounded-[2rem] border bg-black shadow-2xl">
                       <video autoPlay muted loop playsInline className="w-full h-full object-cover"><source src={step.video} type="video/mp4" /></video>
                     </div>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-3 gap-4">
                       {step.images.map((img, idx) => (
-                        <img key={idx} src={img} className="rounded-2xl border aspect-square object-cover shadow-sm bg-slate-50" alt="guest" />
+                        <img key={idx} src={img} className="rounded-2xl border aspect-square object-cover shadow-md bg-slate-50 transition hover:scale-105" alt="guest-detail" />
                       ))}
                     </div>
                   </div>
                 ) : (
                   <div className="flex justify-center lg:max-w-3xl">
-                    <img src={step.images[0]} alt={step.title} className="w-full rounded-[1.5rem] border shadow-lg min-h-[300px] object-contain bg-slate-50" />
+                    <img src={step.images[0]} alt={step.title} className="w-full rounded-[2rem] border shadow-xl min-h-[300px] object-contain bg-slate-50" />
                   </div>
                 )}
               </section>
             ))}
           </div>
 
-          {/* 오른쪽 다이어그램: 상단 패딩을 pt-10 (40px)로 수정 */}
+          {/* 오른쪽 고정 다이어그램 */}
           <div className="hidden lg:block">
-            <div className="sticky top-24 flex flex-col items-center pt-10 pb-8 px-8 rounded-[3rem] bg-slate-50/50 border border-slate-100 backdrop-blur-sm overflow-hidden">
-              
-              {/* 예식 전 */}
+            <div className="sticky top-24 flex flex-col items-center pt-10 pb-8 px-8 rounded-[3rem] bg-slate-50/50 border border-slate-100 backdrop-blur-sm">
               <div className="relative flex items-center justify-center w-full">
                 <div className="flex flex-col items-center w-32 z-10">
                   <DiagramNode active={activeId === "reserve"} icon="📅" label="예약하기" theme="prep" />
@@ -142,17 +148,13 @@ export default function ServiceFlowPage() {
                   <span className="text-[10px] font-black text-indigo-500 tracking-widest uppercase bg-white/80 py-1 px-3 rounded-full shadow-sm border border-indigo-100 whitespace-nowrap">예식 전</span>
                 </div>
               </div>
-
               <div className="w-32 flex justify-center relative z-0"><BridgeArrow active={activeId === "guest" || activeId === "report"} /></div>
-
-              {/* 예식 중 */}
               <div className="relative flex items-center justify-center w-full my-2">
                  <div className="flex flex-col items-center w-full relative z-10">
                     <DiagramNode active={activeId === "guest"} icon="👥" label="하객 참여" theme="event" />
                     <div className="absolute top-6 right-0 translate-x-4">
                        <span className="text-[10px] font-black text-pink-500 tracking-widest uppercase bg-white/80 py-1 px-3 rounded-full shadow-sm border border-pink-100 whitespace-nowrap">예식 중</span>
                     </div>
-                    
                     <div className={`relative mt-5 p-5 rounded-[2.5rem] border-2 border-dashed transition-all duration-500 w-full ${activeId === "guest" ? "border-pink-400 bg-pink-50/30 shadow-xl scale-105 z-20" : "border-slate-300 opacity-50 bg-white/50"}`}>
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-pink-500 text-[10px] text-white px-4 py-0.5 rounded-full font-black uppercase tracking-wider shadow-sm">QR Scan</div>
                       <div className="grid grid-cols-3 gap-3 mt-2">
@@ -164,8 +166,6 @@ export default function ServiceFlowPage() {
                     <OrthogonalConvergingArrows active={activeId === "report" || activeId === "couple"} />
                  </div>
               </div>
-
-              {/* 예식 후 */}
               <div className="relative flex items-center justify-center w-full mt-1">
                  <div className="flex flex-col items-center w-32 z-10">
                      <DiagramNode active={activeId === "report"} icon="📊" label="웨딩 리포트" theme="post" />
@@ -176,7 +176,6 @@ export default function ServiceFlowPage() {
                      <span className="text-[10px] font-black text-emerald-500 tracking-widest uppercase bg-white/80 py-1 px-3 rounded-full shadow-sm border border-emerald-100 whitespace-nowrap">예식 후</span>
                  </div>
               </div>
-
             </div>
           </div>
         </div>
@@ -186,8 +185,7 @@ export default function ServiceFlowPage() {
   );
 }
 
-// --- 하위 컴포넌트들 ---
-
+// --- 하위 UI 컴포넌트 ---
 function DiagramNode({ active, icon, label, theme }: any) {
   const colors = { prep: "text-indigo-600 border-indigo-400 bg-indigo-50", event: "text-pink-600 border-pink-400 bg-pink-50", post: "text-emerald-600 border-emerald-400 bg-emerald-50" }[theme as "prep"|"event"|"post"];
   return (
