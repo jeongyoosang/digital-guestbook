@@ -26,7 +26,8 @@ const STEPS: StepData[] = [
     dDay: "D-30 ~ 180", 
     icon: "📅", 
     label: "예약하기",
-    images: ["/serviceflow1.jpg", "/serviceflow1-2.jpg"], 
+    // 1-0: 웹화면, 1: 모바일예약, 1-2: 카톡
+    images: ["/serviceflow1-0.jpg", "/serviceflow1.jpg", "/serviceflow1-2.jpg"], 
     theme: "prep" 
   },
   { 
@@ -37,7 +38,7 @@ const STEPS: StepData[] = [
     dDay: "D-14 ~ 30", 
     icon: "⚙️", 
     label: "상세 설정", 
-    images: ["/serviceflow2.jpg", "/serviceflow2-1.jpg", "/serviceflow2-2.jpg"], 
+    images: ["/serviceflow2-1.jpg", "/serviceflow2.jpg", "/serviceflow2-2.jpg"], 
     theme: "prep" 
   },
   { id: "guest", sectionId: "sf-guest", title: "03. 하객 참여 및 현장 이벤트", desc: "QR 스캔으로 방명록, 메시지, 축의금 송금을 한 번에. 피로연장 화면과 실시간 연동됩니다.", dDay: "D-Day", icon: "👥", label: "하객 참여", images: ["https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?q=80&w=1000"], theme: "event" },
@@ -74,7 +75,7 @@ export default function ServiceFlowPage() {
         </div>
       </header>
 
-      {/* 모바일 아이콘 바 (테마 컬러 반응형) */}
+      {/* Mobile Nav */}
       <div className="sticky top-[65px] z-40 flex w-full justify-around bg-white/90 p-3 backdrop-blur-md border-b border-slate-100 lg:hidden">
         {STEPS.map((step) => (
           <div key={step.id} className={`flex h-10 w-10 items-center justify-center rounded-xl border-2 transition-all duration-300 ${activeId === step.id ? `${themeColor} bg-white shadow-md scale-110` : "border-transparent opacity-30"}`}>
@@ -94,33 +95,64 @@ export default function ServiceFlowPage() {
                   <p className="text-lg leading-relaxed text-slate-500">{step.desc}</p>
                 </div>
 
-                <div className="flex flex-wrap gap-4 lg:gap-8 justify-center items-center">
-                  {step.images.map((img, idx) => {
-                    const isPhone = step.id === "reserve" || (step.id === "setup" && (idx === 0 || idx === 2));
-                    return (
-                      <div 
-                        key={idx} 
-                        className={`overflow-hidden transition-all duration-500 relative shadow-xl
-                          ${isPhone 
-                            ? "w-[44%] lg:w-[240px] aspect-[9/19] rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900" 
-                            : "w-full lg:max-w-2xl rounded-[1.5rem] border border-slate-100 bg-white"
-                          }`}
-                      >
-                        <img 
-                          src={img} 
-                          alt={step.title} 
-                          className={`w-full h-full ${isPhone ? "object-cover object-top bg-white" : "object-contain"}`} 
-                        />
+                {/* 01. 예약하기 이미지 배치 (반응형) */}
+                {step.id === "reserve" && (
+                  <div className="flex flex-wrap gap-4 lg:gap-8 justify-center items-center">
+                    {/* PC 전용: 웹화면(1-0) + 카톡(1-2) */}
+                    <div className="hidden lg:flex w-full items-center justify-center gap-8">
+                      <div className="w-[500px] aspect-square overflow-hidden rounded-[2rem] border border-slate-100 shadow-lg">
+                        <img src={step.images[0]} alt="웹화면" className="w-full h-full object-cover" />
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="w-[240px] aspect-[9/19] overflow-hidden rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl">
+                        <img src={step.images[2]} alt="카톡" className="w-full h-full object-cover object-top bg-white" />
+                      </div>
+                    </div>
+                    {/* 모바일 전용: 폰화면(1) + 폰화면(1-2) */}
+                    <div className="flex lg:hidden w-full justify-center gap-4">
+                      <div className="w-[45%] aspect-[9/19] overflow-hidden rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl">
+                        <img src={step.images[1]} alt="예약폼" className="w-full h-full object-cover object-top bg-white" />
+                      </div>
+                      <div className="w-[45%] aspect-[9/19] overflow-hidden rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl">
+                        <img src={step.images[2]} alt="카톡" className="w-full h-full object-cover object-top bg-white" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 02. 상세 설정 이미지 배치 (상단 웹 + 하단 폰 2개) */}
+                {step.id === "setup" && (
+                  <div className="flex flex-col gap-6 lg:gap-8 items-center">
+                    <div className="w-full lg:max-w-3xl overflow-hidden rounded-[1.5rem] border border-slate-100 shadow-lg">
+                      <img src={step.images[0]} alt="상세설정 웹" className="w-full object-contain" />
+                    </div>
+                    <div className="flex justify-center gap-4 lg:gap-8 w-full">
+                      <div className="w-[45%] lg:w-[240px] aspect-[9/19] overflow-hidden rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl">
+                        <img src={step.images[1]} alt="상세설정 폰1" className="w-full h-full object-cover object-top bg-white" />
+                      </div>
+                      <div className="w-[45%] lg:w-[240px] aspect-[9/19] overflow-hidden rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl">
+                        <img src={step.images[2]} alt="상세설정 폰2" className="w-full h-full object-cover object-top bg-white" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 기타 섹션 공통 배치 */}
+                {step.id !== "reserve" && step.id !== "setup" && (
+                  <div className="flex flex-wrap gap-4 lg:gap-8 justify-center items-center">
+                    {step.images.map((img, idx) => (
+                      <div key={idx} className="w-full lg:max-w-3xl overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white shadow-lg">
+                        <img src={img} alt={step.title} className="w-full h-full object-contain" />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
             ))}
           </div>
 
+          {/* Right Diagram (상태 유지) */}
           <div className="hidden lg:block">
-            <div className="sticky top-44 flex flex-col items-center rounded-[4rem] bg-slate-50/40 p-12 backdrop-blur-xl border border-slate-100 shadow-sm">
+            <div className="sticky top-44 flex flex-col items-center rounded-[4rem] bg-slate-50/40 p-12 backdrop-blur-xl border border-slate-100 shadow-sm h-auto">
               <DiagramNode active={activeId === "reserve"} icon="📅" label="예약하기" theme="prep" />
               <Arrow active={activeId === "setup"} />
               <DiagramNode active={activeId === "setup"} icon="⚙️" label="상세 설정" theme="prep" />
@@ -148,8 +180,7 @@ export default function ServiceFlowPage() {
   );
 }
 
-// --- 아래 컴포넌트들이 정의되어 있어야 에러가 나지 않습니다 ---
-
+// Helpers (FlipIcon, DiagramNode, Arrow 동일)
 function FlipIcon({ icon, label }: { icon: string; label: string }) {
   const [isHover, setIsHover] = useState(false);
   return (
