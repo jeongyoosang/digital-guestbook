@@ -83,6 +83,12 @@ export default function ServiceFlowPage() {
                   <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${step.theme === 'prep' ? 'bg-indigo-50 text-indigo-600' : step.theme === 'event' ? 'bg-pink-50 text-pink-600' : 'bg-emerald-50 text-emerald-600'}`}>{step.dDay}</span>
                   <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 lg:text-4xl">{step.title}</h2>
                   <p className="text-lg leading-relaxed text-slate-500">{step.desc}</p>
+                  {/* 03 섹션 전용 안내 멘트 추가 */}
+                  {step.id === "guest" && (
+                    <p className="mt-2 text-sm font-medium text-slate-400">
+                      *기본 스탠드형 디스플레이 1대가 제공됩니다
+                    </p>
+                  )}
                 </div>
                 {step.id === "guest" ? (
                   <div className="space-y-6">
@@ -104,9 +110,9 @@ export default function ServiceFlowPage() {
             ))}
           </div>
 
-          {/* 오른쪽 다이어그램 (가운데 정렬 및 라벨 위치 수정) */}
+          {/* 오른쪽 다이어그램: p-8에서 pt-4로 상단 패딩 축소 */}
           <div className="hidden lg:block">
-            <div className="sticky top-24 flex flex-col items-center p-8 rounded-[3rem] bg-slate-50/50 border border-slate-100 backdrop-blur-sm overflow-hidden">
+            <div className="sticky top-24 flex flex-col items-center pt-4 pb-8 px-8 rounded-[3rem] bg-slate-50/50 border border-slate-100 backdrop-blur-sm overflow-hidden">
               
               {/* 예식 전 (가운데 정렬) */}
               <div className="relative flex items-center justify-center w-full">
@@ -115,7 +121,6 @@ export default function ServiceFlowPage() {
                   <BridgeArrow active={activeId === "setup" || activeId === "guest"} smallHead />
                   <DiagramNode active={activeId === "setup"} icon="⚙️" label="상세 설정" theme="prep" />
                 </div>
-                {/* 라벨: 1~2단계 사이 중간 우측 */}
                 <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4">
                   <span className="text-[10px] font-black text-indigo-500 tracking-widest uppercase bg-white/80 py-1 px-3 rounded-full shadow-sm border border-indigo-100 whitespace-nowrap">예식 전</span>
                 </div>
@@ -127,7 +132,6 @@ export default function ServiceFlowPage() {
               <div className="relative flex items-center justify-center w-full my-2">
                  <div className="flex flex-col items-center w-full relative z-10">
                     <DiagramNode active={activeId === "guest"} icon="👥" label="하객 참여" theme="event" />
-                    {/* 라벨: 하객참여 아이콘 바로 오른쪽으로 이동하여 박스 겹침 방지 */}
                     <div className="absolute top-6 right-0 translate-x-4">
                        <span className="text-[10px] font-black text-pink-500 tracking-widest uppercase bg-white/80 py-1 px-3 rounded-full shadow-sm border border-pink-100 whitespace-nowrap">예식 중</span>
                     </div>
@@ -151,7 +155,6 @@ export default function ServiceFlowPage() {
                      <BridgeArrow active={activeId === "couple"} smallHead />
                      <DiagramNode active={activeId === "couple"} icon="💍" label="신랑 · 신부" theme="post" />
                  </div>
-                 {/* 라벨: 4~5단계 사이 중간 우측 */}
                  <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4">
                      <span className="text-[10px] font-black text-emerald-500 tracking-widest uppercase bg-white/80 py-1 px-3 rounded-full shadow-sm border border-emerald-100 whitespace-nowrap">예식 후</span>
                  </div>
