@@ -44,7 +44,6 @@ export default function ServiceFlowPage() {
 
   return (
     <main className="relative min-h-screen bg-white">
-      {/* Header & Mobile Nav 생략 (기존 유지) */}
       <header className="sticky top-0 z-50 border-b border-slate-50 bg-white/80 backdrop-blur-md px-6 py-4">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <button onClick={() => navigate("/")} className="text-xl font-bold tracking-tighter uppercase">Digital Guestbook</button>
@@ -52,9 +51,18 @@ export default function ServiceFlowPage() {
         </div>
       </header>
 
+      {/* Mobile Nav (기존 유지) */}
+      <div className="sticky top-[65px] z-40 flex w-full justify-around bg-white/90 p-3 backdrop-blur-md border-b border-slate-100 lg:hidden">
+        {STEPS.map((step) => (
+          <div key={step.id} className={`flex h-11 w-11 items-center justify-center rounded-xl border-2 transition-all ${activeId === step.id ? "border-pink-400 bg-white shadow-md scale-110" : "border-transparent opacity-20"}`}>
+            <span className="text-xl">{step.icon}</span>
+          </div>
+        ))}
+      </div>
+
       <div className="mx-auto max-w-7xl px-6 py-16 lg:py-24">
         <div className="grid gap-16 lg:grid-cols-[1fr_380px]">
-          {/* LEFT: Cards (기존 동일) */}
+          {/* LEFT: Cards */}
           <div className="space-y-40 lg:space-y-64">
             {STEPS.map((step) => (
               <section key={step.id} id={step.sectionId} className="scroll-mt-48">
@@ -74,19 +82,19 @@ export default function ServiceFlowPage() {
             ))}
           </div>
 
-          {/* RIGHT: Fixed Diagram (개선된 Flip 효과 및 가독성) */}
+          {/* RIGHT: Fixed Diagram (3D FLIP) */}
           <div className="hidden lg:block">
             <div className="sticky top-44 flex flex-col items-center rounded-[4rem] bg-slate-50/40 p-12 backdrop-blur-xl border border-slate-100 shadow-sm h-auto">
               
               <DiagramNode active={activeId === "reserve"} icon="📅" label="예약하기" theme="prep" />
-              <Arrow active={activeId === "setup"} theme="prep" />
+              <Arrow active={activeId === "setup"} />
               <DiagramNode active={activeId === "setup"} icon="⚙️" label="상세 설정" theme="prep" />
               
               <div className="h-6" />
               <DiagramNode active={activeId === "guest"} icon="👥" label="하객 참여" theme="event" />
-              <Arrow active={activeId === "guest"} theme="event" />
+              <Arrow active={activeId === "guest"} />
               
-              <div className={`relative p-6 rounded-[2.5rem] border-2 border-dashed transition-all duration-500 ${activeId === "guest" ? "border-pink-300 bg-white shadow-xl scale-105" : "border-slate-200 opacity-40 bg-white/30"}`}>
+              <div className={`relative p-6 rounded-[2.5rem] border-2 border-dashed transition-all duration-500 ${activeId === "guest" ? "border-pink-300 bg-white shadow-xl scale-105" : "border-slate-200 opacity-50 bg-white/30"}`}>
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-pink-400 text-[9px] text-white px-3 py-1 rounded-full font-black uppercase tracking-wider">QR Zone</div>
                 <div className="flex gap-6">
                    <FlipIcon icon="✍️" label="방명록" />
@@ -97,9 +105,9 @@ export default function ServiceFlowPage() {
                 </div>
               </div>
 
-              <Arrow active={activeId === "report"} theme="event" />
+              <Arrow active={activeId === "report"} />
               <DiagramNode active={activeId === "report"} icon="📊" label="웨딩 리포트" theme="post" />
-              <Arrow active={activeId === "couple"} theme="post" />
+              <Arrow active={activeId === "couple"} />
               <DiagramNode active={activeId === "couple"} icon="💍" label="신랑 · 신부" theme="post" />
               
             </div>
@@ -111,23 +119,29 @@ export default function ServiceFlowPage() {
   );
 }
 
-// --- Flip Interaction Components ---
+// --- 3D Flip Components ---
 
 function FlipIcon({ icon, label }: { icon: string; label: string }) {
   const [isHover, setIsHover] = useState(false);
   return (
-    <div className="relative h-10 w-16 flex items-center justify-center cursor-default" onMouseEnter={() => setIsHover(true)} onMouseLeave={() => setIsHover(false)}>
-      <AnimatePresence mode="wait">
-        {!isHover ? (
-          <motion.span key="icon" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} className="text-3xl">
-            {icon}
-          </motion.span>
-        ) : (
-          <motion.span key="label" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="text-[10px] font-bold text-slate-800 whitespace-nowrap">
-            {label}
-          </motion.span>
-        )}
-      </AnimatePresence>
+    <div 
+      className="relative h-12 w-16 cursor-default [perspective:1000px]" 
+      onMouseEnter={() => setIsHover(true)} 
+      onMouseLeave={() => setIsHover(false)}
+    >
+      <motion.div 
+        className="relative h-full w-full transition-all duration-500 [transform-style:preserve-3d]"
+        animate={{ rotateY: isHover ? 180 : 0 }}
+      >
+        {/* Front: Icon */}
+        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden]">
+          <span className="text-3xl">{icon}</span>
+        </div>
+        {/* Back: Text */}
+        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden] [transform:rotateY(180deg)]">
+          <span className="text-[12px] font-bold text-slate-800 whitespace-nowrap">{label}</span>
+        </div>
+      </motion.div>
     </div>
   );
 }
@@ -136,41 +150,49 @@ function DiagramNode({ active, icon, label, theme }: any) {
   const [isHover, setIsHover] = useState(false);
   
   const activeStyles = {
-    prep: "border-indigo-400 shadow-[0_10px_25px_rgba(99,102,241,0.25)] ring-4 ring-indigo-50",
-    event: "border-pink-400 shadow-[0_10px_25px_rgba(244,114,182,0.25)] ring-4 ring-pink-50",
-    post: "border-emerald-400 shadow-[0_10px_25px_rgba(16,185,129,0.25)] ring-4 ring-emerald-50",
+    prep: "border-indigo-400 shadow-[0_10px_25px_rgba(99,102,241,0.2)] ring-4 ring-indigo-50",
+    event: "border-pink-400 shadow-[0_10px_25px_rgba(244,114,182,0.2)] ring-4 ring-pink-50",
+    post: "border-emerald-400 shadow-[0_10px_25px_rgba(16,185,129,0.2)] ring-4 ring-emerald-50",
   }[theme as "prep"|"event"|"post"];
 
   return (
-    <div className="relative" onMouseEnter={() => setIsHover(true)} onMouseLeave={() => setIsHover(false)}>
+    <div 
+      className="relative [perspective:1000px] w-28 h-16" 
+      onMouseEnter={() => setIsHover(true)} 
+      onMouseLeave={() => setIsHover(false)}
+    >
       <motion.div 
-        animate={{ scale: active ? 1.1 : 1, opacity: active ? 1 : 0.6 }}
-        className={`flex h-16 w-24 items-center justify-center rounded-2xl border-2 bg-white transition-all duration-300 ${active ? activeStyles : "border-slate-100 opacity-60"}`}
+        animate={{ 
+          rotateY: isHover ? 180 : 0,
+          scale: active ? 1.1 : 1,
+          opacity: active ? 1 : 0.6
+        }}
+        className={`relative h-full w-full rounded-2xl border-2 bg-white transition-all duration-500 [transform-style:preserve-3d] ${active ? activeStyles : "border-slate-100"}`}
       >
-        <AnimatePresence mode="wait">
-          {!isHover ? (
-            <motion.span key="icon" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-3xl">
-              {icon}
-            </motion.span>
-          ) : (
-            <motion.span key="label" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-[11px] font-bold text-slate-800 text-center px-1">
-              {label}
-            </motion.span>
-          )}
-        </AnimatePresence>
+        {/* Front: Icon */}
+        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden]">
+          <span className="text-3xl">{icon}</span>
+        </div>
+        {/* Back: Text (폰트 크기 키움) */}
+        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden] [transform:rotateY(180deg)] bg-white rounded-2xl">
+          <span className="text-[13px] font-black text-slate-800 text-center leading-tight">
+            {label}
+          </span>
+        </div>
       </motion.div>
     </div>
   );
 }
 
-function Arrow({ active }: { active: boolean }) {
+function Arrow({ active }: { active?: boolean }) {
   return (
     <div className="flex justify-center my-1.5">
       <svg width="24" height="40" viewBox="0 0 24 40" fill="none">
         <path 
           d="M12 0V38M12 38L6 32M12 38L18 32" 
-          stroke={active ? "#94a3b8" : "#e2e8f0"} 
+          stroke={active ? "#94a3b8" : "#cbd5e1"} 
           strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" 
+          className="transition-colors duration-500"
         />
       </svg>
     </div>
