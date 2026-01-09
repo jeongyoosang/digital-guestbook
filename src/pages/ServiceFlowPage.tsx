@@ -51,13 +51,17 @@ export default function ServiceFlowPage() {
         </div>
       </header>
 
-      {/* Mobile Top Nav */}
-      <div className="sticky top-[65px] z-40 flex w-full justify-around bg-white/90 p-2 backdrop-blur-md border-b border-slate-100 lg:hidden">
-        {STEPS.map((step) => (
-          <div key={step.id} className={`flex h-10 w-10 items-center justify-center rounded-xl border-2 transition-all ${activeId === step.id ? "border-pink-400 bg-white shadow-md scale-110" : "border-transparent opacity-30"}`}>
-            <span className="text-lg">{step.icon}</span>
-          </div>
-        ))}
+      {/* Mobile Top Nav (모바일 테두리 색상 수정 완료) */}
+      <div className="sticky top-[65px] z-40 flex w-full justify-around bg-white/90 p-3 backdrop-blur-md border-b border-slate-100 lg:hidden">
+        {STEPS.map((step) => {
+          const isActive = activeId === step.id;
+          const themeColor = step.theme === 'prep' ? 'border-indigo-400' : step.theme === 'event' ? 'border-pink-400' : 'border-emerald-400';
+          return (
+            <div key={step.id} className={`flex h-11 w-11 items-center justify-center rounded-xl border-2 transition-all duration-300 ${isActive ? `${themeColor} bg-white shadow-md scale-110` : "border-transparent opacity-20"}`}>
+              <span className="text-xl">{step.icon}</span>
+            </div>
+          );
+        })}
       </div>
 
       <div className="mx-auto max-w-7xl px-6 py-16 lg:py-24">
@@ -82,30 +86,32 @@ export default function ServiceFlowPage() {
             ))}
           </div>
 
-          {/* RIGHT: Fixed Diagram (Fixed Overflow) */}
+          {/* RIGHT: Fixed Diagram (웹 가독성 향상 버전) */}
           <div className="hidden lg:block">
-            <div className="sticky top-44 flex flex-col items-center rounded-[3.5rem] bg-slate-50/50 p-8 backdrop-blur-xl border border-white shadow-sm h-auto max-h-[calc(100vh-200px)] overflow-hidden">
-              <DiagramNode active={activeId === "reserve"} icon="📅" label="예약" theme="prep" />
-              <Arrow active={activeId === "setup"} theme="prep" />
-              <DiagramNode active={activeId === "setup"} icon="⚙️" label="설정" theme="prep" />
+            <div className="sticky top-44 flex flex-col items-center rounded-[3.5rem] bg-slate-50/40 p-10 backdrop-blur-xl border border-slate-100 shadow-sm h-auto">
               
-              <div className="h-4" />
-              <DiagramNode active={activeId === "guest"} icon="👥" label="하객" theme="event" />
+              <DiagramNode active={activeId === "reserve"} icon="📅" label="예약하기" theme="prep" />
+              <Arrow active={activeId === "setup"} theme="prep" />
+              <DiagramNode active={activeId === "setup"} icon="⚙️" label="상세 설정" theme="prep" />
+              
+              <div className="h-6" />
+              <DiagramNode active={activeId === "guest"} icon="👥" label="하객 참여" theme="event" />
               <Arrow active={activeId === "guest"} theme="event" />
               
-              <div className={`relative p-4 rounded-[2rem] border-2 border-dashed transition-all duration-500 ${activeId === "guest" ? "border-pink-300 bg-white shadow-lg" : "border-slate-200 opacity-10"}`}>
-                <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-pink-400 text-[8px] text-white px-2 py-0.5 rounded-full font-bold uppercase">QR Zone</div>
-                <div className="flex gap-3">
-                  <div className="text-center"><div className="text-lg">✍️</div><div className="text-[8px] font-bold mt-1">방명록</div></div>
-                  <div className="text-center border-x border-slate-100 px-3"><div className="text-lg">💬</div><div className="text-[8px] font-bold mt-1">메시지</div></div>
-                  <div className="text-center"><div className="text-lg">💸</div><div className="text-[8px] font-bold mt-1">축의금</div></div>
+              <div className={`relative p-5 rounded-[2.2rem] border-2 border-dashed transition-all duration-500 ${activeId === "guest" ? "border-pink-300 bg-white shadow-xl" : "border-slate-200 opacity-5"}`}>
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-pink-400 text-[9px] text-white px-3 py-1 rounded-full font-black uppercase tracking-wider">QR Zone</div>
+                <div className="flex gap-5">
+                  <div className="text-center"><div className="text-2xl">✍️</div><div className="text-[10px] font-bold mt-1.5 text-slate-600">방명록</div></div>
+                  <div className="text-center border-x border-slate-50 px-5"><div className="text-2xl">💬</div><div className="text-[10px] font-bold mt-1.5 text-slate-600">메시지</div></div>
+                  <div className="text-center"><div className="text-2xl">💸</div><div className="text-[10px] font-bold mt-1.5 text-slate-600">축의금</div></div>
                 </div>
               </div>
 
               <Arrow active={activeId === "report"} theme="event" />
-              <DiagramNode active={activeId === "report"} icon="📊" label="리포트" theme="post" />
+              <DiagramNode active={activeId === "report"} icon="📊" label="웨딩 리포트" theme="post" />
               <Arrow active={activeId === "couple"} theme="post" />
               <DiagramNode active={activeId === "couple"} icon="💍" label="신랑 · 신부" theme="post" />
+              
             </div>
           </div>
         </div>
@@ -115,16 +121,20 @@ export default function ServiceFlowPage() {
   );
 }
 
+// 아이콘 크기 키우고 텍스트를 옆으로 배치 (Flex-row)
 function DiagramNode({ active, icon, label, theme }: any) {
   const colors = {
-    prep: active ? "border-indigo-400 shadow-[0_5px_15px_rgba(99,102,241,0.3)]" : "border-slate-100",
-    event: active ? "border-pink-400 shadow-[0_5px_15px_rgba(244,114,182,0.3)]" : "border-slate-100",
-    post: active ? "border-emerald-400 shadow-[0_5px_15px_rgba(16,185,129,0.3)]" : "border-slate-100",
+    prep: active ? "border-indigo-400 shadow-[0_8px_20px_rgba(99,102,241,0.25)]" : "border-slate-100",
+    event: active ? "border-pink-400 shadow-[0_8px_20px_rgba(244,114,182,0.25)]" : "border-slate-100",
+    post: active ? "border-emerald-400 shadow-[0_8px_20px_rgba(16,185,129,0.25)]" : "border-slate-100",
   }[theme as "prep"|"event"|"post"];
+
   return (
-    <div className={`flex flex-col items-center gap-1.5 transition-all duration-500 ${active ? "opacity-100" : "opacity-10 scale-90"}`}>
-      <div className={`flex h-12 w-12 items-center justify-center rounded-2xl border-2 bg-white ${colors}`}><span className="text-xl">{icon}</span></div>
-      <span className="text-[9px] font-bold text-slate-700 tracking-tighter">{label}</span>
+    <div className={`flex items-center gap-4 w-full max-w-[200px] transition-all duration-500 ${active ? "opacity-100 translate-x-2" : "opacity-10 scale-95"}`}>
+      <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border-2 bg-white ${colors}`}>
+        <span className="text-2xl">{icon}</span>
+      </div>
+      <span className="text-sm font-bold text-slate-800 whitespace-nowrap">{label}</span>
     </div>
   );
 }
@@ -132,8 +142,10 @@ function DiagramNode({ active, icon, label, theme }: any) {
 function Arrow({ active, theme }: any) {
   const color = active ? (theme === "prep" ? "#6366f1" : theme === "event" ? "#f472b6" : "#10b981") : "#f1f5f9";
   return (
-    <div className="my-0.5">
-      <svg width="20" height="32" viewBox="0 0 24 40" fill="none"><path d="M12 0V38M12 38L6 32M12 38L18 32" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+    <div className="w-14 flex justify-center my-1">
+      <svg width="24" height="36" viewBox="0 0 24 40" fill="none">
+        <path d="M12 0V38M12 38L6 32M12 38L18 32" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
     </div>
   );
 }
