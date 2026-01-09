@@ -33,6 +33,13 @@ type FloatingItem = {
   durationMs: number;
 };
 
+// ✅ recipients jsonb fallback용
+type Recipient = {
+  name: string;
+  role: string;
+  contact: string | null;
+};
+
 function InstagramIcon({
   size = 18,
   className = "",
@@ -130,7 +137,11 @@ export default function DisplayPage() {
         .eq("is_hidden", false)
         .order("created_at", { ascending: true });
 
-      if (error || !data || cancelled) return;
+      if (error) {
+        console.error("[DisplayPage] messages select error:", error);
+        return;
+      }
+      if (!data || cancelled) return;
 
       if (data.length > 0) {
         setLastUpdated(new Date(data[data.length - 1].created_at));
@@ -159,11 +170,12 @@ export default function DisplayPage() {
     supabase
       .from("event_settings")
       .select(
-        "lower_message, ceremony_date, ceremony_start_time, ceremony_end_time, display_style, background_mode, media_urls"
+        "lower_message, ceremony_date, ceremony_start_time, ceremony_end_time, display_style, background_mode, media_urls, recipients"
       )
       .eq("event_id", eventId)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) console.error("[DisplayPage] event_settings select error:", error);
         if (!data) return;
 
         if (data.lower_message) setLowerMessage(data.lower_message);
@@ -180,25 +192,68 @@ export default function DisplayPage() {
           });
         }
 
-        setDisplayStyle(data.display_style ?? "basic");
-        setBackgroundMode(data.background_mode ?? "template");
+        setDisplayStyle((data.display_style as DisplayStyle) ?? "basic");
+        setBackgroundMode((data.background_mode as BackgroundMode) ?? "template");
         setMediaUrls(Array.isArray(data.media_urls) ? data.media_urls : []);
+
+        // ✅ (fallback 1) event_settings.recipients에서 이름 채우기
+        // events에서 못 읽어오거나 값이 비었을 때 대비
+        const recipients = Array.isArray(data.recipients)
+          ? (data.recipients as Recipient[])
+          : [];
+
+        const groom = recipients.find((r) => r?.role === "신랑")?.name;
+        const bride = recipients.find((r) => r?.role === "신부")?.name;
+
+        // 현재 값이 비어있을 때만 채움
+        if (!groomName && groom) setGroomName(groom);
+        if (!brideName && bride) setBrideName(bride);
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
-  /* ---------- names ---------- */
+  /* ---------- names (primary) ---------- */
   useEffect(() => {
     if (!eventId) return;
-    supabase
-      .from("events")
-      .select("groom_name, bride_name")
-      .eq("id", eventId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!data) return;
-        setGroomName(data.groom_name ?? "");
-        setBrideName(data.bride_name ?? "");
-      });
+
+    (async () => {
+      const { data, error } = await supabase
+        .from("events")
+        .select("groom_name, bride_name")
+        .eq("id", eventId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("[DisplayPage] events select error:", error);
+        return;
+      }
+      if (!data) {
+        console.warn("[DisplayPage] events data is null (maybe RLS?) eventId:", eventId);
+        return;
+      }
+
+      // 정상 케이스
+      setGroomName(data.groom_name ?? "");
+      setBrideName(data.bride_name ?? "");
+
+      // ✅ 혹시 events에 값이 비어있으면 event_settings에서 한번 더 시도
+      if (!data.groom_name || !data.bride_name) {
+        const { data: s, error: sErr } = await supabase
+          .from("event_settings")
+          .select("recipients")
+          .eq("event_id", eventId)
+          .maybeSingle();
+
+        if (sErr) console.error("[DisplayPage] fallback recipients error:", sErr);
+
+        const recipients = Array.isArray(s?.recipients) ? (s!.recipients as Recipient[]) : [];
+        const groom = recipients.find((r) => r?.role === "신랑")?.name;
+        const bride = recipients.find((r) => r?.role === "신부")?.name;
+
+        if (!data.groom_name && groom) setGroomName(groom);
+        if (!data.bride_name && bride) setBrideName(bride);
+      }
+    })();
   }, [eventId]);
 
   /* ---------- phase ---------- */
