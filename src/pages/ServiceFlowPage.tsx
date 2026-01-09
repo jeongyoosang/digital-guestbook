@@ -37,12 +37,12 @@ const STEPS: StepData[] = [
     dDay: "D-14 ~ 30", 
     icon: "⚙️", 
     label: "상세 설정", 
-    images: ["/serviceflow2.jpg"], // 새로 추가된 이미지
+    images: ["/serviceflow2.jpg"], 
     theme: "prep" 
   },
   { id: "guest", sectionId: "sf-guest", title: "03. 하객 참여 및 현장 이벤트", desc: "QR 스캔으로 방명록, 메시지, 축의금 송금을 한 번에. 피로연장 화면과 실시간 연동됩니다.", dDay: "D-Day", icon: "👥", label: "하객 참여", images: ["https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?q=80&w=1000"], theme: "event" },
   { id: "report", sectionId: "sf-report", title: "04. 웨딩 리포트", desc: "예식 종료와 동시에 명단, 메시지, 정산 내역이 깔끔한 리포트로 생성됩니다.", dDay: "D-Day (종료)", icon: "📊", label: "웨딩 리포트", images: ["https://images.unsplash.com/photo-1450101499163-c8848c66ca85?q=80&w=1000"], theme: "post" },
-  { id: "couple", sectionId: "sf-couple", title: "05. 신랑 · 신부", desc: "소중한 기록을 영구 보관하고 하객들에게 감사 인사를 전하며 마무리하세요.", dDay: "D-Day +", icon: "💍", label: "신랑 · 신부", images: ["https://images.unsplash.com/photo-1583939003579-730e3918a45a?q=80&w=1000"], theme: "post" },
+  { id: "couple", sectionId: "sf-couple", title: "05. 신랑 · 신부", desc: "소중한 기록을 영구 보관하고 하객들에게 감사 인사를 전하며 마무리하세요.", dDay: "D-Day +", icon: "💍", label: "신랑 · 신부", images: ["/image_ff4807.jpg"], theme: "post" },
 ];
 
 export default function ServiceFlowPage() {
@@ -71,6 +71,15 @@ export default function ServiceFlowPage() {
         </div>
       </header>
 
+      {/* 복구된 Mobile Nav (아이콘 바) */}
+      <div className="sticky top-[65px] z-40 flex w-full justify-around bg-white/90 p-3 backdrop-blur-md border-b border-slate-100 lg:hidden">
+        {STEPS.map((step) => (
+          <div key={step.id} className={`flex h-10 w-10 items-center justify-center rounded-xl border-2 transition-all ${activeId === step.id ? "border-pink-400 bg-white shadow-md scale-110" : "border-transparent opacity-30"}`}>
+            <span className="text-lg">{step.icon}</span>
+          </div>
+        ))}
+      </div>
+
       <div className="mx-auto max-w-7xl px-6 py-16 lg:py-24">
         <div className="grid gap-16 lg:grid-cols-[1fr_380px]">
           <div className="space-y-40 lg:space-y-64">
@@ -82,21 +91,20 @@ export default function ServiceFlowPage() {
                   <p className="text-lg leading-relaxed text-slate-500">{step.desc}</p>
                 </div>
 
-                {/* 중앙 정렬 & 상단 정렬 최적화된 폰 목업 */}
                 <div className="flex flex-wrap gap-8 justify-center">
                   {step.images.map((img, idx) => (
                     <div 
                       key={idx} 
-                      className={`overflow-hidden transition-all duration-500 bg-slate-900 shadow-2xl relative
-                        ${(step.id === "reserve" || step.id === "setup")
-                          ? "w-[42%] lg:w-[260px] aspect-[9/19] rounded-[3rem] border-[12px] border-slate-900" 
-                          : "w-full lg:w-[500px] aspect-video rounded-[2rem] border border-slate-100"
+                      className={`overflow-hidden transition-all duration-500 shadow-2xl relative
+                        ${step.id === "reserve" 
+                          ? "w-[42%] lg:w-[260px] aspect-[9/19] rounded-[3rem] border-[12px] border-slate-900 bg-slate-900" 
+                          : "w-full lg:max-w-3xl rounded-[2rem] border border-slate-100 bg-white"
                         }`}
                     >
                       <img 
                         src={img} 
                         alt={step.title} 
-                        className={`h-full w-full bg-white ${(step.id === "reserve" || step.id === "setup") ? "object-cover object-top" : "object-cover"}`} 
+                        className={`w-full h-full ${step.id === "reserve" ? "object-cover object-top bg-white" : "object-contain"}`} 
                       />
                     </div>
                   ))}
@@ -135,7 +143,7 @@ export default function ServiceFlowPage() {
   );
 }
 
-// --- Flip & Arrow Helpers (기존 동일) ---
+// --- Interaction Components (기존 동일) ---
 function FlipIcon({ icon, label }: { icon: string; label: string }) {
   const [isHover, setIsHover] = useState(false);
   return (
