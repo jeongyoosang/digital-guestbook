@@ -14,6 +14,7 @@ interface StepData {
   icon: string;
   label: string;
   images: string[];
+  video?: string;
   theme: "prep" | "event" | "post";
 }
 
@@ -26,7 +27,6 @@ const STEPS: StepData[] = [
     dDay: "D-30 ~ 180",
     icon: "📅",
     label: "예약하기",
-    // 1-0: 웹화면, 1: 모바일예약, 1-2: 카톡
     images: ["/serviceflow1-0.jpg", "/serviceflow1.jpg", "/serviceflow1-2.jpg"],
     theme: "prep",
   },
@@ -41,8 +41,6 @@ const STEPS: StepData[] = [
     images: ["/serviceflow2-1.jpg", "/serviceflow2.jpg", "/serviceflow2-2.jpg"],
     theme: "prep",
   },
-
-  // ✅ 03 섹션: 멘트 + 이미지 교체 (public: serviceflow3, 3-1, 3-2, 3-4)
   {
     id: "guest",
     sectionId: "sf-guest",
@@ -51,10 +49,10 @@ const STEPS: StepData[] = [
     dDay: "D-Day",
     icon: "👥",
     label: "하객 참여",
-    images: ["/serviceflow3.jpg", "/serviceflow3-1.jpg", "/serviceflow3-2.jpg", "/serviceflow3-4.jpg"],
+    images: ["/serviceflow3.jpg", "/serviceflow3-1.jpg", "/serviceflow3-2.jpg"],
+    video: "/serviceflow3-3.mp4",
     theme: "event",
   },
-
   {
     id: "report",
     sectionId: "sf-report",
@@ -63,7 +61,7 @@ const STEPS: StepData[] = [
     dDay: "D-Day (종료)",
     icon: "📊",
     label: "웨딩 리포트",
-    images: ["https://images.unsplash.com/photo-1450101499163-c8848c66ca85?q=80&w=1000"],
+    images: ["/serviceflow4.jpg"],
     theme: "post",
   },
   {
@@ -104,42 +102,21 @@ export default function ServiceFlowPage() {
 
   const currentTheme = STEPS.find((s) => s.id === activeId)?.theme || "prep";
   const themeColor =
-    currentTheme === "prep"
-      ? "border-indigo-400"
-      : currentTheme === "event"
-      ? "border-pink-400"
-      : "border-emerald-400";
+    currentTheme === "prep" ? "border-indigo-400" : currentTheme === "event" ? "border-pink-400" : "border-emerald-400";
 
   return (
     <main className="relative min-h-screen bg-white">
       <header className="sticky top-0 z-50 border-b border-slate-50 bg-white/80 backdrop-blur-md px-6 py-4">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <button
-            onClick={() => navigate("/")}
-            className="text-xl font-bold tracking-tighter uppercase"
-          >
-            Digital Guestbook
-          </button>
-          <button
-            onClick={() => navigate("/reserve")}
-            className="rounded-full bg-slate-900 px-5 py-2 text-sm font-medium text-white transition hover:scale-105"
-          >
-            시작하기
-          </button>
+          <button onClick={() => navigate("/")} className="text-xl font-bold tracking-tighter uppercase">Digital Guestbook</button>
+          <button onClick={() => navigate("/reserve")} className="rounded-full bg-slate-900 px-5 py-2 text-sm font-medium text-white transition hover:scale-105">시작하기</button>
         </div>
       </header>
 
       {/* Mobile Nav */}
       <div className="sticky top-[65px] z-40 flex w-full justify-around bg-white/90 p-3 backdrop-blur-md border-b border-slate-100 lg:hidden">
         {STEPS.map((step) => (
-          <div
-            key={step.id}
-            className={`flex h-10 w-10 items-center justify-center rounded-xl border-2 transition-all duration-300 ${
-              activeId === step.id
-                ? `${themeColor} bg-white shadow-md scale-110`
-                : "border-transparent opacity-30"
-            }`}
-          >
+          <div key={step.id} className={`flex h-10 w-10 items-center justify-center rounded-xl border-2 transition-all duration-300 ${activeId === step.id ? `${themeColor} bg-white shadow-md scale-110` : "border-transparent opacity-30"}`}>
             <span className="text-lg">{step.icon}</span>
           </div>
         ))}
@@ -151,180 +128,84 @@ export default function ServiceFlowPage() {
             {STEPS.map((step) => (
               <section key={step.id} id={step.sectionId} className="scroll-mt-48">
                 <div className="mb-8 space-y-3">
-                  <span
-                    className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${
-                      step.theme === "prep"
-                        ? "bg-indigo-50 text-indigo-600 border-indigo-100"
-                        : step.theme === "event"
-                        ? "bg-pink-50 text-pink-600 border-pink-100"
-                        : "bg-emerald-50 text-emerald-600 border-emerald-100"
-                    }`}
-                  >
-                    {step.dDay}
-                  </span>
-                  <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 lg:text-4xl">
-                    {step.title}
-                  </h2>
-
-                  {/* ✅ 03 섹션: desc 아래에 작은 각주 한 줄 추가 */}
-                  {step.id === "guest" ? (
-                    <div className="space-y-2">
-                      <p className="text-lg leading-relaxed text-slate-500">{step.desc}</p>
-                      <p className="text-xs text-slate-400">
-                        *기본 스탠드형 디스플레이 1대 제공
-                      </p>
-                    </div>
-                  ) : (
+                  <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${step.theme === 'prep' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : step.theme === 'event' ? 'bg-pink-50 text-pink-600 border-pink-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>{step.dDay}</span>
+                  <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 lg:text-4xl">{step.title}</h2>
+                  <div className="space-y-2">
                     <p className="text-lg leading-relaxed text-slate-500">{step.desc}</p>
-                  )}
+                    {step.id === "guest" && <p className="text-xs text-slate-400 font-medium">*기본 스탠드형 디스플레이 1대 제공</p>}
+                  </div>
                 </div>
 
-                {/* 01. 예약하기 이미지 배치 (반응형) */}
+                {/* 01. 예약하기 */}
                 {step.id === "reserve" && (
                   <div className="flex flex-wrap gap-4 lg:gap-8 justify-center items-center">
-                    {/* PC 전용: 웹화면(1-0) + 카톡(1-2) */}
                     <div className="hidden lg:flex w-full items-center justify-center gap-8">
-                      <div className="w-[500px] aspect-square overflow-hidden rounded-[2rem] border border-slate-100 shadow-lg">
-                        <img
-                          src={step.images[0]}
-                          alt="웹화면"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="w-[240px] aspect-[9/19] overflow-hidden rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl">
-                        <img
-                          src={step.images[2]}
-                          alt="카톡"
-                          className="w-full h-full object-cover object-top bg-white"
-                        />
-                      </div>
+                      <div className="w-[500px] aspect-square overflow-hidden rounded-[2rem] border border-slate-100 shadow-lg"><img src={step.images[0]} alt="웹" className="w-full h-full object-cover" /></div>
+                      <div className="w-[240px] aspect-[9/19] overflow-hidden rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl"><img src={step.images[2]} alt="카톡" className="w-full h-full object-cover object-top bg-white" /></div>
                     </div>
-                    {/* 모바일 전용: 폰화면(1) + 폰화면(1-2) */}
                     <div className="flex lg:hidden w-full justify-center gap-4">
-                      <div className="w-[45%] aspect-[9/19] overflow-hidden rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl">
-                        <img
-                          src={step.images[1]}
-                          alt="예약폼"
-                          className="w-full h-full object-cover object-top bg-white"
-                        />
-                      </div>
-                      <div className="w-[45%] aspect-[9/19] overflow-hidden rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl">
-                        <img
-                          src={step.images[2]}
-                          alt="카톡"
-                          className="w-full h-full object-cover object-top bg-white"
-                        />
-                      </div>
+                      <div className="w-[45%] aspect-[9/19] overflow-hidden rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl"><img src={step.images[1]} alt="폰1" className="w-full h-full object-cover object-top bg-white" /></div>
+                      <div className="w-[45%] aspect-[9/19] overflow-hidden rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl"><img src={step.images[2]} alt="폰2" className="w-full h-full object-cover object-top bg-white" /></div>
                     </div>
                   </div>
                 )}
 
-                {/* 02. 상세 설정 이미지 배치 (상단 웹 + 하단 폰 2개) */}
+                {/* 02. 상세 설정 */}
                 {step.id === "setup" && (
                   <div className="flex flex-col gap-6 lg:gap-8 items-center">
-                    <div className="w-full lg:max-w-3xl overflow-hidden rounded-[1.5rem] border border-slate-100 shadow-lg">
-                      <img src={step.images[0]} alt="상세설정 웹" className="w-full object-contain" />
-                    </div>
+                    <div className="w-full lg:max-w-3xl overflow-hidden rounded-[1.5rem] border border-slate-100 shadow-lg"><img src={step.images[0]} alt="웹" className="w-full object-contain" /></div>
                     <div className="flex justify-center gap-4 lg:gap-8 w-full">
-                      <div className="w-[45%] lg:w-[240px] aspect-[9/19] overflow-hidden rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl">
-                        <img
-                          src={step.images[1]}
-                          alt="상세설정 폰1"
-                          className="w-full h-full object-cover object-top bg-white"
-                        />
-                      </div>
-                      <div className="w-[45%] lg:w-[240px] aspect-[9/19] overflow-hidden rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl">
-                        <img
-                          src={step.images[2]}
-                          alt="상세설정 폰2"
-                          className="w-full h-full object-cover object-top bg-white"
-                        />
-                      </div>
+                      <div className="w-[45%] lg:w-[240px] aspect-[9/19] overflow-hidden rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl"><img src={step.images[1]} alt="폰1" className="w-full h-full object-cover object-top bg-white" /></div>
+                      <div className="w-[45%] lg:w-[240px] aspect-[9/19] overflow-hidden rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl"><img src={step.images[2]} alt="폰2" className="w-full h-full object-cover object-top bg-white" /></div>
                     </div>
                   </div>
                 )}
 
-                {/* ✅ 03. 하객 참여 및 현장 이벤트: public 이미지 4개 적당 배치 */}
+                {/* 03. 하객 참여 (영상 3-3 메인 배치) */}
                 {step.id === "guest" && (
                   <div className="space-y-6 lg:space-y-8">
-                    {/* 메인 히어로 (3) */}
-                    <div className="w-full lg:max-w-3xl mx-auto overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white shadow-lg">
-                      <img
-                        src={step.images[0]}
-                        alt="하객 참여 메인"
-                        className="w-full h-full object-cover"
-                      />
+                    <div className="w-full lg:max-w-3xl mx-auto overflow-hidden rounded-[1.75rem] border border-slate-100 bg-black shadow-lg">
+                      <video autoPlay muted loop playsInline className="w-full h-full object-cover">
+                        <source src={step.video} type="video/mp4" />
+                      </video>
                     </div>
-
-                    {/* 서브 3장: (3-1, 3-2, 3-4) */}
-                    <div className="grid grid-cols-1 gap-4 lg:gap-6 lg:grid-cols-3">
-                      <div className="overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white shadow-md">
-                        <img
-                          src={step.images[1]}
-                          alt="서비스플로우 3-1"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white shadow-md">
-                        <img
-                          src={step.images[2]}
-                          alt="서비스플로우 3-2"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white shadow-md">
-                        <img
-                          src={step.images[3]}
-                          alt="서비스플로우 3-4"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
+                    <div className="grid grid-cols-3 gap-3 lg:gap-6">
+                      {step.images.map((img, idx) => (
+                        <div key={idx} className="overflow-hidden rounded-[1rem] border border-slate-100 bg-white shadow-sm">
+                          <img src={img} alt={`이미지${idx}`} className="w-full h-full object-cover aspect-square lg:aspect-video" />
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
 
-                {/* 기타 섹션 공통 배치 */}
-                {step.id !== "reserve" && step.id !== "setup" && step.id !== "guest" && (
-                  <div className="flex flex-wrap gap-4 lg:gap-8 justify-center items-center">
-                    {step.images.map((img, idx) => (
-                      <div
-                        key={idx}
-                        className="w-full lg:max-w-3xl overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white shadow-lg"
-                      >
-                        <img src={img} alt={step.title} className="w-full h-full object-contain" />
-                      </div>
-                    ))}
+                {/* 04, 05 섹션 */}
+                {(step.id === "report" || step.id === "couple") && (
+                  <div className="flex justify-center">
+                    <div className="w-full lg:max-w-3xl overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white shadow-lg">
+                      <img src={step.images[0]} alt={step.title} className="w-full h-full object-contain" />
+                    </div>
                   </div>
                 )}
               </section>
             ))}
           </div>
 
-          {/* Right Diagram (상태 유지) */}
+          {/* Right Diagram */}
           <div className="hidden lg:block">
-            <div className="sticky top-44 flex flex-col items-center rounded-[4rem] bg-slate-50/40 p-12 backdrop-blur-xl border border-slate-100 shadow-sm h-auto">
+            <div className="sticky top-44 flex flex-col items-center rounded-[4rem] bg-slate-50/40 p-12 backdrop-blur-xl border border-slate-100 shadow-sm">
               <DiagramNode active={activeId === "reserve"} icon="📅" label="예약하기" theme="prep" />
               <Arrow active={activeId === "setup"} />
               <DiagramNode active={activeId === "setup"} icon="⚙️" label="상세 설정" theme="prep" />
               <div className="h-6" />
               <DiagramNode active={activeId === "guest"} icon="👥" label="하객 참여" theme="event" />
               <Arrow active={activeId === "guest"} />
-              <div
-                className={`relative p-6 rounded-[2.5rem] border-2 border-dashed transition-all duration-500 ${
-                  activeId === "guest"
-                    ? "border-pink-300 bg-white shadow-xl scale-105"
-                    : "border-slate-200 opacity-50 bg-white/30"
-                }`}
-              >
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-pink-400 text-[9px] text-white px-3 py-1 rounded-full font-black uppercase tracking-wider">
-                  QR Scan
-                </div>
+              <div className={`relative p-6 rounded-[2.5rem] border-2 border-dashed transition-all duration-500 ${activeId === "guest" ? "border-pink-300 bg-white shadow-xl scale-105" : "border-slate-200 opacity-50 bg-white/30"}`}>
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-pink-400 text-[9px] text-white px-3 py-1 rounded-full font-black uppercase tracking-wider">QR Scan</div>
                 <div className="flex gap-6">
-                  <FlipIcon icon="✍️" label="방명록" />
-                  <div className="border-x border-slate-100 px-6">
-                    <FlipIcon icon="💬" label="메시지" />
-                  </div>
-                  <FlipIcon icon="💸" label="축의금" />
+                   <FlipIcon icon="✍️" label="방명록" />
+                   <div className="border-x border-slate-100 px-6"><FlipIcon icon="💬" label="메시지" /></div>
+                   <FlipIcon icon="💸" label="축의금" />
                 </div>
               </div>
               <Arrow active={activeId === "report"} />
@@ -340,57 +221,25 @@ export default function ServiceFlowPage() {
   );
 }
 
-// Helpers (FlipIcon, DiagramNode, Arrow 동일)
+// Helpers
 function FlipIcon({ icon, label }: { icon: string; label: string }) {
   const [isHover, setIsHover] = useState(false);
   return (
-    <div
-      className="relative h-12 w-16 cursor-default [perspective:1000px]"
-      onMouseEnter={() => setIsHover(true)}
-      onMouseLeave={() => setIsHover(false)}
-    >
-      <motion.div
-        className="relative h-full w-full transition-all duration-500 [transform-style:preserve-3d]"
-        animate={{ rotateY: isHover ? 180 : 0 }}
-      >
-        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden]">
-          <span className="text-3xl">{icon}</span>
-        </div>
-        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden] [transform:rotateY(180deg)]">
-          <span className="text-[12px] font-bold text-slate-800">{label}</span>
-        </div>
+    <div className="relative h-12 w-16 cursor-default [perspective:1000px]" onMouseEnter={() => setIsHover(true)} onMouseLeave={() => setIsHover(false)}>
+      <motion.div className="relative h-full w-full transition-all duration-500 [transform-style:preserve-3d]" animate={{ rotateY: isHover ? 180 : 0 }}>
+        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden]"><span className="text-3xl">{icon}</span></div>
+        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden] [transform:rotateY(180deg)]"><span className="text-[12px] font-bold text-slate-800">{label}</span></div>
       </motion.div>
     </div>
   );
 }
 
 function DiagramNode({ active, icon, label, theme }: any) {
-  const [isHover, setIsHover] = useState(false);
-  const activeStyles = {
-    prep: "border-indigo-400 shadow-[0_10px_25px_rgba(99,102,241,0.2)] ring-4 ring-indigo-50",
-    event: "border-pink-400 shadow-[0_10px_25px_rgba(244,114,182,0.2)] ring-4 ring-pink-50",
-    post: "border-emerald-400 shadow-[0_10px_25px_rgba(16,185,129,0.2)] ring-4 ring-emerald-50",
-  }[theme as "prep" | "event" | "post"];
-
+  const activeStyles = { prep: "border-indigo-400 shadow-md ring-4 ring-indigo-50", event: "border-pink-400 shadow-md ring-4 ring-pink-50", post: "border-emerald-400 shadow-md ring-4 ring-emerald-50" }[theme as "prep"|"event"|"post"];
   return (
-    <div
-      className="relative [perspective:1000px] w-28 h-16"
-      onMouseEnter={() => setIsHover(true)}
-      onMouseLeave={() => setIsHover(false)}
-    >
-      <motion.div
-        animate={{ rotateY: isHover ? 180 : 0, scale: active ? 1.1 : 1, opacity: active ? 1 : 0.6 }}
-        className={`relative h-full w-full rounded-2xl border-2 bg-white transition-all duration-500 [transform-style:preserve-3d] ${
-          active ? activeStyles : "border-slate-100"
-        }`}
-      >
-        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden]">
-          <span className="text-3xl">{icon}</span>
-        </div>
-        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden] [transform:rotateY(180deg)] bg-white rounded-2xl">
-          <span className="text-[14px] font-black text-slate-800 text-center">{label}</span>
-        </div>
-      </motion.div>
+    <div className={`relative w-28 h-16 rounded-2xl border-2 bg-white flex flex-col items-center justify-center transition-all duration-500 ${active ? `${activeStyles} scale-110 opacity-100` : "border-slate-100 opacity-40"}`}>
+      <span className="text-2xl">{icon}</span>
+      <span className="text-[10px] font-bold text-slate-600">{label}</span>
     </div>
   );
 }
@@ -398,14 +247,8 @@ function DiagramNode({ active, icon, label, theme }: any) {
 function Arrow({ active }: { active?: boolean }) {
   return (
     <div className="flex justify-center my-1.5">
-      <svg width="24" height="40" viewBox="0 0 24 40" fill="none">
-        <path
-          d="M12 0V38M12 38L6 32M12 38L18 32"
-          stroke={active ? "#94a3b8" : "#cbd5e1"}
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+      <svg width="20" height="30" viewBox="0 0 24 40" fill="none">
+        <path d="M12 0V38M12 38L6 32M12 38L18 32" stroke={active ? "#94a3b8" : "#cbd5e1"} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </div>
   );
