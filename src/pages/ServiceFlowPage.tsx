@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import Footer from "@/components/Footer";
@@ -19,9 +19,9 @@ interface StepData {
 }
 
 const placeholderChart =
-  "https://placehold.co/900x600/f1f5f9/475569?text=Wedding+Report+Chart";
+  "https://placehold.co/800x600/f1f5f9/475569?text=Wedding+Report+Chart";
 const placeholderCouple =
-  "https://placehold.co/900x600/fdf2f8/db2777?text=Just+Married";
+  "https://placehold.co/800x600/fdf2f8/db2777?text=Just+Married";
 
 const STEPS: StepData[] = [
   {
@@ -82,12 +82,6 @@ const STEPS: StepData[] = [
   },
 ];
 
-// ====== sizing knobs (웹 기준 통일) ======
-const PHONE_H_DESKTOP = 520; // ✅ 1-0(웹 이미지) 높이에 맞춰 폰들도 키움
-const PHONE_H_MOBILE = 420; // 모바일은 적당히
-const WEB_H_DESKTOP = 520; // reserve의 1-0 높이
-// =======================================
-
 export default function ServiceFlowPage() {
   const navigate = useNavigate();
   const [activeId, setActiveId] = useState<FlowNode>("reserve");
@@ -96,9 +90,10 @@ export default function ServiceFlowPage() {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (!entry.isIntersecting) return;
-          const step = STEPS.find((s) => s.sectionId === entry.target.id);
-          if (step) setActiveId(step.id);
+          if (entry.isIntersecting) {
+            const step = STEPS.find((s) => s.sectionId === entry.target.id);
+            if (step) setActiveId(step.id);
+          }
         });
       },
       { rootMargin: "-30% 0px -50% 0px", threshold: 0.1 }
@@ -112,13 +107,12 @@ export default function ServiceFlowPage() {
     return () => observer.disconnect();
   }, []);
 
-  const activeIndex = useMemo(() => STEPS.findIndex((s) => s.id === activeId), [activeId]);
-  const activeStep = STEPS[activeIndex] ?? STEPS[0];
-
+  const activeIndex = STEPS.findIndex((s) => s.id === activeId);
+  const activeStep = STEPS[activeIndex];
   const themeColor =
-    activeStep.theme === "prep"
+    activeStep?.theme === "prep"
       ? "border-indigo-400"
-      : activeStep.theme === "event"
+      : activeStep?.theme === "event"
       ? "border-pink-400"
       : "border-emerald-400";
 
@@ -162,15 +156,19 @@ export default function ServiceFlowPage() {
           {/* 왼쪽 콘텐츠 */}
           <div className="space-y-40 lg:space-y-64">
             {STEPS.map((step) => (
-              <section key={step.id} id={step.sectionId} className="scroll-mt-48">
+              <section
+                key={step.id}
+                id={step.sectionId}
+                className="scroll-mt-48"
+              >
                 <div className="mb-10 space-y-3">
                   <span
                     className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${
                       step.theme === "prep"
-                        ? "bg-indigo-50 text-indigo-600 border-indigo-100"
+                        ? "bg-indigo-50 text-indigo-600"
                         : step.theme === "event"
-                        ? "bg-pink-50 text-pink-600 border-pink-100"
-                        : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                        ? "bg-pink-50 text-pink-600"
+                        : "bg-emerald-50 text-emerald-600"
                     }`}
                   >
                     {step.dDay}
@@ -184,9 +182,8 @@ export default function ServiceFlowPage() {
                     {step.desc}
                   </p>
 
-                  {/* ✅ 03 섹션 작은 각주 */}
                   {step.id === "guest" && (
-                    <p className="text-sm text-slate-400">
+                    <p className="text-[12px] text-slate-400">
                       * 기본 스탠드형 디스플레이 1대 제공
                     </p>
                   )}
@@ -194,109 +191,79 @@ export default function ServiceFlowPage() {
 
                 {/* 01. 예약하기 */}
                 {step.id === "reserve" ? (
-                  <div className="flex flex-col items-center gap-6 lg:items-start">
-                    {/* Desktop */}
-                    <div className="hidden lg:flex w-full max-w-3xl items-stretch gap-6">
-                      {/* 1-0 웹 (높이 고정) */}
-                      <div
-                        className="flex-1 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg"
-                        style={{ height: WEB_H_DESKTOP }}
-                      >
-                        <img
-                          src="/serviceflow1-0.jpg"
-                          alt="web-reserve"
-                          className="h-full w-full object-cover"
-                        />
+                  <div className="flex flex-col gap-6 lg:max-w-4xl lg:flex-row lg:items-stretch lg:gap-8">
+                    {/* 왼쪽: 웹(PC) / 모바일에서는 모바일 예약 화면 */}
+                    <div className="w-full lg:flex-1">
+                      <div className="block lg:hidden">
+                        <PhoneFrame src="/serviceflow1.jpg" alt="예약폼" />
                       </div>
+                      <div className="hidden lg:block h-full">
+                        <div className="h-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg">
+                          <img
+                            src="/serviceflow1-0.jpg"
+                            alt="웹 예약"
+                            className="h-full w-full object-contain bg-slate-50"
+                          />
+                        </div>
+                      </div>
+                    </div>
 
-                      {/* 1-2 폰 (같은 높이, 대신 폭은 약간 줄임) */}
-                      <div style={{ height: PHONE_H_DESKTOP }}>
+                    {/* 오른쪽: 카톡 폰 */}
+                    <div className="w-full lg:w-[360px] flex justify-center lg:justify-end">
+                      <div className="w-[80%] sm:w-[70%] lg:w-full">
                         <PhoneFrame
                           src="/serviceflow1-2.jpg"
-                          alt="kakao"
-                          height={PHONE_H_DESKTOP}
-                          // ✅ 1-2는 조금 더 줄여달라 해서 width를 살짝 타이트
-                          desktopWidth={240}
+                          alt="카카오톡 안내"
+                          // 모바일은 예전처럼(작게), 웹에서만 크게
+                          className="lg:scale-[1.02]"
                         />
                       </div>
                     </div>
-
-                    {/* Mobile */}
-                    <div className="flex w-full max-w-3xl justify-center gap-4 lg:hidden">
-                      <PhoneFrame
-                        src="/serviceflow1.jpg"
-                        alt="mobile-reserve"
-                        height={PHONE_H_MOBILE}
-                      />
-                      <PhoneFrame
-                        src="/serviceflow1-2.jpg"
-                        alt="kakao"
-                        height={PHONE_H_MOBILE}
-                      />
-                    </div>
                   </div>
                 ) : null}
 
-                {/* 02. 상세 설정 (요청대로: 상단 2-1 + 하단 폰 2개, 가운데 정렬) */}
+                {/* 02. 상세설정 (요청대로: 상단 2-1 / 하단 폰 2개 — 가운데정렬, 세로 직사각형 덩어리) */}
                 {step.id === "setup" ? (
-                  <div className="flex flex-col items-center gap-6">
-                    {/* 상단 2-1 */}
-                    <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg">
+                  <div className="flex flex-col items-center gap-6 lg:max-w-4xl mx-auto">
+                    <div className="w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg">
                       <img
                         src="/serviceflow2-1.jpg"
-                        alt="setup-web"
-                        className="w-full object-contain"
+                        alt="상세설정 웹"
+                        className="w-full object-contain bg-slate-50"
                       />
                     </div>
 
-                    {/* 하단 폰 2개 (웹에서도 크게, 높이 통일) */}
-                    <div className="hidden lg:flex w-full max-w-3xl justify-center gap-6">
-                      <PhoneFrame
-                        src="/serviceflow2.jpg"
-                        alt="setup-phone-1"
-                        height={PHONE_H_DESKTOP}
-                      />
-                      <PhoneFrame
-                        src="/serviceflow2-2.jpg"
-                        alt="setup-phone-2"
-                        height={PHONE_H_DESKTOP}
-                      />
-                    </div>
-
-                    {/* 모바일 */}
-                    <div className="flex w-full max-w-3xl justify-center gap-4 lg:hidden">
-                      <PhoneFrame
-                        src="/serviceflow2.jpg"
-                        alt="setup-phone-1"
-                        height={PHONE_H_MOBILE}
-                      />
-                      <PhoneFrame
-                        src="/serviceflow2-2.jpg"
-                        alt="setup-phone-2"
-                        height={PHONE_H_MOBILE}
-                      />
+                    <div className="w-full flex justify-center gap-4 sm:gap-6">
+                      <div className="w-[48%] sm:w-[44%] lg:w-[320px]">
+                        <PhoneFrame src="/serviceflow2.jpg" alt="상세설정 폰1" />
+                      </div>
+                      <div className="w-[48%] sm:w-[44%] lg:w-[320px]">
+                        <PhoneFrame
+                          src="/serviceflow2-2.jpg"
+                          alt="상세설정 폰2"
+                        />
+                      </div>
                     </div>
                   </div>
                 ) : null}
 
-                {/* 03. 하객 참여: 영상은 절대 안 잘리게 (contain), 하단 3장은 적당히 crop ok */}
+                {/* 03. 하객 참여 (영상: 절대 안 짤리게 object-contain) */}
                 {step.id === "guest" ? (
-                  <div className="flex flex-col items-center gap-6 lg:items-start lg:max-w-3xl">
+                  <div className="space-y-6 lg:max-w-4xl">
                     <div className="w-full overflow-hidden rounded-[2rem] border border-slate-100 bg-black shadow-xl">
-                      <div className="aspect-video w-full">
-                        <video
-                          autoPlay
-                          muted
-                          loop
-                          playsInline
-                          className="h-full w-full object-contain"
-                        >
-                          <source src={step.video} type="video/mp4" />
-                        </video>
-                      </div>
+                      <video
+                        autoPlay
+                        muted
+                        loop
+                        playsInline
+                        className="w-full h-full object-contain"
+                      >
+                        <source src={step.video} type="video/mp4" />
+                      </video>
                     </div>
 
-                    <div className="grid w-full grid-cols-3 gap-3">
+                    {/* 아래 3장: 필요하면 약간 crop(좌우 조금 잘라도 OK) */}
+                    <div className="grid grid-cols-3 gap-3">
                       {step.images.map((img, idx) => (
                         <div
                           key={idx}
@@ -304,8 +271,8 @@ export default function ServiceFlowPage() {
                         >
                           <img
                             src={img}
-                            alt={`guest-${idx}`}
-                            className="aspect-square w-full object-cover"
+                            alt="guest-detail"
+                            className="aspect-[4/3] w-full object-cover"
                           />
                         </div>
                       ))}
@@ -313,13 +280,15 @@ export default function ServiceFlowPage() {
                   </div>
                 ) : null}
 
-                {/* 04/05 공통 */}
-                {step.id !== "reserve" && step.id !== "setup" && step.id !== "guest" ? (
-                  <div className="flex justify-center lg:justify-start lg:max-w-3xl">
+                {/* 04,05 기타 */}
+                {step.id !== "reserve" &&
+                step.id !== "setup" &&
+                step.id !== "guest" ? (
+                  <div className="flex justify-center lg:justify-start lg:max-w-4xl">
                     <img
                       src={step.images[0]}
                       alt={step.title}
-                      className="w-full lg:max-w-[560px] rounded-2xl border border-slate-100 shadow-lg object-contain bg-slate-50"
+                      className="w-full lg:max-w-[680px] rounded-2xl border border-slate-100 shadow-lg object-contain bg-slate-50"
                     />
                   </div>
                 ) : null}
@@ -330,11 +299,21 @@ export default function ServiceFlowPage() {
           {/* 오른쪽 다이어그램 */}
           <div className="hidden lg:block">
             <div className="sticky top-24 flex flex-col items-center pt-10 pb-8 px-8 rounded-[3rem] bg-slate-50/50 border border-slate-100 backdrop-blur-sm">
-              {/* 예약 -> 상세설정 */}
+              {/* 예약하기 -> 상세설정 */}
               <div className="relative flex flex-col items-center w-full">
-                <DiagramNode active={activeId === "reserve"} icon="📅" label="예약하기" theme="prep" />
+                <DiagramNode
+                  active={activeId === "reserve"}
+                  icon="📅"
+                  label="예약하기"
+                  theme="prep"
+                />
                 <BridgeArrow active={activeIndex >= 1} activeColor="#818cf8" />
-                <DiagramNode active={activeId === "setup"} icon="⚙️" label="상세 설정" theme="prep" />
+                <DiagramNode
+                  active={activeId === "setup"}
+                  icon="⚙️"
+                  label="상세 설정"
+                  theme="prep"
+                />
                 <div className="absolute right-0 top-[20%] -translate-y-1/2 translate-x-4">
                   <span className="text-[10px] font-black text-indigo-500 tracking-widest uppercase bg-white/80 py-1 px-3 rounded-full shadow-sm border border-indigo-100">
                     예식 전
@@ -349,8 +328,12 @@ export default function ServiceFlowPage() {
 
               {/* 하객 참여 */}
               <div className="relative flex flex-col items-center w-full my-2">
-                <DiagramNode active={activeId === "guest"} icon="👥" label="하객 참여" theme="event" />
-
+                <DiagramNode
+                  active={activeId === "guest"}
+                  icon="👥"
+                  label="하객 참여"
+                  theme="event"
+                />
                 <div className="absolute right-0 top-6 translate-x-4">
                   <span className="text-[10px] font-black text-pink-500 tracking-widest uppercase bg-white/80 py-1 px-3 rounded-full shadow-sm border border-pink-100">
                     예식 중
@@ -369,22 +352,46 @@ export default function ServiceFlowPage() {
                   </div>
 
                   <div className="grid grid-cols-3 gap-3 mt-2">
-                    <SubBoxCard icon="✍️" label="방명록" active={activeId === "guest"} />
-                    <SubBoxCard icon="💬" label="축하 메시지" active={activeId === "guest"} />
-                    <SubBoxCard icon="💸" label="축의금" active={activeId === "guest"} />
+                    <SubBoxCard
+                      icon="✍️"
+                      label="방명록"
+                      active={activeId === "guest"}
+                    />
+                    <SubBoxCard
+                      icon="💬"
+                      label="축하 메시지"
+                      active={activeId === "guest"}
+                    />
+                    <SubBoxCard
+                      icon="💸"
+                      label="축의금"
+                      active={activeId === "guest"}
+                    />
                   </div>
                 </div>
 
-                {/* ✅ QR BOX 밖에서 출발 → 아래에서 수렴 → 단일 화살표로 리포트 */}
-                <OutsideToReportArrows active={activeIndex >= 3} activeColor="#10b981" />
+                {/* ✅ 깨짐 방지: 단순 SVG path (필터/애니메이션 최소화) */}
+                <OrthogonalConvergingArrows
+                  active={activeIndex >= 3}
+                  activeColor="#10b981"
+                />
               </div>
 
               {/* 웨딩리포트 -> 신랑신부 */}
               <div className="relative flex flex-col items-center w-full mt-1">
-                <DiagramNode active={activeId === "report"} icon="📊" label="웨딩 리포트" theme="post" />
+                <DiagramNode
+                  active={activeId === "report"}
+                  icon="📊"
+                  label="웨딩 리포트"
+                  theme="post"
+                />
                 <BridgeArrow active={activeIndex >= 4} activeColor="#10b981" />
-                <DiagramNode active={activeId === "couple"} icon="💍" label="신랑 · 신부" theme="post" />
-
+                <DiagramNode
+                  active={activeId === "couple"}
+                  icon="💍"
+                  label="신랑 · 신부"
+                  theme="post"
+                />
                 <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4">
                   <span className="text-[10px] font-black text-emerald-500 tracking-widest uppercase bg-white/80 py-1 px-3 rounded-full shadow-sm border border-emerald-100">
                     예식 후
@@ -401,32 +408,33 @@ export default function ServiceFlowPage() {
   );
 }
 
-// ===== UI bits =====
-
+/** ✅ 폰 프레임: 모바일은 작게(원복), 웹(lg)에서만 크게 */
 function PhoneFrame({
   src,
   alt,
-  height,
-  desktopWidth = 260,
+  className = "",
 }: {
   src: string;
   alt: string;
-  height: number;
-  desktopWidth?: number;
+  className?: string;
 }) {
   return (
     <div
-      className="relative overflow-hidden rounded-[2.2rem] bg-black shadow-xl"
-      style={{
-        height,
-        width: desktopWidth,
-        padding: 8, // ✅ 얇은 베젤
-      }}
+      className={[
+        // 모바일(기본): 예전처럼 부담 없는 크기
+        "w-full aspect-[9/19] overflow-hidden rounded-[2.2rem]",
+        // ✅ 베젤 얇게
+        "border-[4px] border-slate-900 bg-slate-900 shadow-xl",
+        // 웹에서만 더 크게 보이도록 (모바일 깨짐 방지)
+        "lg:border-[5px] lg:rounded-[2.6rem]",
+        className,
+      ].join(" ")}
     >
-      <div className="h-full w-full overflow-hidden rounded-[1.8rem] bg-white">
-        {/* ✅ 텍스트 가독성이 중요해서 contain 우선 */}
-        <img src={src} alt={alt} className="h-full w-full object-contain bg-white" />
-      </div>
+      <img
+        src={src}
+        alt={alt}
+        className="w-full h-full object-cover object-top bg-white"
+      />
     </div>
   );
 }
@@ -437,12 +445,14 @@ function DiagramNode({ active, icon, label, theme }: any) {
       prep: "text-indigo-600 border-indigo-400 bg-indigo-50 shadow-indigo-100",
       event: "text-pink-600 border-pink-400 bg-pink-50 shadow-pink-100",
       post: "text-emerald-600 border-emerald-400 bg-emerald-50 shadow-emerald-100",
-    }[theme as "prep" | "event" | "post"] ?? "text-slate-600 border-slate-200 bg-white";
+    }[theme as "prep" | "event" | "post"] || "";
 
   return (
     <div
-      className={`relative flex flex-col items-center justify-center w-28 h-20 rounded-2xl border-2 transition-all duration-500 ${
-        active ? `${colors} scale-110 shadow-xl z-10` : "bg-white border-slate-200 text-slate-400 opacity-70"
+      className={`relative flex flex-col items-center justify-center w-28 h-20 rounded-2xl border-2 transition-all duration-300 ${
+        active
+          ? `${colors} scale-110 shadow-xl z-10`
+          : "bg-white border-slate-200 text-slate-400 opacity-70"
       }`}
     >
       <span className="text-3xl mb-1">{icon}</span>
@@ -451,11 +461,21 @@ function DiagramNode({ active, icon, label, theme }: any) {
   );
 }
 
-function SubBoxCard({ icon, label, active }: { icon: string; label: string; active: boolean }) {
+function SubBoxCard({
+  icon,
+  label,
+  active,
+}: {
+  icon: string;
+  label: string;
+  active: boolean;
+}) {
   return (
     <div
       className={`relative h-16 rounded-xl border-2 flex items-center justify-center bg-white transition-all ${
-        active ? "border-pink-200 shadow-sm text-pink-900" : "border-slate-100 text-slate-400"
+        active
+          ? "border-pink-200 shadow-sm text-pink-900"
+          : "border-slate-100 text-slate-400"
       }`}
     >
       <div className="flex flex-col items-center">
@@ -466,13 +486,32 @@ function SubBoxCard({ icon, label, active }: { icon: string; label: string; acti
   );
 }
 
-function BridgeArrow({ active, activeColor }: { active: boolean; activeColor: string }) {
+function BridgeArrow({
+  active,
+  activeColor,
+}: {
+  active: boolean;
+  activeColor: string;
+}) {
+  const markerId = `head-${activeColor.replace("#", "")}`;
   return (
-    <div className="h-12 w-6 flex items-center justify-center relative overflow-visible my-1">
-      <svg width="20" height="48" viewBox="0 0 20 48" className="overflow-visible">
-        <marker id={`head-${activeColor.replace("#", "")}`} markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-          <polygon points="0 0, 6 3, 0 6" fill={active ? activeColor : "#E2E8F0"} />
-        </marker>
+    <div className="h-12 w-6 flex items-center justify-center relative my-1">
+      <svg width="20" height="48" viewBox="0 0 20 48">
+        <defs>
+          <marker
+            id={markerId}
+            markerWidth="6"
+            markerHeight="6"
+            refX="5"
+            refY="3"
+            orient="auto"
+          >
+            <polygon
+              points="0 0, 6 3, 0 6"
+              fill={active ? activeColor : "#E2E8F0"}
+            />
+          </marker>
+        </defs>
         <line
           x1="10"
           y1="0"
@@ -481,102 +520,72 @@ function BridgeArrow({ active, activeColor }: { active: boolean; activeColor: st
           stroke={active ? activeColor : "#E2E8F0"}
           strokeWidth="2"
           strokeDasharray={active ? "none" : "4 4"}
-          markerEnd={`url(#head-${activeColor.replace("#", "")})`}
-          vectorEffect="non-scaling-stroke"
-          shapeRendering="geometricPrecision"
+          markerEnd={`url(#${markerId})`}
         />
-        {active && (
-          <motion.line
-            x1="10"
-            y1="0"
-            x2="10"
-            y2="40"
-            stroke="white"
-            strokeWidth="2"
-            strokeOpacity="0.6"
-            vectorEffect="non-scaling-stroke"
-            shapeRendering="geometricPrecision"
-            initial={{ strokeDashoffset: 40, strokeDasharray: "10 30" }}
-            animate={{ strokeDashoffset: 0 }}
-            transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-          />
-        )}
       </svg>
     </div>
   );
 }
 
 /**
- * ✅ QR box 밖에서 출발하는 3개 라인 → 아래에서 "수렴" → 단일 화살표로 리포트
- * - 한 점( junction )으로 모여서 뭉개짐/겹침을 줄임
- * - 리포트 상단에서 세 줄이 바로 겹치지 않게 설계
+ * ✅ guest(3개) → report(1개) 수렴 화살표
+ * - 필터/복잡한 애니메이션 제거(스크롤 시 깨짐 방지)
+ * - 3개가 명확히 report로 수렴
  */
-function OutsideToReportArrows({ active, activeColor }: { active: boolean; activeColor: string }) {
-  const base = active ? activeColor : "#E2E8F0";
+function OrthogonalConvergingArrows({
+  active,
+  activeColor,
+}: {
+  active: boolean;
+  activeColor: string;
+}) {
+  const stroke = active ? activeColor : "#E2E8F0";
   const dash = active ? "none" : "4 4";
-  const headId = `merge-head-${activeColor.replace("#", "")}`;
 
   return (
-    <div className="h-[84px] w-full flex items-center justify-center relative z-0 -mt-1 overflow-visible">
-      <svg width="240" height="84" viewBox="0 0 240 84" className="overflow-visible">
+    <div className="h-16 w-full flex items-center justify-center relative -mt-1 overflow-visible">
+      <svg width="180" height="70" viewBox="0 0 180 70">
         <defs>
-          <marker id={headId} markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-            <polygon points="0 0, 6 3, 0 6" fill={base} />
-          </marker>
-          <marker id={`${headId}-final`} markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-            <polygon points="0 0, 7 3.5, 0 7" fill={base} />
+          <marker
+            id="ortho-head-2"
+            markerWidth="6"
+            markerHeight="6"
+            refX="5"
+            refY="3"
+            orient="auto"
+          >
+            <polygon points="0 0, 6 3, 0 6" fill={stroke} />
           </marker>
         </defs>
 
-        {/* start points: QR 박스 밖(바로 아래) */}
-        {/* junction */}
-        {/* 설명: x=60/120/180 에서 내려와서 x=120,y=52로 수렴 */}
-        <g
-          stroke={base}
+        {/* start points: left/mid/right */}
+        <path
+          d="M35 0 V 28 H 90 V 64"
+          stroke={stroke}
           strokeWidth="2"
           fill="none"
           strokeDasharray={dash}
-          vectorEffect="non-scaling-stroke"
+          markerEnd="url(#ortho-head-2)"
           shapeRendering="geometricPrecision"
-        >
-          {/* 3개가 junction으로 */}
-          <path d="M60 4 V 38 H 120 V 52" markerEnd={`url(#${headId})`} />
-          <path d="M120 4 V 52" markerEnd={`url(#${headId})`} />
-          <path d="M180 4 V 38 H 120 V 52" markerEnd={`url(#${headId})`} />
-
-          {/* junction -> report 로 단일 화살표 */}
-          <path d="M120 52 V 80" markerEnd={`url(#${headId}-final)`} />
-        </g>
-
-        {/* active glow line */}
-        {active && (
-          <g stroke="white" strokeWidth="2" strokeOpacity="0.5" vectorEffect="non-scaling-stroke" shapeRendering="geometricPrecision">
-            <motion.path
-              d="M60 4 V 38 H 120 V 52"
-              initial={{ strokeDashoffset: 120, strokeDasharray: "10 20" }}
-              animate={{ strokeDashoffset: 0 }}
-              transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-            />
-            <motion.path
-              d="M120 4 V 52"
-              initial={{ strokeDashoffset: 80, strokeDasharray: "10 16" }}
-              animate={{ strokeDashoffset: 0 }}
-              transition={{ repeat: Infinity, duration: 1.1, ease: "linear" }}
-            />
-            <motion.path
-              d="M180 4 V 38 H 120 V 52"
-              initial={{ strokeDashoffset: 120, strokeDasharray: "10 20" }}
-              animate={{ strokeDashoffset: 0 }}
-              transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-            />
-            <motion.path
-              d="M120 52 V 80"
-              initial={{ strokeDashoffset: 60, strokeDasharray: "10 18" }}
-              animate={{ strokeDashoffset: 0 }}
-              transition={{ repeat: Infinity, duration: 1.0, ease: "linear" }}
-            />
-          </g>
-        )}
+        />
+        <path
+          d="M90 0 V 64"
+          stroke={stroke}
+          strokeWidth="2"
+          fill="none"
+          strokeDasharray={dash}
+          markerEnd="url(#ortho-head-2)"
+          shapeRendering="geometricPrecision"
+        />
+        <path
+          d="M145 0 V 28 H 90 V 64"
+          stroke={stroke}
+          strokeWidth="2"
+          fill="none"
+          strokeDasharray={dash}
+          markerEnd="url(#ortho-head-2)"
+          shapeRendering="geometricPrecision"
+        />
       </svg>
     </div>
   );
