@@ -46,6 +46,26 @@ function isValidKoreanMobile(digits: string) {
   return /^010\d{8}$/.test(digits);
 }
 
+function friendlySupabaseError(err: any) {
+  const code = err?.code ?? "";
+  const msg = err?.message ?? "Unknown error";
+  const details = err?.details ?? "";
+  const hint = err?.hint ?? "";
+
+  // 자주 보는 케이스들
+  if (code === "42501" || /permission/i.test(msg) || /not allowed/i.test(msg)) {
+    return "권한 문제로 저장이 차단되었습니다. (RLS/Policy 설정 확인 필요)";
+  }
+  if (code === "23505") {
+    return "중복 데이터로 저장에 실패했습니다.";
+  }
+  if (code === "23502") {
+    return "필수 입력값이 누락되어 저장에 실패했습니다.";
+  }
+
+  return `${msg}${details ? `\n(${details})` : ""}${hint ? `\n힌트: ${hint}` : ""}`;
+}
+
 export default function GuestPage() {
   const { eventId } = useParams<RouteParams>();
 
@@ -75,6 +95,12 @@ export default function GuestPage() {
 
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [phase, setPhase] = useState<EventPhase>("open");
+
+  // ✅ 디버깅/상태 안내용
+  const [canWrite, setCanWrite] = useState(true);
+  const [writeBlockedReason, setWriteBlockedReason] = useState<string | null>(
+    null
+  );
 
   if (!eventId) {
     return (
@@ -181,6 +207,40 @@ export default function GuestPage() {
     };
   }, [eventId]);
 
+  // ✅ (선택) "쓰기 권한" 간단 체크: 1개 insert를 해보진 않고,
+  // 정책 문제 시 사용자에게 안내할 수 있도록 가벼운 probe를 둠.
+  // (여기서는 messages 테이블에 select 가능한지 확인만)
+  useEffect(() => {
+    let cancelled = false;
+
+    const probe = async () => {
+      const { error } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("event_id", eventId)
+        .limit(1);
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("[Guest] messages probe error", error);
+        // select까지 막혀있으면 거의 정책/권한 문제
+        setCanWrite(false);
+        setWriteBlockedReason(
+          "현재 메시지 저장/조회 권한이 차단되어 있어요. (관리자에게 정책 설정 확인 요청)"
+        );
+      } else {
+        setCanWrite(true);
+        setWriteBlockedReason(null);
+      }
+    };
+
+    probe();
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId]);
+
   const filteredAccounts = useMemo(() => {
     if (!side) return accounts;
 
@@ -205,6 +265,11 @@ export default function GuestPage() {
   }, [sendMoneyOnly]);
 
   async function handleSubmit() {
+    if (!canWrite) {
+      alert(writeBlockedReason ?? "현재 메시지를 저장할 수 없습니다.");
+      return;
+    }
+
     if (!realName.trim()) {
       alert("성함(실명)을 입력해주세요. (신랑·신부에게만 전달됩니다)");
       return;
@@ -270,7 +335,7 @@ export default function GuestPage() {
     const finalNickname =
       sendMoneyOnly ? null : displayMode === "nickname" ? nickname.trim() : null;
 
-    const { error } = await supabase.from("messages").insert({
+    const payload = {
       event_id: eventId,
       side,
       guest_name: realName.trim(),
@@ -280,13 +345,34 @@ export default function GuestPage() {
       relationship: finalRelationship || null,
       body: finalBody,
       source: "onsite",
-    });
+    };
+
+    const { error } = await supabase.from("messages").insert(payload);
 
     setLoading(false);
 
     if (error) {
-      console.error(error);
-      alert("메시지 전송 중 오류가 발생했습니다.");
+      // ✅ 로그를 아주 자세히 (원인 추적용)
+      console.error("[Guest] messages insert error:", {
+        message: error.message,
+        details: (error as any).details,
+        hint: (error as any).hint,
+        code: (error as any).code,
+        payload,
+      });
+
+      const friendly = friendlySupabaseError(error);
+      alert(`메시지 전송 중 오류가 발생했습니다.\n\n${friendly}`);
+
+      // 권한 문제면 UI도 막아줌
+      const code = (error as any)?.code ?? "";
+      if (code === "42501" || /permission/i.test(error.message || "")) {
+        setCanWrite(false);
+        setWriteBlockedReason(
+          "현재 메시지 저장 권한이 차단되어 있어요. (RLS/Policy 설정 확인 필요)"
+        );
+      }
+
       return;
     }
 
@@ -445,6 +531,19 @@ export default function GuestPage() {
           <p className="mt-2 text-[11px] text-gray-500">
             이 화면은 <span className="font-semibold">현장 방명록</span>을 대신합니다.
           </p>
+
+          {/* ✅ 권한/정책 문제 시 사용자 안내 */}
+          {!canWrite && (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left">
+              <p className="text-[12px] font-semibold text-amber-800">
+                현재 메시지 저장이 일시적으로 불가능해요
+              </p>
+              <p className="mt-1 text-[11px] text-amber-700">
+                {writeBlockedReason ??
+                  "관리자 설정(RLS/Policy)을 확인한 뒤 다시 시도해 주세요."}
+              </p>
+            </div>
+          )}
         </header>
 
         <div className="bg-white rounded-2xl shadow-sm px-4 py-5 sm:px-6 sm:py-7 space-y-5">
@@ -673,10 +772,10 @@ export default function GuestPage() {
           <section className="pt-1">
             <button
               className="w-full h-12 rounded-xl bg-pink-500 text-white text-sm font-semibold disabled:opacity-60 active:scale-[0.99] transition shadow-sm hover:bg-pink-600"
-              disabled={loading}
+              disabled={loading || !canWrite}
               onClick={handleSubmit}
             >
-              {loading ? "전송 중..." : "다음 단계로"}
+              {!canWrite ? "현재 전송 불가" : loading ? "전송 중..." : "다음 단계로"}
             </button>
           </section>
         </div>
