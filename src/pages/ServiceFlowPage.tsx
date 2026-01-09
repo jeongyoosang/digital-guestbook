@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import Footer from "@/components/Footer";
 
 // --- Types & Data ---
@@ -47,11 +47,11 @@ export default function ServiceFlowPage() {
       <header className="sticky top-0 z-50 border-b border-slate-50 bg-white/80 backdrop-blur-md px-6 py-4">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <button onClick={() => navigate("/")} className="text-xl font-bold tracking-tighter">Digital Guestbook</button>
-          <button onClick={() => navigate("/reserve")} className="rounded-full bg-slate-900 px-5 py-2 text-sm font-medium text-white">시작하기</button>
+          <button onClick={() => navigate("/reserve")} className="rounded-full bg-slate-900 px-5 py-2 text-sm font-medium text-white transition hover:scale-105">시작하기</button>
         </div>
       </header>
 
-      {/* Mobile Top Nav (모바일 테두리 색상 수정 완료) */}
+      {/* Mobile Top Nav (유지) */}
       <div className="sticky top-[65px] z-40 flex w-full justify-around bg-white/90 p-3 backdrop-blur-md border-b border-slate-100 lg:hidden">
         {STEPS.map((step) => {
           const isActive = activeId === step.id;
@@ -77,7 +77,7 @@ export default function ServiceFlowPage() {
                 </div>
                 <div className={step.images.length >= 3 ? "grid grid-cols-2 gap-3" : "block"}>
                   {step.images.map((img, idx) => (
-                    <div key={idx} className={`overflow-hidden rounded-[2rem] border border-slate-100 shadow-xl ${step.images.length >= 3 && idx === 0 ? "row-span-2" : ""}`}>
+                    <div key={idx} className={`overflow-hidden rounded-[2.5rem] border border-slate-100 shadow-xl ${step.images.length >= 3 && idx === 0 ? "row-span-2" : ""}`}>
                       <img src={img} alt={step.title} className="h-full w-full object-cover aspect-[4/3]" />
                     </div>
                   ))}
@@ -86,9 +86,9 @@ export default function ServiceFlowPage() {
             ))}
           </div>
 
-          {/* RIGHT: Fixed Diagram (웹 가독성 향상 버전) */}
+          {/* RIGHT: Fixed Diagram (Icon Only + Tooltip) */}
           <div className="hidden lg:block">
-            <div className="sticky top-44 flex flex-col items-center rounded-[3.5rem] bg-slate-50/40 p-10 backdrop-blur-xl border border-slate-100 shadow-sm h-auto">
+            <div className="sticky top-44 flex flex-col items-center rounded-[4rem] bg-slate-50/40 p-12 backdrop-blur-xl border border-slate-100 shadow-sm h-auto">
               
               <DiagramNode active={activeId === "reserve"} icon="📅" label="예약하기" theme="prep" />
               <Arrow active={activeId === "setup"} theme="prep" />
@@ -98,12 +98,12 @@ export default function ServiceFlowPage() {
               <DiagramNode active={activeId === "guest"} icon="👥" label="하객 참여" theme="event" />
               <Arrow active={activeId === "guest"} theme="event" />
               
-              <div className={`relative p-5 rounded-[2.2rem] border-2 border-dashed transition-all duration-500 ${activeId === "guest" ? "border-pink-300 bg-white shadow-xl" : "border-slate-200 opacity-5"}`}>
+              <div className={`relative p-6 rounded-[2.5rem] border-2 border-dashed transition-all duration-500 ${activeId === "guest" ? "border-pink-300 bg-white shadow-xl scale-105" : "border-slate-200 opacity-5"}`}>
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-pink-400 text-[9px] text-white px-3 py-1 rounded-full font-black uppercase tracking-wider">QR Zone</div>
-                <div className="flex gap-5">
-                  <div className="text-center"><div className="text-2xl">✍️</div><div className="text-[10px] font-bold mt-1.5 text-slate-600">방명록</div></div>
-                  <div className="text-center border-x border-slate-50 px-5"><div className="text-2xl">💬</div><div className="text-[10px] font-bold mt-1.5 text-slate-600">메시지</div></div>
-                  <div className="text-center"><div className="text-2xl">💸</div><div className="text-[10px] font-bold mt-1.5 text-slate-600">축의금</div></div>
+                <div className="flex gap-6">
+                   <TooltipWrapper label="방명록"><span className="text-3xl hover:scale-125 transition-transform">✍️</span></TooltipWrapper>
+                   <TooltipWrapper label="메시지"><span className="text-3xl hover:scale-125 transition-transform px-6 border-x border-slate-50">💬</span></TooltipWrapper>
+                   <TooltipWrapper label="축의금"><span className="text-3xl hover:scale-125 transition-transform">💸</span></TooltipWrapper>
                 </div>
               </div>
 
@@ -121,20 +121,49 @@ export default function ServiceFlowPage() {
   );
 }
 
-// 아이콘 크기 키우고 텍스트를 옆으로 배치 (Flex-row)
+// --- Tooltip & UI Helpers ---
+
+function TooltipWrapper({ children, label }: { children: React.ReactNode; label: string }) {
+  const [isHover, setIsHover] = useState(false);
+  return (
+    <div className="relative flex items-center justify-center" onMouseEnter={() => setIsHover(true)} onMouseLeave={() => setIsHover(false)}>
+      {children}
+      <AnimatePresence>
+        {isHover && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
+            className="absolute -bottom-10 whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1 text-[10px] font-bold text-white shadow-xl z-50">
+            {label}
+            <div className="absolute -top-1 left-1/2 -translate-x-1/2 border-x-4 border-x-transparent border-bottom-4 border-slate-900" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function DiagramNode({ active, icon, label, theme }: any) {
+  const [isHover, setIsHover] = useState(false);
   const colors = {
-    prep: active ? "border-indigo-400 shadow-[0_8px_20px_rgba(99,102,241,0.25)]" : "border-slate-100",
-    event: active ? "border-pink-400 shadow-[0_8px_20px_rgba(244,114,182,0.25)]" : "border-slate-100",
-    post: active ? "border-emerald-400 shadow-[0_8px_20px_rgba(16,185,129,0.25)]" : "border-slate-100",
+    prep: active ? "border-indigo-400 shadow-[0_10px_25px_rgba(99,102,241,0.25)]" : "border-slate-100",
+    event: active ? "border-pink-400 shadow-[0_10px_25px_rgba(244,114,182,0.25)]" : "border-slate-100",
+    post: active ? "border-emerald-400 shadow-[0_10px_25px_rgba(16,185,129,0.25)]" : "border-slate-100",
   }[theme as "prep"|"event"|"post"];
 
   return (
-    <div className={`flex items-center gap-4 w-full max-w-[200px] transition-all duration-500 ${active ? "opacity-100 translate-x-2" : "opacity-10 scale-95"}`}>
-      <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border-2 bg-white ${colors}`}>
-        <span className="text-2xl">{icon}</span>
+    <div className="relative flex justify-center" onMouseEnter={() => setIsHover(true)} onMouseLeave={() => setIsHover(false)}>
+      <div className={`flex h-16 w-16 items-center justify-center rounded-[1.5rem] border-2 bg-white transition-all duration-500 ${active ? `scale-110 opacity-100 ${colors}` : "opacity-10 scale-90"}`}>
+        <span className="text-3xl">{icon}</span>
       </div>
-      <span className="text-sm font-bold text-slate-800 whitespace-nowrap">{label}</span>
+      
+      {/* Tooltip on Hover */}
+      <AnimatePresence>
+        {isHover && (
+          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 10 }} exit={{ opacity: 0, x: 20 }}
+            className="absolute left-full ml-4 whitespace-nowrap rounded-xl bg-white border border-slate-100 px-4 py-2 text-xs font-bold text-slate-800 shadow-2xl z-50">
+            {label}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -142,9 +171,9 @@ function DiagramNode({ active, icon, label, theme }: any) {
 function Arrow({ active, theme }: any) {
   const color = active ? (theme === "prep" ? "#6366f1" : theme === "event" ? "#f472b6" : "#10b981") : "#f1f5f9";
   return (
-    <div className="w-14 flex justify-center my-1">
-      <svg width="24" height="36" viewBox="0 0 24 40" fill="none">
-        <path d="M12 0V38M12 38L6 32M12 38L18 32" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    <div className="flex justify-center my-1.5">
+      <svg width="24" height="40" viewBox="0 0 24 40" fill="none">
+        <path d="M12 0V38M12 38L6 32M12 38L18 32" stroke={color} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </div>
   );
