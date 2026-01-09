@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import Footer from "@/components/Footer";
 
 type FlowNode = "reserve" | "setup" | "guest" | "report" | "couple";
@@ -45,7 +45,7 @@ const STEPS: StepData[] = [
     id: "guest",
     sectionId: "sf-guest",
     title: "03. 하객 참여 및 현장 이벤트",
-    desc: "QR 스캔으로 방명록, 메시지, 축의금 송금을 한 번에. 피로연장 화면과 실시간 연동됩니다.",
+    desc: "QR 스캔으로 방명록, 축하 메시지, 축의금 송금을 한 번에. 피로연장 화면과 실시간 연동됩니다.",
     dDay: "D-Day",
     icon: "👥",
     label: "하객 참여",
@@ -72,7 +72,7 @@ const STEPS: StepData[] = [
     dDay: "D-Day +",
     icon: "💍",
     label: "신랑 · 신부",
-    images: ["/image_ff4807.jpg"],
+    images: ["/serviceflow1-0.jpg"],
     theme: "post",
   },
 ];
@@ -87,7 +87,7 @@ export default function ServiceFlowPage() {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             const step = STEPS.find((s) => s.sectionId === entry.target.id);
-            if (step) setActiveId(step.id);
+            if (step) setActiveId(step.id as FlowNode);
           }
         });
       },
@@ -100,9 +100,7 @@ export default function ServiceFlowPage() {
     return () => observer.disconnect();
   }, []);
 
-  const currentTheme = STEPS.find((s) => s.id === activeId)?.theme || "prep";
-  const themeColor =
-    currentTheme === "prep" ? "border-indigo-400" : currentTheme === "event" ? "border-pink-400" : "border-emerald-400";
+  const themeColor = activeId === "guest" ? "border-pink-400" : (STEPS.find(s => s.id === activeId)?.theme === "prep" ? "border-indigo-400" : "border-emerald-400");
 
   return (
     <main className="relative min-h-screen bg-white">
@@ -161,7 +159,7 @@ export default function ServiceFlowPage() {
                   </div>
                 )}
 
-                {/* 03. 하객 참여 (영상 3-3 메인 배치) */}
+                {/* 03. 하객 참여 */}
                 {step.id === "guest" && (
                   <div className="space-y-6 lg:space-y-8">
                     <div className="w-full lg:max-w-3xl mx-auto overflow-hidden rounded-[1.75rem] border border-slate-100 bg-black shadow-lg">
@@ -179,11 +177,11 @@ export default function ServiceFlowPage() {
                   </div>
                 )}
 
-                {/* 04, 05 섹션 */}
+                {/* 04, 05 섹션 (이미지 경로 수정 완료) */}
                 {(step.id === "report" || step.id === "couple") && (
                   <div className="flex justify-center">
                     <div className="w-full lg:max-w-3xl overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white shadow-lg">
-                      <img src={step.images[0]} alt={step.title} className="w-full h-full object-contain" />
+                      <img src={step.images[0]} alt={step.title} className="w-full h-full object-contain min-h-[300px]" />
                     </div>
                   </div>
                 )}
@@ -191,23 +189,26 @@ export default function ServiceFlowPage() {
             ))}
           </div>
 
-          {/* Right Diagram */}
+          {/* Right Diagram (디자인 롤백 및 축하 메시지 반영) */}
           <div className="hidden lg:block">
             <div className="sticky top-44 flex flex-col items-center rounded-[4rem] bg-slate-50/40 p-12 backdrop-blur-xl border border-slate-100 shadow-sm">
               <DiagramNode active={activeId === "reserve"} icon="📅" label="예약하기" theme="prep" />
               <Arrow active={activeId === "setup"} />
               <DiagramNode active={activeId === "setup"} icon="⚙️" label="상세 설정" theme="prep" />
               <div className="h-6" />
+              
               <DiagramNode active={activeId === "guest"} icon="👥" label="하객 참여" theme="event" />
               <Arrow active={activeId === "guest"} />
+              
               <div className={`relative p-6 rounded-[2.5rem] border-2 border-dashed transition-all duration-500 ${activeId === "guest" ? "border-pink-300 bg-white shadow-xl scale-105" : "border-slate-200 opacity-50 bg-white/30"}`}>
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-pink-400 text-[9px] text-white px-3 py-1 rounded-full font-black uppercase tracking-wider">QR Scan</div>
                 <div className="flex gap-6">
                    <FlipIcon icon="✍️" label="방명록" />
-                   <div className="border-x border-slate-100 px-6"><FlipIcon icon="💬" label="메시지" /></div>
+                   <div className="border-x border-slate-100 px-6"><FlipIcon icon="💬" label="축하 메시지" /></div>
                    <FlipIcon icon="💸" label="축의금" />
                 </div>
               </div>
+
               <Arrow active={activeId === "report"} />
               <DiagramNode active={activeId === "report"} icon="📊" label="웨딩 리포트" theme="post" />
               <Arrow active={activeId === "couple"} />
@@ -221,34 +222,51 @@ export default function ServiceFlowPage() {
   );
 }
 
-// Helpers
+// 다이어그램 노드 (활성화 시에만 텍스트 표시)
+function DiagramNode({ active, icon, label, theme }: any) {
+  const activeStyles = { 
+    prep: "border-indigo-400 shadow-md ring-4 ring-indigo-50 text-indigo-600", 
+    event: "border-pink-400 shadow-md ring-4 ring-pink-50 text-pink-600", 
+    post: "border-emerald-400 shadow-md ring-4 ring-emerald-50 text-emerald-600" 
+  }[theme as "prep"|"event"|"post"];
+
+  return (
+    <div className={`relative w-20 h-20 rounded-2xl border-2 bg-white flex flex-col items-center justify-center transition-all duration-500 ${active ? `${activeStyles} scale-110 opacity-100` : "border-slate-100 opacity-30 text-slate-400"}`}>
+      <span className="text-3xl">{icon}</span>
+      <AnimatePresence>
+        {active && (
+          <motion.span 
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-black"
+          >
+            {label}
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// FlipIcon (축하 메시지 반영 및 회전 기능)
 function FlipIcon({ icon, label }: { icon: string; label: string }) {
   const [isHover, setIsHover] = useState(false);
   return (
     <div className="relative h-12 w-16 cursor-default [perspective:1000px]" onMouseEnter={() => setIsHover(true)} onMouseLeave={() => setIsHover(false)}>
       <motion.div className="relative h-full w-full transition-all duration-500 [transform-style:preserve-3d]" animate={{ rotateY: isHover ? 180 : 0 }}>
         <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden]"><span className="text-3xl">{icon}</span></div>
-        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden] [transform:rotateY(180deg)]"><span className="text-[12px] font-bold text-slate-800">{label}</span></div>
+        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden] [transform:rotateY(180deg)]"><span className="text-[10px] font-bold text-slate-800 text-center leading-tight">{label}</span></div>
       </motion.div>
-    </div>
-  );
-}
-
-function DiagramNode({ active, icon, label, theme }: any) {
-  const activeStyles = { prep: "border-indigo-400 shadow-md ring-4 ring-indigo-50", event: "border-pink-400 shadow-md ring-4 ring-pink-50", post: "border-emerald-400 shadow-md ring-4 ring-emerald-50" }[theme as "prep"|"event"|"post"];
-  return (
-    <div className={`relative w-28 h-16 rounded-2xl border-2 bg-white flex flex-col items-center justify-center transition-all duration-500 ${active ? `${activeStyles} scale-110 opacity-100` : "border-slate-100 opacity-40"}`}>
-      <span className="text-2xl">{icon}</span>
-      <span className="text-[10px] font-bold text-slate-600">{label}</span>
     </div>
   );
 }
 
 function Arrow({ active }: { active?: boolean }) {
   return (
-    <div className="flex justify-center my-1.5">
+    <div className="flex justify-center my-3">
       <svg width="20" height="30" viewBox="0 0 24 40" fill="none">
-        <path d="M12 0V38M12 38L6 32M12 38L18 32" stroke={active ? "#94a3b8" : "#cbd5e1"} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M12 0V38M12 38L6 32M12 38L18 32" stroke={active ? "#94a3b8" : "#f1f5f9"} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </div>
   );
