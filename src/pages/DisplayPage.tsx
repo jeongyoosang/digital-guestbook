@@ -353,46 +353,47 @@ export default function DisplayPage() {
     return { min: 14, max: 86 };
   };
 
-  /* ---------- floating spawn (INFINITE) ---------- */
-  useEffect(() => {
-    if (phase !== "open") return;
+      /* ---------- floating spawn (INFINITE) ---------- */
+    useEffect(() => {
+      // ✅ Display는 open이 아니어도 보여주자 (닫힘만 제외)
+      if (phase === "closed") return;
 
-    const t = setInterval(() => {
-      if (rotationQueueRef.current.length === 0) return;
-      if (activeItems.length >= maxActive) return;
+      const t = setInterval(() => {
+        if (rotationQueueRef.current.length === 0) return;
+        if (activeItems.length >= maxActive) return;
 
-      const msg = rotationQueueRef.current.shift();
-      if (!msg) return;
-      rotationQueueRef.current.push(msg);
+        const msg = rotationQueueRef.current.shift();
+        if (!msg) return;
+        rotationQueueRef.current.push(msg);
 
-      const len = msg.body.length;
-      const { min, max } = getSafeRange(len);
+        const len = msg.body.length;
+        const { min, max } = getSafeRange(len);
 
-      const candidates = Array.from({ length: 12 }, () => min + Math.random() * (max - min));
-      const chosen = candidates.find((x) => {
-        const minGap = isPortrait ? (len >= 60 ? 16 : 14) : (len >= 60 ? 14 : 12);
-        return !activeItems.some((a) => Math.abs(a.leftPct - x) < minGap);
-      });
+        const candidates = Array.from({ length: 12 }, () => min + Math.random() * (max - min));
+        const chosen = candidates.find((x) => {
+          const minGap = isPortrait ? (len >= 60 ? 16 : 14) : (len >= 60 ? 14 : 12);
+          return !activeItems.some((a) => Math.abs(a.leftPct - x) < minGap);
+        });
 
-      if (chosen === undefined) return;
+        if (chosen === undefined) return;
 
-      const durationMs =
-        (isPortrait ? 15500 : 13200) +
-        Math.min(6500, Math.max(0, len - 30) * 120);
+        const durationMs =
+          (isPortrait ? 15500 : 13200) +
+          Math.min(6500, Math.max(0, len - 30) * 120);
 
-      setActiveItems((prev) => [
-        ...prev,
-        {
-          key: `${msg.id}-${Date.now()}`,
-          message: msg,
-          leftPct: chosen,
-          durationMs,
-        },
-      ]);
-    }, intervalMs);
+        setActiveItems((prev) => [
+          ...prev,
+          {
+            key: `${msg.id}-${Date.now()}`,
+            message: msg,
+            leftPct: chosen,
+            durationMs,
+          },
+        ]);
+      }, intervalMs);
 
-    return () => clearInterval(t);
-  }, [activeItems, phase, intervalMs, maxActive, isPortrait]);
+      return () => clearInterval(t);
+    }, [activeItems, phase, intervalMs, maxActive, isPortrait]);
 
   /* ---------- render ---------- */
   return (
