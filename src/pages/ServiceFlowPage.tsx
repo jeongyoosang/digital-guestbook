@@ -74,7 +74,7 @@ export default function ServiceFlowPage() {
         </div>
       </header>
 
-      {/* 모바일 테마 컬러 적용 네비게이션 */}
+      {/* 모바일 아이콘 바 (테마 컬러 반응형) */}
       <div className="sticky top-[65px] z-40 flex w-full justify-around bg-white/90 p-3 backdrop-blur-md border-b border-slate-100 lg:hidden">
         {STEPS.map((step) => (
           <div key={step.id} className={`flex h-10 w-10 items-center justify-center rounded-xl border-2 transition-all duration-300 ${activeId === step.id ? `${themeColor} bg-white shadow-md scale-110` : "border-transparent opacity-30"}`}>
@@ -96,20 +96,20 @@ export default function ServiceFlowPage() {
 
                 <div className="flex flex-wrap gap-4 lg:gap-8 justify-center items-center">
                   {step.images.map((img, idx) => {
-                    const isPhoneImage = step.id === "reserve" || (step.id === "setup" && (idx === 0 || idx === 2));
+                    const isPhone = step.id === "reserve" || (step.id === "setup" && (idx === 0 || idx === 2));
                     return (
                       <div 
                         key={idx} 
-                        className={`overflow-hidden transition-all duration-500 relative
-                          ${isPhoneImage 
-                            ? "w-[44%] lg:w-[240px] aspect-[9/19] rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl" 
-                            : "w-full lg:max-w-2xl rounded-[1.5rem] border border-slate-100 bg-white shadow-lg"
+                        className={`overflow-hidden transition-all duration-500 relative shadow-xl
+                          ${isPhone 
+                            ? "w-[44%] lg:w-[240px] aspect-[9/19] rounded-[2.5rem] border-[6px] border-slate-900 bg-slate-900" 
+                            : "w-full lg:max-w-2xl rounded-[1.5rem] border border-slate-100 bg-white"
                           }`}
                       >
                         <img 
                           src={img} 
                           alt={step.title} 
-                          className={`w-full h-full ${isPhoneImage ? "object-cover object-top bg-white" : "object-contain"}`} 
+                          className={`w-full h-full ${isPhone ? "object-cover object-top bg-white" : "object-contain"}`} 
                         />
                       </div>
                     );
@@ -120,7 +120,7 @@ export default function ServiceFlowPage() {
           </div>
 
           <div className="hidden lg:block">
-            <div className="sticky top-44 flex flex-col items-center rounded-[4rem] bg-slate-50/40 p-12 backdrop-blur-xl border border-slate-100 shadow-sm h-auto">
+            <div className="sticky top-44 flex flex-col items-center rounded-[4rem] bg-slate-50/40 p-12 backdrop-blur-xl border border-slate-100 shadow-sm">
               <DiagramNode active={activeId === "reserve"} icon="📅" label="예약하기" theme="prep" />
               <Arrow active={activeId === "setup"} />
               <DiagramNode active={activeId === "setup"} icon="⚙️" label="상세 설정" theme="prep" />
@@ -148,4 +148,49 @@ export default function ServiceFlowPage() {
   );
 }
 
-// (FlipIcon, DiagramNode, Arrow 컴포넌트 생략 - 기존과 동일)
+// --- 아래 컴포넌트들이 정의되어 있어야 에러가 나지 않습니다 ---
+
+function FlipIcon({ icon, label }: { icon: string; label: string }) {
+  const [isHover, setIsHover] = useState(false);
+  return (
+    <div className="relative h-12 w-16 cursor-default [perspective:1000px]" onMouseEnter={() => setIsHover(true)} onMouseLeave={() => setIsHover(false)}>
+      <motion.div className="relative h-full w-full transition-all duration-500 [transform-style:preserve-3d]" animate={{ rotateY: isHover ? 180 : 0 }}>
+        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden]"><span className="text-3xl">{icon}</span></div>
+        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden] [transform:rotateY(180deg)]"><span className="text-[12px] font-bold text-slate-800">{label}</span></div>
+      </motion.div>
+    </div>
+  );
+}
+
+function DiagramNode({ active, icon, label, theme }: any) {
+  const [isHover, setIsHover] = useState(false);
+  const activeStyles = {
+    prep: "border-indigo-400 shadow-[0_10px_25px_rgba(99,102,241,0.2)] ring-4 ring-indigo-50",
+    event: "border-pink-400 shadow-[0_10px_25px_rgba(244,114,182,0.2)] ring-4 ring-pink-50",
+    post: "border-emerald-400 shadow-[0_10px_25px_rgba(16,185,129,0.2)] ring-4 ring-emerald-50",
+  }[theme as "prep"|"event"|"post"];
+
+  return (
+    <div className="relative [perspective:1000px] w-28 h-16" onMouseEnter={() => setIsHover(true)} onMouseLeave={() => setIsHover(false)}>
+      <motion.div 
+        animate={{ rotateY: isHover ? 180 : 0, scale: active ? 1.1 : 1, opacity: active ? 1 : 0.6 }}
+        className={`relative h-full w-full rounded-2xl border-2 bg-white transition-all duration-500 [transform-style:preserve-3d] ${active ? activeStyles : "border-slate-100"}`}
+      >
+        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden]"><span className="text-3xl">{icon}</span></div>
+        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden] [transform:rotateY(180deg)] bg-white rounded-2xl">
+          <span className="text-[14px] font-black text-slate-800 text-center">{label}</span>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function Arrow({ active }: { active?: boolean }) {
+  return (
+    <div className="flex justify-center my-1.5">
+      <svg width="24" height="40" viewBox="0 0 24 40" fill="none">
+        <path d="M12 0V38M12 38L6 32M12 38L18 32" stroke={active ? "#94a3b8" : "#cbd5e1"} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+  );
+}
