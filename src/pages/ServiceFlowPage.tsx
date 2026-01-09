@@ -26,7 +26,7 @@ const STEPS: StepData[] = [
     dDay: "D-30 ~ 180", 
     icon: "📅", 
     label: "예약하기",
-    images: ["/serviceflow1-2.jpg", "/serviceflow1.jpg"], // public 폴더 이미지 참조
+    images: ["/serviceflow1.jpg", "/serviceflow1-2.jpg"], // 순서: 카톡(왼쪽), 예약폼(오른쪽)
     theme: "prep" 
   },
   { id: "setup", sectionId: "sf-setup", title: "02. 상세 설정", desc: "신랑·신부 정보, 감사 문구, 계좌 등 우리만의 예식 페이지를 맞춤 구성합니다.", dDay: "D-14 ~ 30", icon: "⚙️", label: "상세 설정", images: ["https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=1000"], theme: "prep" },
@@ -61,7 +61,7 @@ export default function ServiceFlowPage() {
         </div>
       </header>
 
-      {/* Mobile Nav (상단 고정 아이콘 바) */}
+      {/* Mobile Nav */}
       <div className="sticky top-[65px] z-40 flex w-full justify-around bg-white/90 p-3 backdrop-blur-md border-b border-slate-100 lg:hidden">
         {STEPS.map((step) => (
           <div key={step.id} className={`flex h-11 w-11 items-center justify-center rounded-xl border-2 transition-all ${activeId === step.id ? "border-pink-400 bg-white shadow-md scale-110" : "border-transparent opacity-20"}`}>
@@ -82,21 +82,26 @@ export default function ServiceFlowPage() {
                   <p className="text-lg leading-relaxed text-slate-500">{step.desc}</p>
                 </div>
 
-                {/* 이미지 레이아웃 조절: 예약하기 섹션만 듀얼 폰 프레임 적용 */}
-                <div className={step.id === "reserve" ? "flex gap-6 justify-start" : (step.images.length >= 3 ? "grid grid-cols-2 gap-3" : "block")}>
+                {/* 중앙 정렬된 폰 프레임 이미지 섹션 */}
+                <div className={`flex flex-wrap gap-6 ${step.id === "reserve" ? "justify-center" : "justify-start"}`}>
                   {step.images.map((img, idx) => (
                     <div 
                       key={idx} 
-                      className={`overflow-hidden border border-slate-100 shadow-2xl transition-all duration-500
+                      className={`overflow-hidden transition-all duration-500 bg-white shadow-2xl
                         ${step.id === "reserve" 
-                          ? "w-[45%] lg:w-[240px] rounded-[2.5rem] aspect-[9/19] max-h-[500px] ring-8 ring-slate-900/5" 
-                          : `rounded-[2.5rem] ${step.images.length >= 3 && idx === 0 ? "row-span-2" : ""}`
+                          ? "w-[42%] lg:w-[240px] aspect-[9/19] rounded-[2.5rem] border-[10px] border-slate-900 relative" 
+                          : `rounded-[2.5rem] border border-slate-100 ${step.images.length >= 3 && idx === 0 ? "w-full aspect-video" : "w-[48%] aspect-[4/3]"}`
                         }`}
                     >
+                      {/* 폰 프레임 상단 스피커 홀 (디테일) */}
+                      {step.id === "reserve" && (
+                        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1 bg-slate-800 rounded-full z-10" />
+                      )}
+                      
                       <img 
                         src={img} 
                         alt={step.title} 
-                        className={`h-full w-full object-cover ${step.id === "reserve" ? "object-top" : "object-center"}`} 
+                        className={`h-full w-full ${step.id === "reserve" ? "object-contain" : "object-cover"}`} 
                       />
                     </div>
                   ))}
@@ -105,35 +110,27 @@ export default function ServiceFlowPage() {
             ))}
           </div>
 
-          {/* RIGHT: Interactive 3D Diagram */}
+          {/* RIGHT: Interactive 3D Diagram (유지) */}
           <div className="hidden lg:block">
             <div className="sticky top-44 flex flex-col items-center rounded-[4rem] bg-slate-50/40 p-12 backdrop-blur-xl border border-slate-100 shadow-sm h-auto">
-              
               <DiagramNode active={activeId === "reserve"} icon="📅" label="예약하기" theme="prep" />
               <Arrow active={activeId === "setup"} />
               <DiagramNode active={activeId === "setup"} icon="⚙️" label="상세 설정" theme="prep" />
-              
               <div className="h-6" />
               <DiagramNode active={activeId === "guest"} icon="👥" label="하객 참여" theme="event" />
               <Arrow active={activeId === "guest"} />
-              
-              {/* QR Zone Area */}
               <div className={`relative p-6 rounded-[2.5rem] border-2 border-dashed transition-all duration-500 ${activeId === "guest" ? "border-pink-300 bg-white shadow-xl scale-105" : "border-slate-200 opacity-50 bg-white/30"}`}>
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-pink-400 text-[9px] text-white px-3 py-1 rounded-full font-black uppercase tracking-wider">QR Zone</div>
                 <div className="flex gap-6">
                    <FlipIcon icon="✍️" label="방명록" />
-                   <div className="border-x border-slate-100 px-6">
-                     <FlipIcon icon="💬" label="메시지" />
-                   </div>
+                   <div className="border-x border-slate-100 px-6"><FlipIcon icon="💬" label="메시지" /></div>
                    <FlipIcon icon="💸" label="축의금" />
                 </div>
               </div>
-
               <Arrow active={activeId === "report"} />
               <DiagramNode active={activeId === "report"} icon="📊" label="웨딩 리포트" theme="post" />
               <Arrow active={activeId === "couple"} />
               <DiagramNode active={activeId === "couple"} icon="💍" label="신랑 · 신부" theme="post" />
-              
             </div>
           </div>
         </div>
@@ -143,7 +140,7 @@ export default function ServiceFlowPage() {
   );
 }
 
-// --- Interaction Components (3D Flip & Arrows) ---
+// --- Flip & Arrow Components (기존 유지하되 텍스트 크기 14px 적용) ---
 
 function FlipIcon({ icon, label }: { icon: string; label: string }) {
   const [isHover, setIsHover] = useState(false);
@@ -151,7 +148,7 @@ function FlipIcon({ icon, label }: { icon: string; label: string }) {
     <div className="relative h-12 w-16 cursor-default [perspective:1000px]" onMouseEnter={() => setIsHover(true)} onMouseLeave={() => setIsHover(false)}>
       <motion.div className="relative h-full w-full transition-all duration-500 [transform-style:preserve-3d]" animate={{ rotateY: isHover ? 180 : 0 }}>
         <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden]"><span className="text-3xl">{icon}</span></div>
-        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden] [transform:rotateY(180deg)]"><span className="text-[12px] font-bold text-slate-800 whitespace-nowrap">{label}</span></div>
+        <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden] [transform:rotateY(180deg)]"><span className="text-[12px] font-bold text-slate-800">{label}</span></div>
       </motion.div>
     </div>
   );
@@ -173,7 +170,7 @@ function DiagramNode({ active, icon, label, theme }: any) {
       >
         <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden]"><span className="text-3xl">{icon}</span></div>
         <div className="absolute inset-0 flex items-center justify-center [backface-visibility:hidden] [transform:rotateY(180deg)] bg-white rounded-2xl">
-          <span className="text-[14px] font-black text-slate-800 text-center leading-tight">{label}</span>
+          <span className="text-[14px] font-black text-slate-800 text-center">{label}</span>
         </div>
       </motion.div>
     </div>
@@ -184,7 +181,7 @@ function Arrow({ active }: { active?: boolean }) {
   return (
     <div className="flex justify-center my-1.5">
       <svg width="24" height="40" viewBox="0 0 24 40" fill="none">
-        <path d="M12 0V38M12 38L6 32M12 38L18 32" stroke={active ? "#94a3b8" : "#cbd5e1"} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="transition-colors duration-500" />
+        <path d="M12 0V38M12 38L6 32M12 38L18 32" stroke={active ? "#94a3b8" : "#cbd5e1"} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </div>
   );
