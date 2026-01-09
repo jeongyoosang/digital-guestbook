@@ -76,31 +76,16 @@ export default function ServiceFlowPage() {
                   {step.images.map((img, idx) => (
                     <div 
                       key={idx} 
-                      className={`overflow-hidden transition-all duration-500 bg-white
+                      className={`overflow-hidden transition-all duration-500 bg-slate-900
                         ${step.id === "reserve" 
-                          ? "w-[42%] lg:w-[250px] aspect-[9/19] rounded-[3rem] border-[12px] border-slate-200 shadow-[0_20px_50px_rgba(0,0,0,0.1)] relative" 
-                          : `rounded-[2.5rem] border border-slate-100 ${step.images.length >= 3 && idx === 0 ? "w-full aspect-video" : "w-[48%] aspect-[4/3] shadow-lg"}`
+                          ? "w-[42%] lg:w-[250px] aspect-[9/19] rounded-[3rem] border-[10px] border-slate-900 shadow-2xl relative" 
+                          : `rounded-[2.5rem] border border-slate-100 ${step.images.length >= 3 && idx === 0 ? "w-full aspect-video" : "w-[48%] aspect-[4/3]"}`
                         }`}
                     >
-                      {/* 폰 상단 상태바 디자인 추가 */}
-                      {step.id === "reserve" && (
-                        <>
-                          <div className="absolute top-0 left-0 right-0 h-8 flex items-center justify-between px-6 z-20 text-[10px] font-bold text-slate-900">
-                            <span>9:41</span>
-                            <div className="flex gap-1.5">
-                              <span>📶</span>
-                              <span>🔋</span>
-                            </div>
-                          </div>
-                          {/* 노치 디자인 */}
-                          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 h-6 bg-slate-200 rounded-b-2xl z-10" />
-                        </>
-                      )}
-                      
                       <img 
                         src={img} 
                         alt={step.title} 
-                        className={`h-full w-full ${step.id === "reserve" ? "object-contain pt-6" : "object-cover"}`} 
+                        className={`h-full w-full ${step.id === "reserve" ? "object-contain bg-white" : "object-cover"}`} 
                       />
                     </div>
                   ))}
@@ -109,7 +94,7 @@ export default function ServiceFlowPage() {
             ))}
           </div>
 
-          {/* RIGHT: Diagram (3D Flip 적용 버전 유지) */}
+          {/* RIGHT: Diagram (3D Flip 버전 유지) */}
           <div className="hidden lg:block">
             <div className="sticky top-44 flex flex-col items-center rounded-[4rem] bg-slate-50/40 p-12 backdrop-blur-xl border border-slate-100 shadow-sm h-auto">
               <DiagramNode active={activeId === "reserve"} icon="📅" label="예약하기" theme="prep" />
@@ -139,7 +124,7 @@ export default function ServiceFlowPage() {
   );
 }
 
-// --- Flip & Arrow Helpers (기존과 동일) ---
+// --- Interaction Components (기존 동일) ---
 function FlipIcon({ icon, label }: { icon: string; label: string }) {
   const [isHover, setIsHover] = useState(false);
   return (
@@ -157,7 +142,7 @@ function DiagramNode({ active, icon, label, theme }: any) {
   const activeStyles = {
     prep: "border-indigo-400 shadow-[0_10px_25px_rgba(99,102,241,0.2)] ring-4 ring-indigo-50",
     event: "border-pink-400 shadow-[0_10px_25px_rgba(244,114,182,0.2)] ring-4 ring-pink-50",
-    post: "border-emerald-400 shadow-[0_10px_25 tax_rgba(16,185,129,0.2)] ring-4 ring-emerald-50",
+    post: "border-emerald-400 shadow-[0_10px_25px_rgba(16,185,129,0.2)] ring-4 ring-emerald-50",
   }[theme as "prep"|"event"|"post"];
 
   return (

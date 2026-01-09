@@ -22,7 +22,7 @@ export default function AppLayout() {
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
-          <div className="font-bold">디지털 방명록</div>
+          <div className="font-bold">DIGITAL GUESTBOOK</div>
           <button className="text-sm rounded-xl border px-3 py-1.5" onClick={logout}>
             로그아웃
           </button>

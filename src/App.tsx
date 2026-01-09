@@ -26,7 +26,7 @@ import LegacyConfirmRedirect from "./pages/LegacyConfirmRedirect";
 import LegacyResultRedirect from "./pages/LegacyResultRedirect";
 
 // ✅ Service Flow
-import ServiceFlowPage from "./pages/ServiceFlowPage";
+import ServiceFlowPage from "./pages/ServiceFlowPage.tsx";
 
 const queryClient = new QueryClient();
 
