@@ -53,8 +53,6 @@ export default function ServiceFlowPage() {
   }, []);
 
   const activeIndex = STEPS.findIndex(s => s.id === activeId);
-  const activeStep = STEPS[activeIndex];
-  const themeColor = activeStep?.theme === 'prep' ? "border-indigo-400" : activeStep?.theme === 'event' ? "border-pink-400" : "border-emerald-400";
 
   return (
     <main className="relative min-h-screen bg-white">
@@ -64,15 +62,6 @@ export default function ServiceFlowPage() {
           <button onClick={() => navigate("/reserve")} className="rounded-full bg-slate-900 px-5 py-2 text-sm font-medium text-white transition hover:scale-105">시작하기</button>
         </div>
       </header>
-
-      {/* 모바일 탭 */}
-      <div className="sticky top-[65px] z-40 flex w-full justify-around bg-white/90 p-3 backdrop-blur-md border-b border-slate-100 lg:hidden">
-        {STEPS.map((step) => (
-          <div key={step.id} className={`flex h-10 w-10 items-center justify-center rounded-xl border-2 transition-all duration-300 ${activeId === step.id ? `${themeColor} bg-white shadow-md scale-110` : "border-transparent opacity-30"}`}>
-            <span className="text-lg">{step.icon}</span>
-          </div>
-        ))}
-      </div>
 
       <div className="mx-auto max-w-7xl px-6 py-16 lg:py-24">
         <div className="grid gap-16 lg:grid-cols-[1fr_420px]">
@@ -84,113 +73,73 @@ export default function ServiceFlowPage() {
                   <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${step.theme === 'prep' ? 'bg-indigo-50 text-indigo-600' : step.theme === 'event' ? 'bg-pink-50 text-pink-600' : 'bg-emerald-50 text-emerald-600'}`}>{step.dDay}</span>
                   <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 lg:text-4xl">{step.title}</h2>
                   <p className="max-w-2xl text-lg leading-relaxed text-slate-500">{step.desc}</p>
+                  {step.id === "guest" && (
+                    <p className="mt-2 text-sm font-bold text-indigo-600 animate-pulse">* 기본 스탠드형 디스플레이 1대가 무상 제공됩니다</p>
+                  )}
                 </div>
 
-                {/* 이미지 배치 수정: PC에서는 작게, 모바일에서는 비율 통일 */}
+                {/* 이미지 배치 최적화 */}
                 {step.id === "reserve" ? (
-                  <div className="flex flex-row items-end gap-4 lg:gap-6 lg:max-w-3xl">
-                    <div className="flex-1 max-w-[400px]">
-                      <div className="block lg:hidden h-full">
-                        <img src="/serviceflow1.jpg" className="rounded-[2rem] border ring-2 ring-black aspect-[9/19] object-cover shadow-xl bg-white" alt="mobile-reserve-1" />
-                      </div>
-                      <div className="hidden lg:block">
-                        <img src="/serviceflow1-0.jpg" className="rounded-2xl border shadow-lg object-contain bg-slate-50 w-full" alt="web-reserve" />
-                      </div>
-                    </div>
-                    <div className="w-[45%] lg:max-w-[180px]">
-                      <img src="/serviceflow1-2.jpg" className="rounded-[2rem] border ring-2 ring-black aspect-[9/19] object-cover shadow-xl bg-white" alt="mobile-reserve-2" />
-                    </div>
+                  <div className="flex flex-col lg:flex-row items-stretch gap-4 lg:max-w-4xl">
+                    <img src="/serviceflow1-0.jpg" className="flex-[2] rounded-2xl border shadow-lg object-cover bg-slate-50" alt="web-1" />
+                    <img src="/serviceflow1-2.jpg" className="flex-1 max-w-[200px] mx-auto lg:mx-0 rounded-[2rem] border-4 border-slate-900 aspect-[9/19] object-cover shadow-2xl" alt="mobile-1" />
                   </div>
                 ) : step.id === "setup" ? (
-                  <div className="space-y-6 lg:max-w-3xl">
-                    <img src="/serviceflow2-1.jpg" className="w-full lg:max-w-[500px] rounded-2xl border shadow-lg object-contain bg-slate-50" alt="setup-main" />
-                    <div className="grid grid-cols-2 gap-4 lg:flex lg:flex-row lg:gap-6">
-                      <div className="w-full lg:max-w-[180px]">
-                        <img src="/serviceflow2.jpg" className="rounded-[2rem] border ring-2 ring-black aspect-[9/19] object-cover shadow-xl bg-white" alt="setup-sub-1" />
-                      </div>
-                      <div className="w-full lg:max-w-[180px]">
-                        <img src="/serviceflow2-2.jpg" className="rounded-[2rem] border ring-2 ring-black aspect-[9/19] object-cover shadow-xl bg-white" alt="setup-sub-2" />
-                      </div>
+                  <div className="flex flex-col lg:flex-row items-end gap-4 lg:max-w-4xl">
+                    <img src="/serviceflow2-1.jpg" className="flex-[1.5] rounded-2xl border shadow-lg object-contain bg-slate-50" alt="setup-main" />
+                    <div className="flex flex-row gap-4 w-full lg:w-auto">
+                      <img src="/serviceflow2.jpg" className="flex-1 lg:w-[160px] rounded-[1.8rem] border-4 border-slate-900 aspect-[9/19] object-cover shadow-xl" alt="setup-sub-1" />
+                      <img src="/serviceflow2-2.jpg" className="flex-1 lg:w-[160px] rounded-[1.8rem] border-4 border-slate-900 aspect-[9/19] object-cover shadow-xl" alt="setup-sub-2" />
                     </div>
                   </div>
                 ) : step.id === "guest" ? (
-                  <div className="space-y-6 lg:max-w-3xl">
-                    <div className="w-full lg:max-w-[600px] overflow-hidden rounded-[2rem] border bg-black shadow-xl">
-                      <video autoPlay muted loop playsInline className="w-full h-full object-cover"><source src={step.video} type="video/mp4" /></video>
+                  <div className="space-y-4 lg:max-w-4xl">
+                    <div className="w-full overflow-hidden rounded-2xl border bg-black shadow-xl">
+                      <video autoPlay muted loop playsInline className="w-full aspect-video object-cover"><source src={step.video} type="video/mp4" /></video>
                     </div>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-3 gap-4">
                       {step.images.map((img, idx) => (
-                        <img key={idx} src={img} className="rounded-xl border aspect-square object-cover shadow-sm bg-slate-50" alt="guest-detail" />
+                        <img key={idx} src={img} className="rounded-xl border aspect-square object-cover shadow-md bg-slate-50" alt="guest-detail" />
                       ))}
                     </div>
                   </div>
                 ) : (
-                  <div className="flex justify-center lg:justify-start lg:max-w-3xl">
-                    <img src={step.images[0]} alt={step.title} className="w-full lg:max-w-[500px] rounded-2xl border shadow-lg object-contain bg-slate-50" />
+                  <div className="flex justify-center lg:justify-start lg:max-w-4xl">
+                    <img src={step.images[0]} alt={step.title} className="w-full lg:max-w-[600px] rounded-2xl border shadow-xl object-contain bg-slate-50" />
                   </div>
                 )}
               </section>
             ))}
           </div>
 
-          {/* 오른쪽 다이어그램: 역동성 및 컬러 업데이트 */}
+          {/* 오른쪽 고정 다이어그램 */}
           <div className="hidden lg:block">
             <div className="sticky top-24 flex flex-col items-center pt-10 pb-8 px-8 rounded-[3rem] bg-slate-50/50 border border-slate-100 backdrop-blur-sm">
-              
-              {/* 예약하기 -> 상세설정 */}
-              <div className="relative flex flex-col items-center w-full">
+              <div className="flex flex-col items-center w-32 z-10">
                 <DiagramNode active={activeId === "reserve"} icon="📅" label="예약하기" theme="prep" />
-                <BridgeArrow 
-                  active={activeIndex >= 1} 
-                  activeColor="#818cf8" // indigo-400
-                />
+                <BridgeArrow active={activeIndex >= 1} activeColor="#818cf8" />
                 <DiagramNode active={activeId === "setup"} icon="⚙️" label="상세 설정" theme="prep" />
-                <div className="absolute right-0 top-[20%] -translate-y-1/2 translate-x-4">
-                  <span className="text-[10px] font-black text-indigo-500 tracking-widest uppercase bg-white/80 py-1 px-3 rounded-full shadow-sm border border-indigo-100">예식 전</span>
-                </div>
-              </div>
-
-              {/* 상세설정 -> 하객참여 */}
-              <div className="w-32 flex justify-center">
-                <BridgeArrow 
-                  active={activeIndex >= 2} 
-                  activeColor="#f472b6" // pink-400
-                />
-              </div>
-
-              {/* 하객 참여 섹션 */}
-              <div className="relative flex flex-col items-center w-full my-2">
+                <BridgeArrow active={activeIndex >= 2} activeColor="#f472b6" />
                 <DiagramNode active={activeId === "guest"} icon="👥" label="하객 참여" theme="event" />
-                <div className="absolute right-0 top-6 translate-x-4">
-                  <span className="text-[10px] font-black text-pink-500 tracking-widest uppercase bg-white/80 py-1 px-3 rounded-full shadow-sm border border-pink-100">예식 중</span>
-                </div>
                 
-                <div className={`relative mt-5 p-5 rounded-[2.5rem] border-2 border-dashed transition-all duration-500 w-full ${activeId === "guest" ? "border-pink-400 bg-pink-50/30 shadow-xl" : "border-slate-300 opacity-50 bg-white/50"}`}>
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-pink-500 text-[10px] text-white px-4 py-0.5 rounded-full font-black uppercase tracking-wider">QR Scan</div>
-                  <div className="grid grid-cols-3 gap-3 mt-2">
-                    <SubBoxCard icon="✍️" label="방명록" active={activeId === "guest"} />
-                    <SubBoxCard icon="💬" label="축하 메시지" active={activeId === "guest"} />
-                    <SubBoxCard icon="💸" label="축의금" active={activeId === "guest"} />
+                {/* 하객 참여 하단 서브 박스 */}
+                <div className={`relative mt-4 p-4 rounded-[2rem] border-2 border-dashed transition-all w-full ${activeId === "guest" ? "border-pink-400 bg-pink-50/30 shadow-lg" : "border-slate-200 opacity-40"}`}>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="text-center text-[10px] font-bold">✍️</div>
+                    <div className="text-center text-[10px] font-bold">💬</div>
+                    <div className="text-center text-[10px] font-bold">💸</div>
                   </div>
                 </div>
 
-                {/* 하객참여(수렴) -> 웨딩리포트 화살표 (효과 추가) */}
-                <OrthogonalConvergingArrows active={activeIndex >= 3} activeColor="#10b981" />
-              </div>
-
-              {/* 웨딩리포트 -> 신랑신부 */}
-              <div className="relative flex flex-col items-center w-full mt-1">
-                <DiagramNode active={activeId === "report"} icon="📊" label="웨딩 리포트" theme="post" />
-                <BridgeArrow 
-                  active={activeIndex >= 4} 
-                  activeColor="#10b981" // emerald-500
-                />
-                <DiagramNode active={activeId === "couple"} icon="💍" label="신랑 · 신부" theme="post" />
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4">
-                  <span className="text-[10px] font-black text-emerald-500 tracking-widest uppercase bg-white/80 py-1 px-3 rounded-full shadow-sm border border-emerald-100">예식 후</span>
+                {/* 복구된 수렴 화살표 영역 */}
+                <div className="py-4">
+                   <BridgeArrow active={activeIndex >= 3} activeColor="#10b981" />
                 </div>
-              </div>
 
+                <DiagramNode active={activeId === "report"} icon="📊" label="웨딩 리포트" theme="post" />
+                <BridgeArrow active={activeIndex >= 4} activeColor="#10b981" />
+                <DiagramNode active={activeId === "couple"} icon="💍" label="신랑 · 신부" theme="post" />
+              </div>
             </div>
           </div>
         </div>
@@ -200,8 +149,7 @@ export default function ServiceFlowPage() {
   );
 }
 
-// --- 하위 UI 컴포넌트 (수정됨) ---
-
+// --- UI 컴포넌트 ---
 function DiagramNode({ active, icon, label, theme }: any) {
   const colors = { 
     prep: "text-indigo-600 border-indigo-400 bg-indigo-50 shadow-indigo-100", 
@@ -210,64 +158,29 @@ function DiagramNode({ active, icon, label, theme }: any) {
   }[theme as "prep"|"event"|"post"];
   
   return (
-    <div className={`relative flex flex-col items-center justify-center w-28 h-20 rounded-2xl border-2 transition-all duration-500 ${active ? `${colors} scale-110 shadow-xl z-10` : "bg-white border-slate-200 text-slate-400 opacity-70"}`}>
-      <span className="text-3xl mb-1">{icon}</span>
-      <span className="text-[11px] font-bold">{label}</span>
+    <div className={`flex flex-col items-center justify-center w-28 h-20 rounded-2xl border-2 transition-all duration-500 ${active ? `${colors} scale-110 shadow-xl z-10` : "bg-white border-slate-200 text-slate-400 opacity-60"}`}>
+      <span className="text-2xl mb-1">{icon}</span>
+      <span className="text-[10px] font-bold">{label}</span>
     </div>
   );
-}
-
-function SubBoxCard({ icon, label, active }: { icon: string; label: string; active: boolean }) {
-  return (
-    <div className={`relative h-16 rounded-xl border-2 flex items-center justify-center bg-white transition-all ${active ? "border-pink-200 shadow-sm text-pink-900" : "border-slate-100 text-slate-400"}`}>
-       <div className="flex flex-col items-center">
-         <span className="text-2xl">{icon}</span>
-         <span className="text-[9px] font-bold mt-1 text-center">{label}</span>
-       </div>
-    </div>
-  )
 }
 
 function BridgeArrow({ active, activeColor }: { active: boolean; activeColor: string }) {
   return (
-    <div className="h-12 w-6 flex items-center justify-center relative overflow-visible my-1">
-      <svg width="20" height="48" viewBox="0 0 20 48" className="overflow-visible">
+    <div className="h-10 w-6 flex items-center justify-center overflow-visible">
+      <svg width="20" height="40" viewBox="0 0 20 40" className="overflow-visible">
         <marker id={`head-${activeColor}`} markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
           <polygon points="0 0, 6 3, 0 6" fill={active ? activeColor : "#E2E8F0"} />
         </marker>
-        <line x1="10" y1="0" x2="10" y2="40" stroke={active ? activeColor : "#E2E8F0"} strokeWidth="2" strokeDasharray={active ? "none" : "4 4"} markerEnd={`url(#head-${activeColor})`} />
+        <line x1="10" y1="0" x2="10" y2="34" stroke={active ? activeColor : "#E2E8F0"} strokeWidth="2" strokeDasharray={active ? "none" : "4 4"} markerEnd={`url(#head-${activeColor})`} />
         {active && (
           <motion.line 
-            x1="10" y1="0" x2="10" y2="40" 
+            x1="10" y1="0" x2="10" y2="34" 
             stroke="white" strokeWidth="2" strokeOpacity="0.6"
-            initial={{ strokeDashoffset: 40, strokeDasharray: "10 30" }} 
+            initial={{ strokeDashoffset: 40, strokeDasharray: "8 20" }} 
             animate={{ strokeDashoffset: 0 }} 
             transition={{ repeat: Infinity, duration: 1, ease: "linear" }} 
           />
-        )}
-      </svg>
-    </div>
-  );
-}
-
-function OrthogonalConvergingArrows({ active, activeColor }: { active: boolean; activeColor: string }) {
-  return (
-    <div className="h-14 w-full flex items-center justify-center relative z-0 -mt-1 overflow-visible">
-      <svg width="140" height="60" viewBox="0 0 140 60" className="overflow-visible">
-        <marker id="ortho-head" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
-          <polygon points="0 0, 5 2.5, 0 5" fill={active ? activeColor : "#E2E8F0"} />
-        </marker>
-        <g stroke={active ? activeColor : "#E2E8F0"} strokeWidth="2" fill="none" markerEnd="url(#ortho-head)">
-          <path d="M20 0 V 30 H 70 V 55" strokeDasharray={active ? "none" : "4 4"} />
-          <path d="M70 0 V 55" strokeDasharray={active ? "none" : "4 4"} />
-          <path d="M120 0 V 30 H 70 V 55" strokeDasharray={active ? "none" : "4 4"} />
-        </g>
-        {active && (
-          <g stroke="white" strokeWidth="2" strokeOpacity="0.5">
-             <motion.path d="M20 0 V 30 H 70 V 55" initial={{ strokeDashoffset: 100, strokeDasharray: "10 20" }} animate={{ strokeDashoffset: 0 }} transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }} />
-             <motion.path d="M70 0 V 55" initial={{ strokeDashoffset: 60, strokeDasharray: "10 15" }} animate={{ strokeDashoffset: 0 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }} />
-             <motion.path d="M120 0 V 30 H 70 V 55" initial={{ strokeDashoffset: 100, strokeDasharray: "10 20" }} animate={{ strokeDashoffset: 0 }} transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }} />
-          </g>
         )}
       </svg>
     </div>
