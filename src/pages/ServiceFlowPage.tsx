@@ -1,5 +1,5 @@
 // src/pages/ServiceFlowPage.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import Footer from "@/components/Footer";
@@ -23,6 +23,11 @@ const placeholderChart =
   "https://placehold.co/800x600/f1f5f9/475569?text=Wedding+Report+Chart";
 const placeholderCouple =
   "https://placehold.co/800x600/fdf2f8/db2777?text=Just+Married";
+
+// ✅ 03 문구 변경 + 각주 추가(요청 반영)
+const GUEST_DESC_MAIN =
+  "QR 스캔으로 방명록, 축하 메시지, 축의금 송금을 한 번에. 예식장 로비의 스탠드형 디스플레이 화면과 실시간 축하메세지가 반영 됩니다.";
+const GUEST_DESC_FOOTNOTE = "* 기본 스탠드형 디스플레이 1대 제공";
 
 const STEPS: StepData[] = [
   {
@@ -51,7 +56,7 @@ const STEPS: StepData[] = [
     id: "guest",
     sectionId: "sf-guest",
     title: "03. 하객 참여 및 현장 이벤트",
-    desc: "QR 스캔으로 방명록, 축하 메시지, 축의금 송금을 한 번에. 피로연장 화면과 실시간 연동됩니다.",
+    desc: GUEST_DESC_MAIN,
     dDay: "D-Day",
     icon: "👥",
     label: "하객 참여",
@@ -93,7 +98,7 @@ export default function ServiceFlowPage() {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             const step = STEPS.find((s) => s.sectionId === entry.target.id);
-            if (step) setActiveId(step.id);
+            if (step) setActiveId(step.id as FlowNode);
           }
         });
       },
@@ -108,18 +113,14 @@ export default function ServiceFlowPage() {
     return () => observer.disconnect();
   }, []);
 
-  const activeIndex = useMemo(
-    () => STEPS.findIndex((s) => s.id === activeId),
-    [activeId]
-  );
+  const activeIndex = STEPS.findIndex((s) => s.id === activeId);
   const activeStep = STEPS[activeIndex];
-
   const themeColor =
     activeStep?.theme === "prep"
       ? "border-indigo-400"
       : activeStep?.theme === "event"
-        ? "border-pink-400"
-        : "border-emerald-400";
+      ? "border-pink-400"
+      : "border-emerald-400";
 
   return (
     <main className="relative min-h-screen bg-white">
@@ -168,8 +169,8 @@ export default function ServiceFlowPage() {
                       step.theme === "prep"
                         ? "bg-indigo-50 text-indigo-600"
                         : step.theme === "event"
-                          ? "bg-pink-50 text-pink-600"
-                          : "bg-emerald-50 text-emerald-600"
+                        ? "bg-pink-50 text-pink-600"
+                        : "bg-emerald-50 text-emerald-600"
                     }`}
                   >
                     {step.dDay}
@@ -179,118 +180,199 @@ export default function ServiceFlowPage() {
                     {step.title}
                   </h2>
 
-                  <p className="max-w-2xl text-lg leading-relaxed text-slate-500">
-                    {step.desc}
-                  </p>
+                  {/* ✅ 03 문구 + 각주 (요청 반영) */}
+                  {step.id === "guest" ? (
+                    <div className="max-w-2xl">
+                      <p className="text-lg leading-relaxed text-slate-500">
+                        {step.desc}
+                      </p>
+                      <p className="mt-2 text-xs text-slate-400">
+                        {GUEST_DESC_FOOTNOTE}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="max-w-2xl text-lg leading-relaxed text-slate-500">
+                      {step.desc}
+                    </p>
+                  )}
                 </div>
 
-                {/* 이미지 배치: “테트리스”처럼 안정적인 직사각형 덩어리로 정렬 */}
+                {/* =========================
+                    01. 예약하기
+                    - 폰 프레임 규격 통일
+                   ========================= */}
                 {step.id === "reserve" ? (
                   <div className="lg:max-w-3xl">
-                    {/* 데스크탑: 좌(웹) + 우(폰) 높이 맞춤 */}
-                    <div className="hidden lg:grid grid-cols-[1fr_220px] gap-6 items-stretch">
-                      <div className="h-[420px] overflow-hidden rounded-2xl border shadow-lg bg-slate-50">
+                    {/* Desktop: 웹(좌) + 폰(우) 높이 맞추기 */}
+                    <div className="hidden lg:grid grid-cols-[1fr_auto] items-stretch gap-6">
+                      <WebCard className="h-full">
                         <img
                           src="/serviceflow1-0.jpg"
+                          className="h-full w-full object-contain bg-slate-50"
                           alt="web-reserve"
-                          className="h-full w-full object-contain"
                         />
-                      </div>
+                      </WebCard>
 
-                      <PhoneFrame src="/serviceflow1-2.jpg" alt="mobile-reserve-kakao" />
+                      <PhoneFrame>
+                        <img
+                          src="/serviceflow1-2.jpg"
+                          className="h-full w-full object-cover object-top bg-white"
+                          alt="reserve-kakao"
+                        />
+                      </PhoneFrame>
                     </div>
 
-                    {/* 모바일: 폰 2개 같은 규격 */}
+                    {/* Mobile: 폰 2개 */}
                     <div className="grid grid-cols-2 gap-4 lg:hidden">
-                      <PhoneFrame src="/serviceflow1.jpg" alt="mobile-reserve-form" />
-                      <PhoneFrame src="/serviceflow1-2.jpg" alt="mobile-reserve-kakao" />
+                      <PhoneFrame>
+                        <img
+                          src="/serviceflow1.jpg"
+                          className="h-full w-full object-cover object-top bg-white"
+                          alt="reserve-mobile"
+                        />
+                      </PhoneFrame>
+                      <PhoneFrame>
+                        <img
+                          src="/serviceflow1-2.jpg"
+                          className="h-full w-full object-cover object-top bg-white"
+                          alt="reserve-kakao"
+                        />
+                      </PhoneFrame>
                     </div>
                   </div>
-                ) : step.id === "setup" ? (
+                ) : null}
+
+                {/* =========================
+                    02. 상세 설정
+                    - ✅ Desktop에서 2, 2-1, 2-2를 "한 줄"로 (요청)
+                    - Mobile은 기존처럼 위(웹) + 아래(폰2)
+                    - 폰 프레임 규격 통일 (1-2와 동일)
+                   ========================= */}
+                {step.id === "setup" ? (
                   <div className="lg:max-w-3xl">
-                    {/* 상단 웹 이미지: 고정 높이 */}
-                    <div className="h-[360px] overflow-hidden rounded-2xl border shadow-lg bg-slate-50">
-                      <img
-                        src="/serviceflow2-1.jpg"
-                        alt="setup-web"
-                        className="h-full w-full object-contain"
-                      />
+                    {/* Desktop: 한 줄 */}
+                    <div className="hidden lg:grid grid-cols-[2fr_1fr_1fr] gap-6 items-stretch">
+                      <WebCard className="h-full">
+                        <img
+                          src="/serviceflow2-1.jpg"
+                          className="h-full w-full object-contain bg-slate-50"
+                          alt="setup-web"
+                        />
+                      </WebCard>
+
+                      <PhoneFrame>
+                        <img
+                          src="/serviceflow2.jpg"
+                          className="h-full w-full object-cover object-top bg-white"
+                          alt="setup-mobile-1"
+                        />
+                      </PhoneFrame>
+
+                      <PhoneFrame>
+                        <img
+                          src="/serviceflow2-2.jpg"
+                          className="h-full w-full object-cover object-top bg-white"
+                          alt="setup-mobile-2"
+                        />
+                      </PhoneFrame>
                     </div>
 
-                    {/* 하단 폰 2개: 동일 규격 */}
-                    <div className="mt-6 grid grid-cols-2 gap-4 lg:flex lg:gap-6">
-                      <div className="lg:w-[220px]">
-                        <PhoneFrame src="/serviceflow2.jpg" alt="setup-phone-1" />
-                      </div>
-                      <div className="lg:w-[220px]">
-                        <PhoneFrame src="/serviceflow2-2.jpg" alt="setup-phone-2" />
+                    {/* Mobile: 웹 + 폰2 */}
+                    <div className="lg:hidden space-y-6">
+                      <WebCard>
+                        <img
+                          src="/serviceflow2-1.jpg"
+                          className="w-full object-contain bg-slate-50"
+                          alt="setup-web"
+                        />
+                      </WebCard>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <PhoneFrame>
+                          <img
+                            src="/serviceflow2.jpg"
+                            className="h-full w-full object-cover object-top bg-white"
+                            alt="setup-mobile-1"
+                          />
+                        </PhoneFrame>
+                        <PhoneFrame>
+                          <img
+                            src="/serviceflow2-2.jpg"
+                            className="h-full w-full object-cover object-top bg-white"
+                            alt="setup-mobile-2"
+                          />
+                        </PhoneFrame>
                       </div>
                     </div>
                   </div>
-                ) : step.id === "guest" ? (
-                  <div className="lg:max-w-3xl">
-                    {/* 상단: 영상 (고정 높이) */}
-                    <div className="h-[420px] w-full overflow-hidden rounded-[2rem] border bg-black shadow-xl">
-                      <video
-                        autoPlay
-                        muted
-                        loop
-                        playsInline
-                        className="h-full w-full object-cover"
-                      >
-                        <source src={step.video} type="video/mp4" />
-                      </video>
+                ) : null}
+
+                {/* =========================
+                    03. 하객 참여
+                    - ✅ 영상은 절대 crop 금지: object-contain
+                    - 아래 3장은 필요하면 crop 허용: object-cover
+                   ========================= */}
+                {step.id === "guest" ? (
+                  <div className="space-y-6 lg:max-w-3xl">
+                    {/* 영상: 무조건 전체 보이기 */}
+                    <div className="w-full overflow-hidden rounded-[2rem] border bg-black shadow-xl">
+                      <div className="w-full">
+                        <video
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          className="w-full h-auto object-contain"
+                        >
+                          <source src={step.video} type="video/mp4" />
+                        </video>
+                      </div>
                     </div>
 
-                    {/* 하단: 3개 썸네일 (동일 높이) */}
-                    <div className="mt-6 grid grid-cols-3 gap-3">
+                    {/* 하단 3장: 테트리스 안정감 */}
+                    <div className="grid grid-cols-3 gap-3">
                       {step.images.map((img, idx) => (
                         <div
                           key={idx}
-                          className="h-[160px] overflow-hidden rounded-xl border bg-slate-50 shadow-sm"
+                          className="overflow-hidden rounded-xl border bg-slate-50 shadow-sm aspect-[4/3]"
                         >
                           <img
                             src={img}
-                            alt={`guest-${idx}`}
                             className="h-full w-full object-cover"
+                            alt={`guest-thumb-${idx + 1}`}
                           />
                         </div>
                       ))}
                     </div>
                   </div>
-                ) : (
-                  <div className="lg:max-w-3xl">
-                    <div className="h-[380px] overflow-hidden rounded-2xl border shadow-lg bg-slate-50">
-                      <img
-                        src={step.images[0]}
-                        alt={step.title}
-                        className="h-full w-full object-contain"
-                      />
-                    </div>
+                ) : null}
+
+                {/* =========================
+                    기타 섹션 공통 배치 (그대로)
+                   ========================= */}
+                {step.id !== "reserve" &&
+                step.id !== "setup" &&
+                step.id !== "guest" ? (
+                  <div className="flex justify-center lg:justify-start lg:max-w-3xl">
+                    <img
+                      src={step.images[0]}
+                      alt={step.title}
+                      className="w-full lg:max-w-[500px] rounded-2xl border shadow-lg object-contain bg-slate-50"
+                    />
                   </div>
-                )}
+                ) : null}
               </section>
             ))}
           </div>
 
-          {/* 오른쪽 다이어그램 */}
+          {/* 오른쪽 다이어그램 (그대로 + 수렴 화살표 3개 유지) */}
           <div className="hidden lg:block">
             <div className="sticky top-24 flex flex-col items-center pt-10 pb-8 px-8 rounded-[3rem] bg-slate-50/50 border border-slate-100 backdrop-blur-sm">
               {/* 예약하기 -> 상세설정 */}
               <div className="relative flex flex-col items-center w-full">
-                <DiagramNode
-                  active={activeId === "reserve"}
-                  icon="📅"
-                  label="예약하기"
-                  theme="prep"
-                />
+                <DiagramNode active={activeId === "reserve"} icon="📅" label="예약하기" theme="prep" />
                 <BridgeArrow active={activeIndex >= 1} activeColor="#818cf8" />
-                <DiagramNode
-                  active={activeId === "setup"}
-                  icon="⚙️"
-                  label="상세 설정"
-                  theme="prep"
-                />
+                <DiagramNode active={activeId === "setup"} icon="⚙️" label="상세 설정" theme="prep" />
                 <div className="absolute right-0 top-[20%] -translate-y-1/2 translate-x-4">
                   <span className="text-[10px] font-black text-indigo-500 tracking-widest uppercase bg-white/80 py-1 px-3 rounded-full shadow-sm border border-indigo-100">
                     예식 전
@@ -303,14 +385,9 @@ export default function ServiceFlowPage() {
                 <BridgeArrow active={activeIndex >= 2} activeColor="#f472b6" />
               </div>
 
-              {/* 하객 참여 */}
+              {/* 하객 참여 섹션 */}
               <div className="relative flex flex-col items-center w-full my-2">
-                <DiagramNode
-                  active={activeId === "guest"}
-                  icon="👥"
-                  label="하객 참여"
-                  theme="event"
-                />
+                <DiagramNode active={activeId === "guest"} icon="👥" label="하객 참여" theme="event" />
                 <div className="absolute right-0 top-6 translate-x-4">
                   <span className="text-[10px] font-black text-pink-500 tracking-widest uppercase bg-white/80 py-1 px-3 rounded-full shadow-sm border border-pink-100">
                     예식 중
@@ -327,20 +404,15 @@ export default function ServiceFlowPage() {
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-pink-500 text-[10px] text-white px-4 py-0.5 rounded-full font-black uppercase tracking-wider">
                     QR Scan
                   </div>
-
                   <div className="grid grid-cols-3 gap-3 mt-2">
                     <SubBoxCard icon="✍️" label="방명록" active={activeId === "guest"} />
-                    <SubBoxCard
-                      icon="💬"
-                      label="축하 메시지"
-                      active={activeId === "guest"}
-                    />
+                    <SubBoxCard icon="💬" label="축하 메시지" active={activeId === "guest"} />
                     <SubBoxCard icon="💸" label="축의금" active={activeId === "guest"} />
                   </div>
                 </div>
 
-                {/* ✅ 3갈래 수렴 화살표: QR의 3요소 -> 웨딩 리포트로 수렴 */}
-                <ThreeConvergingArrows
+                {/* ✅ 3갈래 수렴 화살표 */}
+                <OrthogonalConvergingArrows
                   active={activeIndex >= 3}
                   activeColor="#10b981"
                 />
@@ -348,19 +420,9 @@ export default function ServiceFlowPage() {
 
               {/* 웨딩리포트 -> 신랑신부 */}
               <div className="relative flex flex-col items-center w-full mt-1">
-                <DiagramNode
-                  active={activeId === "report"}
-                  icon="📊"
-                  label="웨딩 리포트"
-                  theme="post"
-                />
+                <DiagramNode active={activeId === "report"} icon="📊" label="웨딩 리포트" theme="post" />
                 <BridgeArrow active={activeIndex >= 4} activeColor="#10b981" />
-                <DiagramNode
-                  active={activeId === "couple"}
-                  icon="💍"
-                  label="신랑 · 신부"
-                  theme="post"
-                />
+                <DiagramNode active={activeId === "couple"} icon="💍" label="신랑 · 신부" theme="post" />
                 <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4">
                   <span className="text-[10px] font-black text-emerald-500 tracking-widest uppercase bg-white/80 py-1 px-3 rounded-full shadow-sm border border-emerald-100">
                     예식 후
@@ -377,21 +439,41 @@ export default function ServiceFlowPage() {
   );
 }
 
-/* -------------------- Left helpers -------------------- */
+/* =========================================================
+   공통 UI 컴포넌트
+   - ✅ 폰 프레임 규격 통일 (1-2, 2, 2-2 모두 동일)
+   ========================================================= */
 
-function PhoneFrame({ src, alt }: { src: string; alt: string }) {
+function PhoneFrame({ children }: { children: React.ReactNode }) {
+  // 한 번 정해두면 전체가 "시스템 UI"처럼 보임
   return (
-    <div className="h-[420px] w-full overflow-hidden rounded-[2rem] border ring-2 ring-black bg-white shadow-xl">
-      <img
-        src={src}
-        alt={alt}
-        className="h-full w-full object-cover object-top bg-white"
-      />
+    <div className="w-full max-w-[220px]">
+      <div className="overflow-hidden rounded-[2.25rem] border-[6px] border-slate-900 bg-slate-900 shadow-xl aspect-[9/19]">
+        {children}
+      </div>
     </div>
   );
 }
 
-/* -------------------- Right diagram components -------------------- */
+function WebCard({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/* =========================================================
+   다이어그램 컴포넌트들 (기존 유지)
+   ========================================================= */
 
 function DiagramNode({ active, icon, label, theme }: any) {
   const colors = {
@@ -426,7 +508,9 @@ function SubBoxCard({
   return (
     <div
       className={`relative h-16 rounded-xl border-2 flex items-center justify-center bg-white transition-all ${
-        active ? "border-pink-200 shadow-sm text-pink-900" : "border-slate-100 text-slate-400"
+        active
+          ? "border-pink-200 shadow-sm text-pink-900"
+          : "border-slate-100 text-slate-400"
       }`}
     >
       <div className="flex flex-col items-center">
@@ -437,13 +521,7 @@ function SubBoxCard({
   );
 }
 
-function BridgeArrow({
-  active,
-  activeColor,
-}: {
-  active: boolean;
-  activeColor: string;
-}) {
+function BridgeArrow({ active, activeColor }: { active: boolean; activeColor: string }) {
   return (
     <div className="h-12 w-6 flex items-center justify-center relative overflow-visible my-1">
       <svg width="20" height="48" viewBox="0 0 20 48" className="overflow-visible">
@@ -457,7 +535,6 @@ function BridgeArrow({
         >
           <polygon points="0 0, 6 3, 0 6" fill={active ? activeColor : "#E2E8F0"} />
         </marker>
-
         <line
           x1="10"
           y1="0"
@@ -468,7 +545,6 @@ function BridgeArrow({
           strokeDasharray={active ? "none" : "4 4"}
           markerEnd={`url(#head-${activeColor})`}
         />
-
         {active && (
           <motion.line
             x1="10"
@@ -488,16 +564,7 @@ function BridgeArrow({
   );
 }
 
-/**
- * ✅ 요구사항 1)
- * "방명록/축하메시지/축의금" (3개) 에서 출발해서,
- * 웨딩 리포트로 '수렴'하는 화살표 3개.
- *
- * 구현:
- * - 위쪽(3개 출발점)에서 아래쪽(한 점)으로 모이는 3개의 곡선.
- * - active일 때만 하이라이트/무빙 스트로크.
- */
-function ThreeConvergingArrows({
+function OrthogonalConvergingArrows({
   active,
   activeColor,
 }: {
@@ -505,56 +572,41 @@ function ThreeConvergingArrows({
   activeColor: string;
 }) {
   return (
-    <div className="relative h-14 w-full -mt-1 overflow-visible">
-      <svg width="240" height="70" viewBox="0 0 240 70" className="mx-auto overflow-visible">
-        <defs>
-          <marker
-            id={`tri-head-${activeColor}`}
-            markerWidth="6"
-            markerHeight="6"
-            refX="5"
-            refY="3"
-            orient="auto"
-          >
-            <polygon points="0 0, 6 3, 0 6" fill={active ? activeColor : "#E2E8F0"} />
-          </marker>
-        </defs>
-
-        {/* base paths */}
+    <div className="h-14 w-full flex items-center justify-center relative z-0 -mt-1 overflow-visible">
+      <svg width="140" height="60" viewBox="0 0 140 60" className="overflow-visible">
+        <marker id="ortho-head" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
+          <polygon points="0 0, 5 2.5, 0 5" fill={active ? activeColor : "#E2E8F0"} />
+        </marker>
         <g
           stroke={active ? activeColor : "#E2E8F0"}
           strokeWidth="2"
           fill="none"
-          markerEnd={`url(#tri-head-${activeColor})`}
+          markerEnd="url(#ortho-head)"
         >
-          {/* left -> bottom center */}
-          <path d="M55 5 C55 28, 90 38, 120 62" strokeDasharray={active ? "none" : "4 4"} />
-          {/* mid -> bottom center */}
-          <path d="M120 5 C120 30, 120 40, 120 62" strokeDasharray={active ? "none" : "4 4"} />
-          {/* right -> bottom center */}
-          <path d="M185 5 C185 28, 150 38, 120 62" strokeDasharray={active ? "none" : "4 4"} />
+          <path d="M20 0 V 30 H 70 V 55" strokeDasharray={active ? "none" : "4 4"} />
+          <path d="M70 0 V 55" strokeDasharray={active ? "none" : "4 4"} />
+          <path d="M120 0 V 30 H 70 V 55" strokeDasharray={active ? "none" : "4 4"} />
         </g>
 
-        {/* moving highlight */}
         {active && (
-          <g stroke="white" strokeWidth="2" strokeOpacity="0.55" fill="none">
+          <g stroke="white" strokeWidth="2" strokeOpacity="0.5">
             <motion.path
-              d="M55 5 C55 28, 90 38, 120 62"
-              initial={{ strokeDashoffset: 120, strokeDasharray: "10 24" }}
+              d="M20 0 V 30 H 70 V 55"
+              initial={{ strokeDashoffset: 100, strokeDasharray: "10 20" }}
               animate={{ strokeDashoffset: 0 }}
-              transition={{ repeat: Infinity, duration: 1.4, ease: "linear" }}
+              transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
             />
             <motion.path
-              d="M120 5 C120 30, 120 40, 120 62"
-              initial={{ strokeDashoffset: 90, strokeDasharray: "10 22" }}
+              d="M70 0 V 55"
+              initial={{ strokeDashoffset: 60, strokeDasharray: "10 15" }}
               animate={{ strokeDashoffset: 0 }}
-              transition={{ repeat: Infinity, duration: 1.1, ease: "linear" }}
+              transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
             />
             <motion.path
-              d="M185 5 C185 28, 150 38, 120 62"
-              initial={{ strokeDashoffset: 120, strokeDasharray: "10 24" }}
+              d="M120 0 V 30 H 70 V 55"
+              initial={{ strokeDashoffset: 100, strokeDasharray: "10 20" }}
               animate={{ strokeDashoffset: 0 }}
-              transition={{ repeat: Infinity, duration: 1.4, ease: "linear" }}
+              transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
             />
           </g>
         )}
