@@ -15,8 +15,8 @@ type FlowNode =
   | "qr"
   | "report"
   | "couple"
-  | "ticket" // 준비중(점선)
-  | "thanks"; // 준비중(점선)
+  | "ticket"
+  | "thanks";
 
 function useInViewIds(ids: string[], rootMargin = "-40% 0px -55% 0px") {
   const [activeId, setActiveId] = useState<string>(ids[0] ?? "");
@@ -36,7 +36,6 @@ function useInViewIds(ids: string[], rootMargin = "-40% 0px -55% 0px") {
         const visible = entries
           .filter((e) => e.isIntersecting)
           .sort((a, b) => (b.intersectionRatio ?? 0) - (a.intersectionRatio ?? 0));
-
         if (visible[0]?.target?.id) setActiveId(visible[0].target.id);
       },
       { root: null, threshold: [0.12, 0.2, 0.35, 0.5], rootMargin }
@@ -51,34 +50,64 @@ function useInViewIds(ids: string[], rootMargin = "-40% 0px -55% 0px") {
   return activeId;
 }
 
-/** Stripe/Bridge 느낌: 미니멀 박스 + 얇은 라인 + 점선(준비중) */
+/**
+ * 가로 스크롤/잘림 방지:
+ * - 컨테이너 너비에 맞게 캔버스를 scale down
+ * - overflow-x-hidden
+ * - 노드는 텍스트 길이에 맞게 inline-flex로 최소 크기
+ */
 function FlowDiagram({ active }: { active: FlowNode }) {
   const reduceMotion = useReducedMotion();
   const on = (n: FlowNode) => active === n;
 
+  // 스케일 계산용
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+
+  // 캔버스 기본 크기(이 크기를 기준으로 축소)
+  const CANVAS_W = 520;
+  const CANVAS_H = 420;
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+
+    const calc = () => {
+      const w = el.clientWidth;
+      // padding 고려 여유폭 약간
+      const next = Math.min(1, (w - 8) / CANVAS_W);
+      setScale(Number.isFinite(next) ? next : 1);
+    };
+
+    calc();
+
+    const ro = new ResizeObserver(() => calc());
+    ro.observe(el);
+
+    return () => ro.disconnect();
+  }, []);
+
   const card =
     "rounded-3xl border border-border/60 bg-white/65 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.10)]";
 
+  // 노드: 텍스트에 맞춰 최소 크기 + 여백 축소
   const nodeBase =
-    "relative rounded-2xl border px-4 py-3 text-[13px] font-semibold transition select-none";
-  const nodeMuted = "bg-white/70 border-border/60 text-foreground/85";
+    "inline-flex items-center rounded-2xl border px-3 py-2 text-[12.5px] font-semibold leading-none transition select-none whitespace-nowrap";
+  const nodeMuted = "bg-white/80 border-border/60 text-foreground/85";
   const nodeHot = reduceMotion
-    ? "ring-2 ring-foreground/12"
-    : "ring-2 ring-foreground/12 shadow-[0_16px_34px_rgba(15,23,42,0.14)] -translate-y-[1px]";
-
-  const dashedNode = "bg-white/55 border-dashed border-border/70 text-foreground/65";
+    ? "ring-2 ring-foreground/10"
+    : "ring-2 ring-foreground/10 shadow-[0_14px_28px_rgba(15,23,42,0.12)] -translate-y-[1px]";
+  const dashed = "border-dashed border-border/70 bg-white/65 text-foreground/65";
 
   const nodeCls = (id: FlowNode, extra?: string) =>
     `${nodeBase} ${extra ?? nodeMuted} ${on(id) ? nodeHot : "opacity-90"}`;
 
   const pill =
-    "inline-flex items-center rounded-full border border-border/60 bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-foreground/70";
+    "inline-flex items-center rounded-full border border-border/60 bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-foreground/70";
 
-  // 선 색상
   const line = (enabled: boolean) =>
-    enabled ? "stroke-[rgba(17,24,39,0.38)]" : "stroke-[rgba(17,24,39,0.16)]";
+    enabled ? "stroke-[rgba(17,24,39,0.34)]" : "stroke-[rgba(17,24,39,0.14)]";
 
-  // active 단계가 어디까지 왔는지(간단)
   const reached = (target: FlowNode) => {
     const order: FlowNode[] = ["reserve", "setup", "guest", "qr", "report", "couple"];
     const a = order.indexOf(active as any);
@@ -87,142 +116,141 @@ function FlowDiagram({ active }: { active: FlowNode }) {
     return a >= t;
   };
 
-  // 메인 라인 on/off
-  const mainLineOn = (to: FlowNode) => reached(to);
+  const mainOn = (to: FlowNode) => reached(to);
 
   return (
     <div className={card}>
-      <div className="p-5 sm:p-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground">서비스 흐름</p>
-            <p className="mt-1 text-base font-semibold tracking-tight">
-              예식 준비부터 <span className="wedding-gradient">예식 후 관리</span>까지
-            </p>
-          </div>
-          <div className={pill}>도식</div>
-        </div>
+      {/* 헤더/요약 멘트 전부 제거. 도식만 */}
+      <div className="p-4 sm:p-5">
+        <div
+          ref={wrapRef}
+          className="rounded-2xl border border-border/60 bg-white/55 p-3 overflow-x-hidden"
+        >
+          {/* scale wrapper */}
+          <div
+            className="origin-top-left"
+            style={{
+              transform: `scale(${scale})`,
+              width: CANVAS_W,
+              height: CANVAS_H,
+            }}
+          >
+            <div className="relative" style={{ width: CANVAS_W, height: CANVAS_H }}>
+              {/* SVG 라인 */}
+              <svg
+                className="absolute left-0 top-0 h-full w-full"
+                viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`}
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                <defs>
+                  <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+                    <path d="M0,0 L8,4 L0,8 Z" fill="rgba(17,24,39,0.28)" />
+                  </marker>
+                </defs>
 
-        <div className="mt-4 rounded-2xl border border-border/60 bg-white/55 p-4">
-          <div className="relative">
-            {/* SVG 라인 */}
-            <svg
-              className="absolute left-0 top-0 h-full w-full"
-              viewBox="0 0 520 460"
-              preserveAspectRatio="none"
-              aria-hidden="true"
-            >
-              <defs>
-                <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
-                  <path d="M0,0 L8,4 L0,8 Z" fill="rgba(17,24,39,0.30)" />
-                </marker>
-              </defs>
+                {/* reserve -> setup */}
+                <path
+                  d="M190 70 L260 70"
+                  className={line(mainOn("setup"))}
+                  strokeWidth="2"
+                  fill="none"
+                  markerEnd="url(#arr)"
+                />
 
-              {/* reserve -> setup */}
-              <path
-                d="M210 80 L255 80"
-                className={line(mainLineOn("setup"))}
-                strokeWidth="2"
-                fill="none"
-                markerEnd="url(#arr)"
-              />
+                {/* setup -> guest */}
+                <path
+                  d="M360 95 L360 140"
+                  className={line(mainOn("guest"))}
+                  strokeWidth="2"
+                  fill="none"
+                  markerEnd="url(#arr)"
+                />
 
-              {/* setup -> guest */}
-              <path
-                d="M365 110 L365 145"
-                className={line(mainLineOn("guest"))}
-                strokeWidth="2"
-                fill="none"
-                markerEnd="url(#arr)"
-              />
+                {/* guest -> qr */}
+                <path
+                  d="M190 170 L260 170"
+                  className={line(mainOn("qr"))}
+                  strokeWidth="2"
+                  fill="none"
+                  markerEnd="url(#arr)"
+                />
 
-              {/* guest -> qr */}
-              <path
-                d="M210 190 L255 190"
-                className={line(mainLineOn("qr"))}
-                strokeWidth="2"
-                fill="none"
-                markerEnd="url(#arr)"
-              />
+                {/* qr -> report */}
+                <path
+                  d="M360 195 L360 250"
+                  className={line(mainOn("report"))}
+                  strokeWidth="2"
+                  fill="none"
+                  markerEnd="url(#arr)"
+                />
 
-              {/* qr -> report */}
-              <path
-                d="M365 220 L365 285"
-                className={line(mainLineOn("report"))}
-                strokeWidth="2"
-                fill="none"
-                markerEnd="url(#arr)"
-              />
+                {/* report -> couple */}
+                <path
+                  d="M260 305 L190 305"
+                  className={line(mainOn("couple"))}
+                  strokeWidth="2"
+                  fill="none"
+                  markerEnd="url(#arr)"
+                />
 
-              {/* report -> couple */}
-              <path
-                d="M255 340 L210 340"
-                className={line(mainLineOn("couple"))}
-                strokeWidth="2"
-                fill="none"
-                markerEnd="url(#arr)"
-              />
+                {/* guest leaves -> qr */}
+                <path
+                  d="M470 145 L470 170 L395 170"
+                  className={line(reached("qr") || active === "message" || active === "guestbook" || active === "gift")}
+                  strokeWidth="2"
+                  fill="none"
+                  markerEnd="url(#arr)"
+                />
 
-              {/* guest leaves (3) -> qr (가벼운 느낌) */}
-              <path
-                d="M470 165 L470 190 L395 190"
-                className={line(reached("qr") || active === "message" || active === "guestbook" || active === "gift")}
-                strokeWidth="2"
-                fill="none"
-                markerEnd="url(#arr)"
-              />
+                {/* dashed ticket */}
+                <path
+                  d="M470 205 L470 232"
+                  stroke="rgba(17,24,39,0.20)"
+                  strokeWidth="2"
+                  strokeDasharray="4 4"
+                  fill="none"
+                  markerEnd="url(#arr)"
+                />
 
-              {/* 점선: ticket (준비중) */}
-              <path
-                d="M470 235 L470 260"
-                stroke="rgba(17,24,39,0.22)"
-                strokeWidth="2"
-                strokeDasharray="4 4"
-                fill="none"
-                markerEnd="url(#arr)"
-              />
+                {/* dashed thanks */}
+                <path
+                  d="M120 330 C 160 330, 235 330, 305 265"
+                  stroke="rgba(17,24,39,0.20)"
+                  strokeWidth="2"
+                  strokeDasharray="5 5"
+                  fill="none"
+                />
+              </svg>
 
-              {/* 점선: thanks (준비중) */}
-              <path
-                d="M130 370 C 160 370, 240 370, 310 305"
-                stroke="rgba(17,24,39,0.22)"
-                strokeWidth="2"
-                strokeDasharray="5 5"
-                fill="none"
-              />
-            </svg>
-
-            {/* 노드 배치 */}
-            <div className="relative h-[460px] w-full">
-              {/* 레이블 */}
-              <div className="absolute left-4 top-3 text-[11px] font-semibold text-muted-foreground">예식 전</div>
-              <div className="absolute left-4 top-[125px] text-[11px] font-semibold text-muted-foreground">
+              {/* Labels (작게, 공간 최소) */}
+              <div className="absolute left-3 top-2 text-[10px] font-semibold text-muted-foreground">예식 전</div>
+              <div className="absolute left-3 top-[112px] text-[10px] font-semibold text-muted-foreground">
                 예식 당일
               </div>
-              <div className="absolute left-4 top-[285px] text-[11px] font-semibold text-muted-foreground">예식 후</div>
+              <div className="absolute left-3 top-[252px] text-[10px] font-semibold text-muted-foreground">예식 후</div>
 
-              {/* reserve */}
-              <div className="absolute left-4 top-10 w-[190px]">
+              {/* Nodes: width 고정 제거, 내용에 맞게 */}
+              <div className="absolute left-3 top-8">
                 <div className={nodeCls("reserve")}>예약</div>
               </div>
 
-              {/* setup */}
-              <div className="absolute left-[260px] top-10 w-[240px]">
+              <div className="absolute left-[270px] top-8">
                 <div className={nodeCls("setup")}>예식 상세 설정</div>
               </div>
 
-              {/* guest */}
-              <div className="absolute left-4 top-[155px] w-[190px]">
+              <div className="absolute left-3 top-[138px]">
                 <div className={nodeCls("guest")}>하객</div>
               </div>
 
-              {/* guest leaves (3) */}
-              <div className="absolute left-[260px] top-[135px] w-[240px] rounded-2xl border border-border/60 bg-white/70 p-3">
-                <div className="text-[11px] font-semibold text-muted-foreground">하객이 남기는 것</div>
+              {/* guest leaves */}
+              <div className="absolute left-[270px] top-[120px] rounded-2xl border border-border/60 bg-white/75 px-3 py-2">
+                <div className="text-[10px] font-semibold text-muted-foreground">하객이 남기는 것</div>
                 <div className="mt-2 grid gap-2">
                   <div className={nodeCls("message")}>축하메시지</div>
                   <div className={nodeCls("guestbook")}>방명록</div>
                   <div className={nodeCls("gift")}>축의금</div>
+
                   <div className="mt-1 flex items-center gap-2">
                     <span className={pill}>식권</span>
                     <span className={`${pill} border-dashed`}>준비중</span>
@@ -230,49 +258,30 @@ function FlowDiagram({ active }: { active: FlowNode }) {
                 </div>
               </div>
 
-              {/* qr */}
-              <div className="absolute left-[260px] top-[175px] w-[190px]">
-                <div className={nodeCls("qr", "bg-white/85 border-border/70 text-foreground")}>
-                  현장 QR
-                </div>
+              <div className="absolute left-[270px] top-[154px]">
+                <div className={nodeCls("qr")}>현장 QR</div>
               </div>
 
-              {/* report */}
-              <div className="absolute left-[260px] top-[295px] w-[240px]">
-                <div className={nodeCls("report", "bg-white/85 border-border/70 text-foreground")}>
-                  웨딩 리포트
-                </div>
+              <div className="absolute left-[270px] top-[268px]">
+                <div className={nodeCls("report")}>웨딩 리포트</div>
               </div>
 
-              {/* couple */}
-              <div className="absolute left-4 top-[315px] w-[190px]">
-                <div className={nodeCls("couple", "bg-white/85 border-border/70 text-foreground")}>
-                  신랑 · 신부
-                </div>
+              <div className="absolute left-3 top-[270px]">
+                <div className={nodeCls("couple")}>신랑 · 신부</div>
 
-                <div className="mt-2 rounded-2xl border border-dashed border-border/70 bg-white/55 px-4 py-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-[13px] font-semibold text-foreground/70">감사인사</div>
-                    <span className={pill}>준비중</span>
+                <div className="mt-2 inline-flex flex-col gap-2">
+                  <div className={`${nodeBase} ${dashed}`}>
+                    감사인사 <span className="ml-2 text-[10px] font-semibold opacity-80">준비중</span>
                   </div>
                 </div>
               </div>
 
-              {/* 하단 한 줄 */}
-              <div className="absolute left-0 right-0 bottom-0 px-1">
-                <p className="text-[11px] leading-relaxed text-muted-foreground">
-                  결혼식 이후에도 리포트 기반으로 정리·공유까지 이어집니다. <span className="ml-1">(식권/감사 인사 준비중)</span>
-                </p>
+              {/* dashed ticket indicator near gift */}
+              <div className="absolute left-[440px] top-[240px]">
+                <div className={`${nodeBase} ${dashed}`}>식권</div>
               </div>
             </div>
           </div>
-        </div>
-
-        {/* 한 줄 요약 */}
-        <div className="mt-4 rounded-2xl border border-border/60 bg-white/55 px-4 py-3">
-          <p className="text-sm text-foreground/80">
-            결혼식이 끝난 뒤에도 <span className="font-semibold">메시지·방명록·자금 흐름</span>을 정리해 지속 관리합니다.
-          </p>
         </div>
       </div>
     </div>
@@ -370,11 +379,11 @@ export default function ServiceFlowPage() {
         </div>
       </div>
 
-      {/* Hero */}
+      {/* Hero (요청 반영: 타이틀 + 서브카피 교체) */}
       <section className="relative mx-auto max-w-7xl px-6 pt-10 pb-8">
         <p className="text-sm text-muted-foreground">서비스 흐름</p>
         <h1 className="mt-2 text-3xl sm:text-4xl font-bold tracking-tight">
-          예식 준비부터 <span className="wedding-gradient">예식 후 관리</span>까지
+          예신 준비부터 <span className="wedding-gradient">예식후 관리</span>까지
         </h1>
         <p className="mt-3 text-base text-muted-foreground max-w-3xl leading-relaxed">
           디지털 방명록은 결혼식 이벤트의 사후 자금흐름까지 지속 관리합니다.
@@ -464,8 +473,8 @@ export default function ServiceFlowPage() {
           {/* RIGHT: sticky diagram (Desktop) */}
           <div className="hidden lg:block">
             <div className="sticky top-24">
-              {/* 잘림 방지: 화면 작으면 카드 내부 스크롤 */}
-              <div className="max-h-[calc(100vh-7.5rem)] overflow-auto pr-1">
+              {/* 세로 스크롤만 허용, 가로는 절대 금지 */}
+              <div className="max-h-[calc(100vh-7.5rem)] overflow-y-auto overflow-x-hidden pr-1">
                 <FlowDiagram active={activeNode} />
               </div>
             </div>
@@ -476,7 +485,8 @@ export default function ServiceFlowPage() {
       {/* Mobile: top sticky diagram */}
       <div className="lg:hidden sticky top-0 z-30 border-b border-border/60 bg-background/70 backdrop-blur">
         <div className="mx-auto max-w-7xl px-4 py-3">
-          <div className="max-h-[55vh] overflow-auto">
+          {/* 모바일도 가로 스크롤 금지 */}
+          <div className="max-h-[50vh] overflow-y-auto overflow-x-hidden">
             <FlowDiagram active={activeNode} />
           </div>
         </div>
