@@ -8,8 +8,48 @@ import { useToast } from "@/components/ui/use-toast";
 function getNextParam(search: string) {
   const params = new URLSearchParams(search);
   const next = params.get("next");
-  // 기본은 /app
   return next && next.startsWith("/") ? next : "/app";
+}
+
+const EMAIL_KEY = "dg_emails";
+const MAX_SAVED_EMAILS = 6;
+
+function normalizeEmail(v: string) {
+  return v.trim().toLowerCase();
+}
+
+function loadSavedEmails(): string[] {
+  try {
+    const raw = localStorage.getItem(EMAIL_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((x) => typeof x === "string").map(normalizeEmail).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function saveEmailsToStorage(emails: string[]) {
+  localStorage.setItem(EMAIL_KEY, JSON.stringify(emails));
+}
+
+function addEmailToSavedList(email: string) {
+  const e = normalizeEmail(email);
+  if (!e) return loadSavedEmails();
+
+  const current = loadSavedEmails();
+  const next = [e, ...current.filter((x) => x !== e)].slice(0, MAX_SAVED_EMAILS);
+  saveEmailsToStorage(next);
+  return next;
+}
+
+function removeEmailFromSavedList(email: string) {
+  const e = normalizeEmail(email);
+  const current = loadSavedEmails();
+  const next = current.filter((x) => x !== e);
+  saveEmailsToStorage(next);
+  return next;
 }
 
 export default function LoginPage() {
@@ -20,7 +60,12 @@ export default function LoginPage() {
   const next = useMemo(() => getNextParam(location.search), [location.search]);
 
   const [step, setStep] = useState<"email" | "otp">("email");
-  const [email, setEmail] = useState(() => localStorage.getItem("dg_email") ?? "");
+
+  // ✅ 저장 이메일 리스트
+  const [savedEmails, setSavedEmails] = useState<string[]>(() => loadSavedEmails());
+
+  // 입력값 초기값: 저장된 것 중 첫 번째(최근) 있으면 채워줌
+  const [email, setEmail] = useState(() => (loadSavedEmails()[0] ?? ""));
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -39,8 +84,29 @@ export default function LoginPage() {
     if (step === "otp") otpInputRef.current?.focus();
   }, [step]);
 
+  const selectSavedEmail = (e: string) => {
+    setEmail(e);
+    setStep("email");
+    setOtp("");
+    // ✅ 저장 이메일을 선택하더라도 OTP는 "무조건 다시 받는" 정책이라
+    // 여기서는 그냥 입력만 채우고 끝.
+    setTimeout(() => emailInputRef.current?.focus(), 0);
+  };
+
+  const deleteSavedEmail = (e: string) => {
+    const nextList = removeEmailFromSavedList(e);
+    setSavedEmails(nextList);
+
+    // 현재 입력칸이 삭제된 이메일이면 비움
+    if (normalizeEmail(email) === normalizeEmail(e)) {
+      setEmail(nextList[0] ?? "");
+    }
+
+    toast({ title: "저장된 이메일을 삭제했습니다" });
+  };
+
   const requestOtp = async () => {
-    const trimmed = email.trim();
+    const trimmed = normalizeEmail(email);
     if (!trimmed.includes("@")) {
       toast({ title: "이메일을 확인해 주세요", description: "올바른 이메일 주소를 입력해 주세요." });
       return;
@@ -48,12 +114,9 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      // ✅ OTP 발송 (메일에 코드가 가도록 템플릿에서 {{ .Token }} 사용)
       const { error } = await supabase.auth.signInWithOtp({
         email: trimmed,
         options: {
-          // redirectTo는 링크 로그인(새창)용이라 OTP UX에서는 사실상 중요도가 낮음
-          // 그래도 혹시를 대비해 우리 도메인으로 둠
           emailRedirectTo: `${window.location.origin}/app`,
           shouldCreateUser: true,
         },
@@ -61,7 +124,10 @@ export default function LoginPage() {
 
       if (error) throw error;
 
-      localStorage.setItem("dg_email", trimmed);
+      // ✅ 성공 시 최근 이메일로 저장(리스트 맨 앞)
+      const nextList = addEmailToSavedList(trimmed);
+      setSavedEmails(nextList);
+
       setStep("otp");
       setOtp("");
 
@@ -77,7 +143,7 @@ export default function LoginPage() {
   };
 
   const verifyOtp = async () => {
-    const trimmedEmail = email.trim();
+    const trimmedEmail = normalizeEmail(email);
     const trimmedOtp = otp.trim();
 
     if (!trimmedOtp) {
@@ -87,7 +153,6 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      // ✅ 이메일 OTP 검증 (type: 'email')
       const { data, error } = await supabase.auth.verifyOtp({
         email: trimmedEmail,
         token: trimmedOtp,
@@ -96,14 +161,12 @@ export default function LoginPage() {
 
       if (error) throw error;
 
-      // 세션이 생기면 next로 이동
       if (data.session) {
         toast({ title: "로그인 완료" });
         navigate(next, { replace: true });
         return;
       }
 
-      // 이론상 거의 안 옴(세션이 없을 때)
       toast({ title: "로그인 정보를 확인 중입니다", description: "새로고침 후 다시 시도해 주세요." });
     } catch (e: any) {
       toast({
@@ -118,13 +181,14 @@ export default function LoginPage() {
   const resetEmail = () => {
     setStep("email");
     setOtp("");
-    emailInputRef.current?.focus();
+    setTimeout(() => emailInputRef.current?.focus(), 0);
   };
 
-  const clearSavedEmail = () => {
-    localStorage.removeItem("dg_email");
+  const useDifferentEmail = () => {
     setEmail("");
-    toast({ title: "저장된 이메일을 삭제했습니다" });
+    setOtp("");
+    setStep("email");
+    setTimeout(() => emailInputRef.current?.focus(), 0);
   };
 
   return (
@@ -140,6 +204,42 @@ export default function LoginPage() {
 
           {step === "email" && (
             <>
+              {/* ✅ 저장된 이메일(여러 개) */}
+              {savedEmails.length > 0 && (
+                <div className="mb-4">
+                  <div className="text-xs font-medium text-muted-foreground mb-2">최근 로그인 이메일</div>
+                  <div className="space-y-2">
+                    {savedEmails.map((e) => (
+                      <div
+                        key={e}
+                        className="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => selectSavedEmail(e)}
+                          className="text-sm font-medium text-foreground truncate text-left"
+                          title={e}
+                        >
+                          {e}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => deleteSavedEmail(e)}
+                          className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-2 text-[12px] text-muted-foreground">
+                    ※ 이메일을 선택해도 <b>OTP 인증은 매번</b> 다시 진행됩니다.
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="text-sm font-medium">이메일</label>
                 <input
@@ -161,11 +261,13 @@ export default function LoginPage() {
               </Button>
 
               <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
-                <button className="underline" onClick={() => navigate("/", { replace: true })}>
+                <button className="underline underline-offset-4" onClick={() => navigate("/", { replace: true })}>
                   처음으로 돌아가기
                 </button>
-                <button className="underline" onClick={clearSavedEmail}>
-                  저장 이메일 삭제
+
+                {/* ✅ 의미 명확한 전환 링크 */}
+                <button className="underline underline-offset-4" onClick={useDifferentEmail} disabled={loading}>
+                  다른 이메일로 입력
                 </button>
               </div>
             </>
@@ -174,7 +276,7 @@ export default function LoginPage() {
           {step === "otp" && (
             <>
               <div className="mb-3 text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">{email.trim()}</span> 로 인증 코드를 보냈습니다.
+                <span className="font-medium text-foreground">{normalizeEmail(email)}</span> 로 인증 코드를 보냈습니다.
                 <br />
                 메일에 있는 코드를 복사해 아래에 입력해 주세요.
               </div>
@@ -201,10 +303,10 @@ export default function LoginPage() {
               </Button>
 
               <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
-                <button className="underline" onClick={resetEmail} disabled={loading}>
+                <button className="underline underline-offset-4" onClick={resetEmail} disabled={loading}>
                   이메일 다시 입력
                 </button>
-                <button className="underline" onClick={requestOtp} disabled={loading}>
+                <button className="underline underline-offset-4" onClick={requestOtp} disabled={loading}>
                   코드 다시 받기
                 </button>
               </div>
