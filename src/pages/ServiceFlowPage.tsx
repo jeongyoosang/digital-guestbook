@@ -28,7 +28,7 @@ const STEPS: StepData[] = [
     id: "reserve",
     sectionId: "sf-reserve",
     title: "01. 예약하기",
-    desc: "예식 일자와 연락처만으로 간편하게 시작하세요. 예약 양식을 제출하면 카카오톡으로 즉시 안내 메시지가 발송됩니다.",
+    desc: "예식 일자와 연락처만으로 간편하게 시작하세요. 예약 양식을 제출하면 카카오톡으로 안내 메시지가 발송됩니다.",
     dDay: "D-30 ~ 180",
     icon: "📅",
     label: "예약하기",
@@ -39,7 +39,7 @@ const STEPS: StepData[] = [
     id: "setup",
     sectionId: "sf-setup",
     title: "02. 상세 설정",
-    desc: "신랑·신부 정보, 감사 문구, 계좌 등 우리만의 예식 페이지를 맞춤 구성합니다.",
+    desc: "신랑·신부 정보, 디스플레이 배경,축의금 수취인 별 계좌 등 우리만의 예식 페이지를 맞춤 구성합니다.",
     dDay: "D-14 ~ 30",
     icon: "⚙️",
     label: "상세 설정",
@@ -50,7 +50,7 @@ const STEPS: StepData[] = [
     id: "guest",
     sectionId: "sf-guest",
     title: "03. 하객 참여 및 현장 이벤트",
-    desc: "QR 스캔으로 방명록, 축하 메시지, 축의금 송금을 한 번에. 예식장 로비의 스탠드형 디스플레이 화면과 실시간 축하메세지가 반영 됩니다.",
+    desc: "QR 스캔으로 방명록, 축하 메시지, 축의금 송금을 한 번에.\n예식장 로비의 스탠드형 디스플레이 화면과 실시간 축하메세지가 반영 됩니다.",
     dDay: "D-Day",
     icon: "👥",
     label: "하객 참여",
@@ -62,7 +62,7 @@ const STEPS: StepData[] = [
     id: "report",
     sectionId: "sf-report",
     title: "04. 웨딩 리포트",
-    desc: "예식 종료와 동시에 명단, 메시지, 정산 내역이 깔끔한 리포트로 생성됩니다.",
+    desc: "예식 종료와 동시에 방명록 명단, 축하 메시지, 축의금 내역이 깔끔한 리포트로 생성됩니다.",
     dDay: "D-Day (종료)",
     icon: "📊",
     label: "웨딩 리포트",
@@ -184,6 +184,15 @@ export default function ServiceFlowPage() {
                       * 기본 스탠드형 디스플레이 1대 제공
                     </p>
                   )}
+
+                  {/* 04 섹션 각주 */}
+                  {step.id === "report" && (
+                    <p className="text-sm text-slate-400">
+                      * 예식 종료 후 본인 인증 절차를 거쳐 리포트가 생성되며, 지정된 수령인에게 제공됩니다.
+
+                    </p>
+                  )}
+
                 </div>
 
                 {/* 01 예약하기 */}
@@ -229,9 +238,14 @@ export default function ServiceFlowPage() {
                     </div>
 
                     <div className="flex w-full justify-center gap-4 lg:gap-6">
+                    <div className="lg:scale-[1.15] lg:origin-top">
                       <PhoneFrame src="/serviceflow2.jpg" alt="상세설정 폰1" />
+                    </div>
+                    <div className="lg:scale-[1.15] lg:origin-top">
                       <PhoneFrame src="/serviceflow2-2.jpg" alt="상세설정 폰2" />
                     </div>
+                  </div>
+
                   </div>
                 )}
 
