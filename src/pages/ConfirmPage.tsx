@@ -1,6 +1,6 @@
 // src/pages/ConfirmPage.tsx
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 interface RouteParams {
@@ -9,6 +9,7 @@ interface RouteParams {
 
 type EventRow = {
   id: string;
+  title?: string | null;
   groom_name?: string | null;
   bride_name?: string | null;
   ceremony_date?: string | null;
@@ -16,6 +17,7 @@ type EventRow = {
   venue_address?: string | null;
   venue_lat?: number | null;
   venue_lng?: number | null;
+  [key: string]: any;
 };
 
 type EventSettingsRow = {
@@ -26,6 +28,7 @@ type EventSettingsRow = {
   ceremony_end_time: string | null;
   title: string | null;
   subtitle: string | null;
+  theme_prompt: string | null;
   recipients: any | null;
   display_start_offset_minutes: number | null;
   display_end_offset_minutes: number | null;
@@ -33,6 +36,8 @@ type EventSettingsRow = {
   display_style?: string | null;
   background_mode?: "photo" | "template" | null;
   media_urls?: string[] | null;
+
+  // ✅ 추가
   mobile_invitation_link?: string | null;
 };
 
@@ -47,16 +52,24 @@ type AccountForm = {
 };
 
 const MAX_ACCOUNTS = 6;
-const HOURS = Array.from({ length: 24 }, (_, i) =>
-  String(i).padStart(2, "0")
-);
-const MINUTES_10 = ["00", "10", "20", "30", "40", "50"];
+
+const DEFAULT_TITLE = "WEDDING MESSAGES";
+const DEFAULT_SUBTITLE = "하객 분들의 마음이 전해지고 있어요 💐";
+const DEFAULT_LOWER_MESSAGE = "친히 오셔서 축복해주시어 감사합니다.";
+const DEFAULT_THEME_PROMPT =
+  "따뜻한 결혼식, 은은한 조명, 크리스마스 분위기, 부드러운 움직임의 배경 애니메이션 등";
+
+const DEFAULT_START_OFFSET = -60; // 예식 시작 1시간 전
+const DEFAULT_END_OFFSET = -10; // 예식 종료 10분 전
+
+const HOURS: string[] = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+const MINUTES_10: string[] = ["00", "10", "20", "30", "40", "50"];
 
 const DISPLAY_STYLE_OPTIONS = [
-  { value: "basic", label: "베이직" },
+  { value: "basic", label: "베이직 (기본)" },
   { value: "christmas", label: "크리스마스 에디션" },
   { value: "garden", label: "야외 가든 웨딩" },
-  { value: "luxury", label: "럭셔리 호텔" },
+  { value: "luxury", label: "럭셔리 호텔 스타일" },
 ];
 
 const BANK_OPTIONS = [
@@ -65,14 +78,23 @@ const BANK_OPTIONS = [
   "우리은행",
   "하나은행",
   "NH농협은행",
+  "IBK기업은행",
+  "SC제일은행",
+  "한국씨티은행",
   "카카오뱅크",
   "토스뱅크",
+  "수협은행",
+  "대구은행",
+  "부산은행",
+  "경남은행",
+  "광주은행",
+  "전북은행",
+  "제주은행",
   "기타(직접 입력)",
 ];
 
 export default function ConfirmPage() {
   const { eventId } = useParams<RouteParams>();
-  const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -83,262 +105,986 @@ export default function ConfirmPage() {
   const [settings, setSettings] = useState<EventSettingsRow | null>(null);
   const [accounts, setAccounts] = useState<AccountForm[]>([]);
 
+  // 기본 정보
   const [groomName, setGroomName] = useState("");
   const [brideName, setBrideName] = useState("");
   const [venueName, setVenueName] = useState("");
   const [venueAddress, setVenueAddress] = useState("");
+  const [venueLat, setVenueLat] = useState<number | null>(null);
+  const [venueLng, setVenueLng] = useState<number | null>(null);
+
   const [ceremonyDate, setCeremonyDate] = useState("");
   const [ceremonyStartTime, setCeremonyStartTime] = useState("");
   const [ceremonyEndTime, setCeremonyEndTime] = useState("");
+  const [displayTitle, setDisplayTitle] = useState(DEFAULT_TITLE);
+  const [displaySubtitle, setDisplaySubtitle] = useState(DEFAULT_SUBTITLE);
+  const [themePrompt, setThemePrompt] = useState("");
+  const [lowerMessage, setLowerMessage] = useState(DEFAULT_LOWER_MESSAGE);
 
-  const [backgroundMode, setBackgroundMode] =
-    useState<"photo" | "template">("photo");
   const [displayStyle, setDisplayStyle] = useState("basic");
-  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+
+  // ✅ 모바일 청첩장 링크 (필수)
   const [mobileInvitationLink, setMobileInvitationLink] = useState("");
+
+  // 배경 모드 & 업로드된 사진 URL 들
+  const [backgroundMode, setBackgroundMode] = useState<"template" | "photo">("template");
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+
+  // 예식장 검색
+  const [venueSearchOpen, setVenueSearchOpen] = useState(false);
+  const [venueSearchKeyword, setVenueSearchKeyword] = useState("");
+  const [venueSearchResults, setVenueSearchResults] = useState<any[]>([]);
+  const [venueSearchLoading, setVenueSearchLoading] = useState(false);
 
   useEffect(() => {
     if (!eventId) return;
-    fetchData();
+    void fetchData(eventId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
-  async function fetchData() {
+  async function fetchData(eventId: string) {
     setLoading(true);
+    setError(null);
+    setSuccess(null);
+
     try {
-      const { data: e } = await supabase
+      // 1) events
+      const { data: eventData, error: eventError } = await supabase
         .from("events")
         .select("*")
         .eq("id", eventId)
         .maybeSingle();
 
-      if (e) {
-        setEvent(e);
-        setGroomName(e.groom_name ?? "");
-        setBrideName(e.bride_name ?? "");
-        setVenueName(e.venue_name ?? "");
-        setVenueAddress(e.venue_address ?? "");
-        setCeremonyDate(e.ceremony_date ?? "");
+      if (eventError) throw eventError;
+
+      let e: EventRow;
+      if (!eventData) {
+        e = {
+          id: eventId,
+          title: null,
+          groom_name: null,
+          bride_name: null,
+          ceremony_date: null,
+          venue_name: null,
+          venue_address: null,
+          venue_lat: null,
+          venue_lng: null,
+        };
+      } else {
+        e = eventData as EventRow;
       }
 
-      const { data: s } = await supabase
+      setEvent(e);
+      setGroomName(e.groom_name ?? "");
+      setBrideName(e.bride_name ?? "");
+      setVenueName(e.venue_name ?? "");
+      setVenueAddress(e.venue_address ?? "");
+      setVenueLat(e.venue_lat ?? null);
+      setVenueLng(e.venue_lng ?? null);
+
+      // 2) event_settings
+      const { data: settingsData, error: settingsError } = await supabase
         .from("event_settings")
-        .select("*")
+        .select(
+          `
+          id,
+          event_id,
+          ceremony_date,
+          ceremony_start_time,
+          ceremony_end_time,
+          title,
+          subtitle,
+          theme_prompt,
+          recipients,
+          display_start_offset_minutes,
+          display_end_offset_minutes,
+          lower_message,
+          display_style,
+          background_mode,
+          media_urls,
+          mobile_invitation_link
+        `
+        )
         .eq("event_id", eventId)
         .maybeSingle();
 
-      if (s) {
+      if (settingsError) throw settingsError;
+
+      if (settingsData) {
+        const s = settingsData as EventSettingsRow;
         setSettings(s);
+
+        setCeremonyDate(s.ceremony_date ?? e.ceremony_date ?? "");
         setCeremonyStartTime(s.ceremony_start_time ?? "");
         setCeremonyEndTime(s.ceremony_end_time ?? "");
-        setBackgroundMode(s.background_mode ?? "photo");
-        setDisplayStyle(s.display_style ?? "basic");
-        setPhotoUrls(s.media_urls ?? []);
+
+        setDisplayTitle(s.title ?? DEFAULT_TITLE);
+        setDisplaySubtitle(s.subtitle ?? DEFAULT_SUBTITLE);
+        setThemePrompt(s.theme_prompt ?? "");
+        setLowerMessage(s.lower_message ?? DEFAULT_LOWER_MESSAGE);
+
+        setDisplayStyle(s.display_style || "basic");
+
+        const mode =
+          s.background_mode === "photo" || s.background_mode === "template"
+            ? s.background_mode
+            : "template";
+        setBackgroundMode(mode);
+
+        if (Array.isArray(s.media_urls) && s.media_urls.length > 0) {
+          setPhotoUrls(s.media_urls);
+        } else {
+          setPhotoUrls([]);
+        }
+
+        // ✅ 모바일 청첩장 링크 로드
         setMobileInvitationLink(s.mobile_invitation_link ?? "");
+      } else {
+        setCeremonyDate(e.ceremony_date ?? "");
+        setCeremonyStartTime("");
+        setCeremonyEndTime("");
+        setDisplayTitle(DEFAULT_TITLE);
+        setDisplaySubtitle(DEFAULT_SUBTITLE);
+        setThemePrompt("");
+        setLowerMessage(DEFAULT_LOWER_MESSAGE);
+        setDisplayStyle("basic");
+        setBackgroundMode("template");
+        setPhotoUrls([]);
+        setMobileInvitationLink("");
       }
 
-      const { data: acc } = await supabase
+      // 3) event_accounts
+      const { data: accountData, error: accountError } = await supabase
         .from("event_accounts")
-        .select("*")
+        .select(
+          `
+          id,
+          label,
+          holder_name,
+          bank_name,
+          account_number,
+          sort_order,
+          is_active
+        `
+        )
         .eq("event_id", eventId)
-        .order("sort_order");
+        .order("sort_order", { ascending: true });
 
-      setAccounts(
-        acc?.length
-          ? acc
-          : [
-              {
-                label: "신랑",
-                holder_name: "",
-                bank_name: "",
-                account_number: "",
-                sort_order: 0,
-                is_active: true,
-              },
-            ]
-      );
+      if (accountError && accountError.code !== "42P01") throw accountError;
+
+      if (accountData && accountData.length > 0) {
+        setAccounts(
+          accountData.map((row: any) => ({
+            id: row.id,
+            label: row.label,
+            holder_name: row.holder_name,
+            bank_name: row.bank_name,
+            account_number: row.account_number,
+            sort_order: row.sort_order ?? 0,
+            is_active: row.is_active ?? true,
+          }))
+        );
+      } else {
+        setAccounts([
+          { label: "신랑", holder_name: "", bank_name: "", account_number: "", sort_order: 0, is_active: true },
+          { label: "신부", holder_name: "", bank_name: "", account_number: "", sort_order: 1, is_active: true },
+        ]);
+      }
     } catch (e: any) {
-      setError("데이터를 불러오지 못했습니다.");
+      console.error("[ConfirmPage] fetchData error:", e);
+      setError(e.message ?? "데이터를 불러오는 중 오류가 발생했습니다.");
     } finally {
       setLoading(false);
     }
   }
 
-  function isValid() {
-    if (
-      !groomName ||
-      !brideName ||
-      !ceremonyDate ||
-      !ceremonyStartTime ||
-      !ceremonyEndTime
-    )
-      return false;
-
-    const validAccounts = accounts.filter(
-      (a) =>
-        a.label && a.holder_name && a.bank_name && a.account_number
+  function handleAccountChange(index: number, field: keyof AccountForm, value: string | boolean) {
+    setAccounts((prev) =>
+      prev.map((acct, i) => (i === index ? { ...acct, [field]: value } : acct))
     );
-    return validAccounts.length > 0;
   }
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    if (!isValid()) {
-      setError("필수 항목을 모두 입력해주세요.");
+  function addAccount() {
+    if (accounts.length >= MAX_ACCOUNTS) return;
+    setAccounts((prev) => [
+      ...prev,
+      {
+        label: "기타",
+        holder_name: "",
+        bank_name: "",
+        account_number: "",
+        sort_order: prev.length,
+        is_active: true,
+      },
+    ]);
+  }
+
+  function removeAccount(index: number) {
+    setAccounts((prev) =>
+      prev.filter((_, i) => i !== index).map((acct, i) => ({ ...acct, sort_order: i }))
+    );
+  }
+
+  function removePhoto(index: number) {
+    setPhotoUrls((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function handleFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || !eventId) return;
+
+    setSaving(true);
+    setUploadStatus("사진 업로드 중...");
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const current = [...photoUrls];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const ext = file.name.split(".").pop() || "jpg";
+        const filename = `${Date.now()}_${i}.${ext}`;
+        const path = `${eventId}/${filename}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("event-media")
+          .upload(path, file, { upsert: false });
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage.from("event-media").getPublicUrl(path);
+        if (data?.publicUrl) current.push(data.publicUrl);
+      }
+
+      const limited = current.slice(0, 8);
+      setPhotoUrls(limited);
+      setBackgroundMode("photo");
+      setUploadStatus("업로드가 완료되었습니다. 하단에서 사진을 확인해주세요.");
+    } catch (err: any) {
+      console.error("[ConfirmPage] file upload error", err);
+      setError(err.message ?? "사진 업로드 중 오류가 발생했습니다. 다시 시도해주세요.");
+      setUploadStatus(null);
+    } finally {
+      setSaving(false);
+      e.target.value = "";
+    }
+  }
+
+  // 카카오 예식장 검색
+  const runVenueSearch = () => {
+    if (!venueSearchKeyword.trim()) return;
+    const kakao = (window as any).kakao;
+    if (!kakao || !kakao.maps || !kakao.maps.services) {
+      alert("카카오 지도 스크립트가 아직 로드되지 않았습니다.\n잠시 후 새로고침 후 다시 시도해주세요.");
       return;
     }
 
+    setVenueSearchLoading(true);
+    setVenueSearchResults([]);
+
+    const ps = new kakao.maps.services.Places();
+    ps.keywordSearch(venueSearchKeyword, (data: any[], status: string) => {
+      setVenueSearchLoading(false);
+      if (status === kakao.maps.services.Status.OK) {
+        setVenueSearchResults(data);
+      } else {
+        setVenueSearchResults([]);
+      }
+    });
+  };
+
+  const handleSelectVenue = (place: any) => {
+    setVenueName(place.place_name || "");
+    setVenueAddress(place.road_address_name || place.address_name || venueAddress);
+    if (place.y && place.x) {
+      setVenueLat(Number(place.y));
+      setVenueLng(Number(place.x));
+    }
+    setVenueSearchOpen(false);
+  };
+
+  const isValidUrl = (v: string) => {
+    try {
+      // eslint-disable-next-line no-new
+      new URL(v);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!eventId) return;
+
     setSaving(true);
     setError(null);
+    setSuccess(null);
 
     try {
-      await supabase.from("events").update({
-        groom_name: groomName,
-        bride_name: brideName,
-        venue_name: venueName,
-        venue_address: venueAddress,
-        ceremony_date: ceremonyDate,
-      }).eq("id", eventId);
+      // ✅ 필수: 모바일 청첩장 링크
+      const link = mobileInvitationLink.trim();
+      if (!link) {
+        throw new Error("모바일 청첩장 링크는 필수입니다.");
+      }
+      if (!isValidUrl(link)) {
+        throw new Error("모바일 청첩장 링크가 유효한 URL 형식이 아닙니다.");
+      }
 
-      await supabase.from("event_settings").upsert({
+      const startOffsetNum = DEFAULT_START_OFFSET;
+      const endOffsetNum = DEFAULT_END_OFFSET;
+
+      // 1) events 업데이트
+      const eventPayload = {
+        groom_name: groomName || null,
+        bride_name: brideName || null,
+        venue_name: venueName || null,
+        venue_address: venueAddress || null,
+        venue_lat: venueLat,
+        venue_lng: venueLng,
+      };
+
+      const { error: eventUpdateError } = await supabase
+        .from("events")
+        .update(eventPayload)
+        .eq("id", eventId);
+      if (eventUpdateError) throw eventUpdateError;
+
+      // 2) recipients (신랑/신부)
+      const recipients: any[] = [];
+      if (groomName.trim()) recipients.push({ name: groomName.trim(), role: "신랑", contact: null });
+      if (brideName.trim()) recipients.push({ name: brideName.trim(), role: "신부", contact: null });
+
+      // 배경모드/사진 배열
+      const cleaned = photoUrls.map((u) => u.trim()).filter(Boolean);
+      const isPhotoValid = cleaned.length > 0;
+      const modeToSave: "photo" | "template" =
+        backgroundMode === "photo" && isPhotoValid ? "photo" : "template";
+      const mediaToSave = modeToSave === "photo" ? cleaned : null;
+
+      // 3) event_settings upsert
+      const payload = {
         event_id: eventId,
-        ceremony_start_time: ceremonyStartTime,
-        ceremony_end_time: ceremonyEndTime,
-        background_mode: backgroundMode,
-        display_style: displayStyle,
-        media_urls: backgroundMode === "photo" ? photoUrls : null,
-        mobile_invitation_link: mobileInvitationLink,
-      });
+        ceremony_date: ceremonyDate || null,
+        ceremony_start_time: ceremonyStartTime || null,
+        ceremony_end_time: ceremonyEndTime || null,
+        title: displayTitle || null,
+        subtitle: displaySubtitle || null,
+        theme_prompt: themePrompt || null,
+        lower_message: lowerMessage || null,
+        display_start_offset_minutes: startOffsetNum,
+        display_end_offset_minutes: endOffsetNum,
+        display_style: displayStyle || "basic",
+        recipients: recipients.length > 0 ? recipients : null,
+        background_mode: modeToSave,
+        media_urls: mediaToSave,
 
-      await supabase.from("event_accounts").delete().eq("event_id", eventId);
-      await supabase.from("event_accounts").insert(
-        accounts
-          .filter(
-            (a) =>
-              a.label &&
-              a.holder_name &&
-              a.bank_name &&
-              a.account_number
-          )
-          .map((a, i) => ({ ...a, event_id: eventId, sort_order: i }))
-      );
+        // ✅ 추가 저장
+        mobile_invitation_link: link,
+      };
 
-      setSuccess("저장되었습니다.");
-    } catch {
-      setError("저장 중 오류가 발생했습니다.");
+      if (settings?.id) {
+        const { error: updateError } = await supabase
+          .from("event_settings")
+          .update(payload)
+          .eq("id", settings.id);
+        if (updateError) throw updateError;
+      } else {
+        const { data: inserted, error: insertError } = await supabase
+          .from("event_settings")
+          .insert(payload)
+          .select()
+          .maybeSingle();
+        if (insertError) throw insertError;
+        if (inserted) setSettings(inserted as EventSettingsRow);
+      }
+
+      // 4) 계좌 저장
+      const validAccounts = accounts
+        .filter(
+          (a) =>
+            a.label.trim() &&
+            a.holder_name.trim() &&
+            a.bank_name.trim() &&
+            a.account_number.trim()
+        )
+        .map((a, index) => ({
+          event_id: eventId,
+          label: a.label.trim(),
+          holder_name: a.holder_name.trim(),
+          bank_name: a.bank_name.trim(),
+          account_number: a.account_number.trim(),
+          sort_order: index,
+          is_active: a.is_active,
+        }));
+
+      const { error: deleteError } = await supabase
+        .from("event_accounts")
+        .delete()
+        .eq("event_id", eventId);
+      if (deleteError && deleteError.code !== "42P01") throw deleteError;
+
+      if (validAccounts.length > 0) {
+        const { error: insertAccountsError } = await supabase
+          .from("event_accounts")
+          .insert(validAccounts);
+        if (insertAccountsError && insertAccountsError.code !== "42P01") {
+          throw insertAccountsError;
+        }
+      }
+
+      setSuccess("모든 설정이 저장되었습니다.");
+    } catch (e: any) {
+      console.error("[ConfirmPage] handleSave error:", e);
+      setError(e.message ?? "저장 중 오류가 발생했습니다.");
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading) return <div className="p-6">로딩 중…</div>;
+  if (loading) {
+    return (
+      <div className="p-6">
+        <p>로딩 중...</p>
+      </div>
+    );
+  }
+
+  if (!event) {
+    return (
+      <div className="p-6">
+        <p>이벤트 정보를 불러올 수 없습니다.</p>
+        {error && <p className="mt-2 text-sm text-red-600">상세 오류: {error}</p>}
+      </div>
+    );
+  }
+
+  const [startHourRaw = "", startMinuteRaw = ""] = (ceremonyStartTime || "").split(":");
+  const startHour = startHourRaw;
+  const startMinute = MINUTES_10.includes(startMinuteRaw) ? startMinuteRaw : "";
+
+  const [endHourRaw = "", endMinuteRaw = ""] = (ceremonyEndTime || "").split(":");
+  const endHour = endHourRaw;
+  const endMinute = MINUTES_10.includes(endMinuteRaw) ? endMinuteRaw : "";
 
   return (
-    <div className="max-w-3xl mx-auto p-4 space-y-6">
-      <button
-        className="text-sm underline"
-        onClick={() => navigate(`/app/event/${eventId}`)}
-      >
-        ← 이벤트 홈
-      </button>
+    <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
+      <header className="space-y-2">
+        <h1 className="text-xl md:text-2xl font-bold">디지털방명록 세부사항 확정</h1>
+        <p className="text-xs md:text-sm text-gray-600">
+          예식 시간, 디스플레이 분위기, 축의금 수취 계좌, 사진을 한 번에 설정하면 결혼식 당일 디스플레이에 그대로 적용됩니다.
+        </p>
+      </header>
 
       <form onSubmit={handleSave} className="space-y-6">
+        {/* ✅ 모바일 청첩장 (필수) */}
+        <section className="border rounded-xl p-4 space-y-2 bg-gray-50">
+          <h2 className="text-sm md:text-lg font-semibold">모바일 청첩장 (필수)</h2>
+          <p className="text-[11px] text-gray-500">
+            모바일 청첩장 링크는 필수입니다. (예금주/사진 등을 최종 더블체크하기 위한 용도)
+          </p>
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="url"
+              className="flex-1 border rounded-md px-3 py-2 text-sm"
+              placeholder="예: https://m-card.com/your-link"
+              value={mobileInvitationLink}
+              onChange={(e) => setMobileInvitationLink(e.target.value)}
+            />
+            <button
+              type="button"
+              className="sm:w-auto w-full px-3 py-2 text-sm border border-green-300 rounded-full bg-white hover:bg-green-50"
+              onClick={() => {
+                const v = mobileInvitationLink.trim();
+                if (!v) return alert("먼저 모바일 청첩장 링크를 입력해주세요.");
+                if (!isValidUrl(v)) return alert("유효한 URL 형식이 아닙니다.");
+                window.open(v, "_blank", "noopener,noreferrer");
+              }}
+            >
+              링크 열기
+            </button>
+          </div>
+        </section>
+
         {/* 기본 정보 */}
-        <section className="border rounded-xl p-4 space-y-3">
-          <h2 className="font-semibold">기본 정보</h2>
-          <input
-            placeholder="신랑 이름"
-            className="w-full border p-2"
-            value={groomName}
-            onChange={(e) => setGroomName(e.target.value)}
-          />
-          <input
-            placeholder="신부 이름"
-            className="w-full border p-2"
-            value={brideName}
-            onChange={(e) => setBrideName(e.target.value)}
-          />
+        <section className="border rounded-xl p-4 space-y-3 bg-gray-50">
+          <h2 className="text-sm md:text-lg font-semibold">기본 정보</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[11px] font-medium text-gray-500 mb-1">신랑 이름</label>
+              <input
+                type="text"
+                className="w-full border rounded-md px-3 py-2 text-sm"
+                placeholder="예: 김우빈"
+                value={groomName}
+                onChange={(e) => setGroomName(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-500 mb-1">신부 이름</label>
+              <input
+                type="text"
+                className="w-full border rounded-md px-3 py-2 text-sm"
+                placeholder="예: 신민아"
+                value={brideName}
+                onChange={(e) => setBrideName(e.target.value)}
+              />
+            </div>
+
+            {/* 예식장 */}
+            <div className="md:col-span-2 space-y-2">
+              <label className="block text-[11px] font-medium text-gray-500 mb-1">예식장</label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  className="sm:w-auto w-full px-3 py-2 text-sm border border-green-300 rounded-full flex items-center justify-center gap-1 bg-white hover:bg-green-50"
+                  onClick={() => setVenueSearchOpen(true)}
+                >
+                  <span>📍</span>
+                  <span>예식장 검색하기</span>
+                </button>
+                <div className="flex-1 min-h-[40px] border rounded-md px-3 py-2 text-xs bg-white flex flex-col justify-center">
+                  {venueName ? (
+                    <>
+                      <span className="font-medium">{venueName}</span>
+                      {venueAddress && <span className="text-[11px] text-gray-500">{venueAddress}</span>}
+                    </>
+                  ) : (
+                    <span className="text-[11px] text-gray-400">아직 선택한 예식장이 없습니다.</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-500 mt-1">
+            여기에서 입력한 정보는 디지털 방명록 화면과 최종 리포트에 그대로 사용됩니다.
+          </p>
         </section>
 
         {/* 예식 시간 */}
-        <section className="border rounded-xl p-4 space-y-3">
-          <h2 className="font-semibold">예식 시간</h2>
-          <input
-            type="date"
-            className="border p-2"
-            value={ceremonyDate}
-            onChange={(e) => setCeremonyDate(e.target.value)}
-          />
+        <section className="border rounded-xl p-4 space-y-4">
+          <h2 className="text-sm md:text-lg font-semibold">예식 시간</h2>
+          <p className="text-[11px] text-gray-500">
+            예식 시작 <span className="font-semibold">1시간 전</span>부터 종료{" "}
+            <span className="font-semibold">10분 전</span>까지 디지털 방명록 디스플레이가 재생됩니다.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">예식 날짜</label>
+              <input
+                type="date"
+                className="w-full border rounded-md px-3 py-2 text-sm"
+                value={ceremonyDate}
+                onChange={(e) => setCeremonyDate(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">시작 시간</label>
+              <div className="flex gap-2">
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                  value={startHour}
+                  onChange={(e) => {
+                    const newHour = e.target.value;
+                    const minute = startMinute || "00";
+                    setCeremonyStartTime(newHour ? `${newHour}:${minute}` : "");
+                  }}
+                >
+                  <option value="">시</option>
+                  {HOURS.map((h) => (
+                    <option key={h} value={h}>
+                      {h}시
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                  value={startMinute}
+                  onChange={(e) => {
+                    const newMinute = e.target.value;
+                    const hour = startHour || "00";
+                    setCeremonyStartTime(newMinute ? `${hour}:${newMinute}` : "");
+                  }}
+                >
+                  <option value="">분</option>
+                  {MINUTES_10.map((m) => (
+                    <option key={m} value={m}>
+                      {m}분
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">종료 시간</label>
+              <div className="flex gap-2">
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                  value={endHour}
+                  onChange={(e) => {
+                    const newHour = e.target.value;
+                    const minute = endMinute || "00";
+                    setCeremonyEndTime(newHour ? `${newHour}:${minute}` : "");
+                  }}
+                >
+                  <option value="">시</option>
+                  {HOURS.map((h) => (
+                    <option key={h} value={h}>
+                      {h}시
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                  value={endMinute}
+                  onChange={(e) => {
+                    const newMinute = e.target.value;
+                    const hour = endHour || "00";
+                    setCeremonyEndTime(newMinute ? `${hour}:${newMinute}` : "");
+                  }}
+                >
+                  <option value="">분</option>
+                  {MINUTES_10.map((m) => (
+                    <option key={m} value={m}>
+                      {m}분
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
         </section>
 
-        {/* 디스플레이 */}
+        {/* 디스플레이 + 사진 업로드 */}
         <section className="border rounded-xl p-4 space-y-4">
-          <h2 className="font-semibold">디스플레이</h2>
+          <h2 className="text-sm md:text-lg font-semibold">디스플레이 디자인 & 사진</h2>
 
-          <label>
-            <input
-              type="radio"
-              checked={backgroundMode === "photo"}
-              onChange={() => setBackgroundMode("photo")}
-            />{" "}
-            신랑·신부 웨딩사진 사용 (추천)
-          </label>
-
-          <label>
-            <input
-              type="radio"
-              checked={backgroundMode === "template"}
-              onChange={() => setBackgroundMode("template")}
-            />{" "}
-            기본 템플릿 사용
-          </label>
-
-          {backgroundMode === "template" && (
+          <div>
+            <label className="block text-[11px] font-medium text-gray-600 mb-1">디스플레이 레이아웃</label>
             <select
-              className="border p-2"
+              className="w-full border rounded-md px-3 py-2 text-sm"
               value={displayStyle}
               onChange={(e) => setDisplayStyle(e.target.value)}
             >
-              {DISPLAY_STYLE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
+              {DISPLAY_STYLE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-[11px] font-medium text-gray-600 mb-1">배경 방식</label>
+            <div className="flex flex-col gap-1 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  className="h-4 w-4"
+                  value="template"
+                  checked={backgroundMode === "template"}
+                  onChange={() => setBackgroundMode("template")}
+                />
+                <span>예식장 분위기에 맞춘 기본 템플릿 사용</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  className="h-4 w-4"
+                  value="photo"
+                  checked={backgroundMode === "photo"}
+                  onChange={() => setBackgroundMode("photo")}
+                />
+                <span>신랑·신부 사진 웨딩사진 사용 (추천)</span>
+              </label>
+            </div>
+            <p className="text-[11px] text-gray-500">
+              사진을 올리면 신랑·신부 사진 위로 축하 메세지가 자연스럽게 떠오르는 화면이 됩니다.
+            </p>
+          </div>
+
+          {backgroundMode === "photo" && (
+            <>
+              <div className="space-y-2">
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">신랑·신부 사진 올리기 (선택)</label>
+                <label className="block">
+                  <div className="w-full border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-center bg-white active:scale-[0.99] transition">
+                    <span className="text-3xl mb-1">📷</span>
+                    <p className="text-sm font-medium text-gray-800">핸드폰 앨범에서 사진 선택하기</p>
+                    <p className="mt-1 text-[11px] text-gray-500">
+                      여러 장을 한 번에 선택해 업로드할 수 있고, 최대 8장까지 사용됩니다.
+                    </p>
+                  </div>
+                  <input type="file" accept="image/*" multiple onChange={handleFilesSelected} className="hidden" />
+                </label>
+                {uploadStatus && <p className="text-[11px] text-gray-500">{uploadStatus}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gray-700">업로드된 사진 ({photoUrls.length}/8)</span>
+                  <span className="text-[11px] text-gray-500">
+                    왼쪽부터 순서대로 슬라이드 재생됩니다. (썸네일의 ✕ 버튼으로 삭제할 수 있습니다.)
+                  </span>
+                </div>
+
+                {photoUrls.length === 0 ? (
+                  <div className="border border-dashed border-gray-300 rounded-xl py-4 text-center text-[11px] text-gray-400 bg-white">
+                    아직 업로드된 사진이 없습니다. 원하시면 위 버튼으로 사진을 추가해주세요.
+                  </div>
+                ) : (
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {photoUrls.map((url, idx) => (
+                      <div
+                        key={idx}
+                        className="relative flex-shrink-0 w-20 h-28 rounded-lg overflow-hidden border bg-gray-100"
+                      >
+                        {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                        <img src={url} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(idx)}
+                          className="absolute top-1 right-1 bg-black/75 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center shadow"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
           )}
-        </section>
 
-        {/* 계좌 */}
-        <section className="border rounded-xl p-4 space-y-3">
-          <h2 className="font-semibold">축의금 계좌 (최소 1개 필수)</h2>
-          {accounts.map((a, i) => (
-            <input
-              key={i}
-              placeholder="계좌번호"
-              className="w-full border p-2"
-              value={a.account_number}
-              onChange={(e) =>
-                setAccounts((prev) =>
-                  prev.map((x, idx) =>
-                    idx === i
-                      ? { ...x, account_number: e.target.value }
-                      : x
-                  )
-                )
-              }
+          <div>
+            <label className="block text-[11px] font-medium text-gray-600 mb-1">디스플레이 전체 분위기 메모</label>
+            <textarea
+              className={`w-full border rounded-md px-3 py-2 text-sm min-h-[60px] ${
+                themePrompt ? "text-gray-800" : "text-gray-400"
+              }`}
+              value={themePrompt}
+              onChange={(e) => setThemePrompt(e.target.value)}
+              placeholder={DEFAULT_THEME_PROMPT}
             />
-          ))}
+          </div>
         </section>
 
-        {error && <div className="text-red-500 text-sm">{error}</div>}
-        {success && <div className="text-green-600 text-sm">{success}</div>}
+        {/* 축의금 계좌 */}
+        <section className="border rounded-xl p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm md:text-lg font-semibold">축의금 계좌 설정</h2>
+            <button
+              type="button"
+              onClick={addAccount}
+              disabled={accounts.length >= MAX_ACCOUNTS}
+              className="text-xs md:text-sm px-3 py-1 border rounded-md disabled:opacity-50"
+            >
+              계좌 추가 ({accounts.length}/{MAX_ACCOUNTS})
+            </button>
+          </div>
 
-        <button
-          disabled={saving}
-          className="bg-black text-white px-4 py-2 rounded"
-        >
-          {saving ? "저장 중…" : "확정하기"}
-        </button>
+          <p className="text-[11px] text-gray-500">
+            신랑 / 신부 / 양가 부모 등 최대 {MAX_ACCOUNTS}개의 계좌를 등록할 수 있습니다. QR을 스캔하면 하객이 송금할 계좌를 선택하게 됩니다.
+          </p>
+
+          <div className="space-y-4">
+            {accounts.map((acct, index) => {
+              const isKnownBank = BANK_OPTIONS.includes(acct.bank_name);
+              let selectValue = "";
+              if (acct.bank_name) selectValue = isKnownBank ? acct.bank_name : "기타(직접 입력)";
+
+              return (
+                <div key={index} className="border rounded-lg p-3 bg-gray-50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] font-semibold text-gray-600">계좌 #{index + 1}</div>
+                    {accounts.length > 1 && (
+                      <button type="button" onClick={() => removeAccount(index)} className="text-[11px] text-red-500">
+                        삭제
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-600 mb-1">구분</label>
+                      <select
+                        className="w-full border rounded-md px-2 py-1.5 text-xs"
+                        value={acct.label}
+                        onChange={(e) => handleAccountChange(index, "label", e.target.value)}
+                      >
+                        <option value="신랑">신랑</option>
+                        <option value="신부">신부</option>
+                        <option value="신랑 아버지">신랑 아버지</option>
+                        <option value="신랑 어머니">신랑 어머니</option>
+                        <option value="신부 아버지">신부 아버지</option>
+                        <option value="신부 어머니">신부 어머니</option>
+                        <option value="기타">기타</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-600 mb-1">예금주</label>
+                      <input
+                        type="text"
+                        className="w-full border rounded-md px-2 py-1.5 text-xs"
+                        value={acct.holder_name}
+                        onChange={(e) => handleAccountChange(index, "holder_name", e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-600 mb-1">은행명</label>
+                      <select
+                        className="w-full border rounded-md px-2 py-1.5 text-xs mb-1"
+                        value={selectValue}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "") {
+                            handleAccountChange(index, "bank_name", "");
+                            return;
+                          }
+                          if (v === "기타(직접 입력)") {
+                            handleAccountChange(index, "bank_name", isKnownBank ? "" : acct.bank_name);
+                          } else {
+                            handleAccountChange(index, "bank_name", v);
+                          }
+                        }}
+                      >
+                        <option value="">은행 선택</option>
+                        {BANK_OPTIONS.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+
+                      {selectValue === "기타(직접 입력)" && (
+                        <input
+                          type="text"
+                          className="w-full border rounded-md px-2 py-1.5 text-xs"
+                          placeholder="은행명을 직접 입력해주세요"
+                          value={acct.bank_name}
+                          onChange={(e) => handleAccountChange(index, "bank_name", e.target.value)}
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-600 mb-1">계좌번호</label>
+                      <input
+                        type="text"
+                        className="w-full border rounded-md px-2 py-1.5 text-xs"
+                        value={acct.account_number}
+                        onChange={(e) => handleAccountChange(index, "account_number", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* 상태 / 버튼 */}
+        <div className="flex flex-col gap-2">
+          {error && (
+            <div className="text-xs md:text-sm text-red-600 bg-red-50 border border-red-100 px-3 py-2 rounded-md">
+              {error}
+            </div>
+          )}
+          {success && (
+            <div className="text-xs md:text-sm text-green-700 bg-green-50 border border-green-100 px-3 py-2 rounded-md">
+              {success}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 rounded-md bg-black text-white text-sm disabled:opacity-50"
+            >
+              {saving ? "저장 중..." : "확정하기"}
+            </button>
+          </div>
+        </div>
       </form>
+
+      {/* 예식장 검색 모달 */}
+      {venueSearchOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl p-4 space-y-3">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-base font-semibold">예식장 검색</h3>
+              <button type="button" className="text-sm text-gray-500" onClick={() => setVenueSearchOpen(false)}>
+                닫기
+              </button>
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                className="flex-1 border rounded-md px-3 py-2 text-sm"
+                placeholder="예: ○○웨딩홀, ○○성당"
+                value={venueSearchKeyword}
+                onChange={(e) => setVenueSearchKeyword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    runVenueSearch();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="px-3 py-2 text-sm rounded-md bg-black text-white"
+                onClick={runVenueSearch}
+                disabled={venueSearchLoading}
+              >
+                {venueSearchLoading ? "검색 중..." : "검색"}
+              </button>
+            </div>
+
+            <div className="max-h-72 overflow-auto border rounded-lg">
+              {venueSearchLoading ? (
+                <div className="py-8 text-center text-sm text-gray-500">검색 중입니다…</div>
+              ) : venueSearchResults.length === 0 ? (
+                <div className="py-8 text-center text-sm text-gray-500">
+                  검색 결과가 없습니다. 이름을 조금 다르게 입력해 보세요.
+                </div>
+              ) : (
+                <ul className="divide-y">
+                  {venueSearchResults.map((place) => (
+                    <li key={place.id}>
+                      <button
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                        onClick={() => handleSelectVenue(place)}
+                      >
+                        <div className="font-medium">{place.place_name}</div>
+                        <div className="text-xs text-gray-600">
+                          {place.road_address_name || place.address_name}
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <p className="text-[11px] text-gray-400">
+              카카오 지도 장소 검색을 이용합니다. 검색 결과는 Kakao에서 제공하는 정보에 따라 달라질 수 있습니다.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+ 
