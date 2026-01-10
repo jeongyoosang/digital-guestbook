@@ -220,7 +220,7 @@ export default function ServiceFlowPage() {
                         <PhoneFrameDesktop
                           src="/serviceflow1-2.jpg"
                           alt="카톡 안내"
-                          heightPx={420}
+                          heightPx={460}
                         />
                       </div>
                     </div>
@@ -249,12 +249,12 @@ export default function ServiceFlowPage() {
                     <PhoneFrameDesktop
                       src="/serviceflow2.jpg"
                       alt="상세설정 폰1"
-                      heightPx={420}
+                      heightPx={460}
                     />
                     <PhoneFrameDesktop
                       src="/serviceflow2-2.jpg"
                       alt="상세설정 폰2"
-                      heightPx={420}
+                      heightPx={460}
                     />
                   </div>
                 </div>
