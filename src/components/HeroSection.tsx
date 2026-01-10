@@ -70,27 +70,26 @@ export default function HeroSection({
             </h1>
 
             <p className="mt-5 text-base leading-relaxed text-muted-foreground sm:text-lg">
-            <span className="block">
-              하객은{" "}
-              <span className="text-foreground font-semibold">
-                QR로 축하메시지와 축의금을 보내고
+              <span className="block">
+                하객은{" "}
+                <span className="text-foreground font-semibold">
+                  QR로 축하메시지와 축의금을 보내고
+                </span>
               </span>
-            </span>
 
-            <span className="block mt-1">
-              예식이 끝나는 순간{" "}
-              <span className="text-foreground font-semibold">
-                모든 참석자 방명록과 축의금 내역이
+              <span className="block mt-1">
+                예식이 끝나는 순간{" "}
+                <span className="text-foreground font-semibold">
+                  모든 참석자 방명록과 축의금 내역이
+                </span>
               </span>
-            </span>
 
-            <span className="block mt-1">
-              <span className="text-foreground font-semibold">
-                하나의 리포트로 즉시 정리됩니다.
+              <span className="block mt-1">
+                <span className="text-foreground font-semibold">
+                  하나의 리포트로 즉시 정리됩니다.
+                </span>
               </span>
-            </span>
-          </p>
-
+            </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <button
@@ -101,25 +100,33 @@ export default function HeroSection({
                 예약문의 하기
               </button>
             </div>
-            {/* Mobile quick links (lg 이상에서는 기존 상단 버튼 사용) */}
-            <div className="mt-4 flex items-center gap-4 text-sm text-muted-foreground lg:hidden">
-              <button
-                type="button"
-                onClick={onServiceFlowClick}
-                className="underline-offset-4 hover:underline"
-              >
-                서비스 흐름
-              </button>
-              <span className="opacity-40">·</span>
-              <button
-                type="button"
-                onClick={onReportClick}
-                className="underline-offset-4 hover:underline"
-              >
-                내 리포트
-              </button>
-            </div>
 
+            {/* Mobile quick links (lg 이상에서는 기존 상단 버튼 사용) */}
+            <div className="mt-4 lg:hidden">
+              <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
+                <button
+                  type="button"
+                  onClick={onServiceFlowClick}
+                  className="underline-offset-4 hover:underline"
+                >
+                  서비스 흐름
+                </button>
+
+                {/* 얇은 구분자 */}
+                <span
+                  aria-hidden="true"
+                  className="h-4 w-px bg-foreground/15"
+                />
+
+                <button
+                  type="button"
+                  onClick={onReportClick}
+                  className="underline-offset-4 hover:underline"
+                >
+                  내 리포트
+                </button>
+              </div>
+            </div>
           </motion.div>
 
           {/* RIGHT */}
@@ -158,7 +165,10 @@ export default function HeroSection({
 
                       <linearGradient id="dgGlint" x1="0" y1="0" x2="1" y2="0">
                         <stop offset="0" stopColor="rgba(255,255,255,0)" />
-                        <stop offset="0.35" stopColor="rgba(255,255,255,0.95)" />
+                        <stop
+                          offset="0.35"
+                          stopColor="rgba(255,255,255,0.95)"
+                        />
                         <stop offset="0.7" stopColor="rgba(255,255,255,0)" />
                       </linearGradient>
 

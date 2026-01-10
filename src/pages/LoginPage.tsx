@@ -162,7 +162,7 @@ export default function LoginPage() {
 
               <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
                 <button className="underline" onClick={() => navigate("/", { replace: true })}>
-                  랜딩으로 돌아가기
+                  처음으로 돌아가기
                 </button>
                 <button className="underline" onClick={clearSavedEmail}>
                   저장 이메일 삭제
