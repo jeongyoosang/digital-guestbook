@@ -1,6 +1,6 @@
 // src/pages/app/EventHome.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,17 +22,11 @@ function fmtDate(d?: string | null) {
 
 export default function EventHome() {
   const navigate = useNavigate();
-  const { eventId } = useParams<{ eventId: string }>();
 
   const [loading, setLoading] = useState(true);
   const [meEmail, setMeEmail] = useState<string | null>(null);
   const [events, setEvents] = useState<EventRow[]>([]);
   const [error, setError] = useState<string | null>(null);
-
-  const selectedEvent = useMemo(() => {
-    if (!eventId) return null;
-    return events.find((e) => e.id === eventId) ?? null;
-  }, [eventId, events]);
 
   useEffect(() => {
     let mounted = true;
@@ -59,7 +53,6 @@ export default function EventHome() {
         return;
       }
 
-      // ✅ title 컬럼 제거 (DB에 없음)
       const { data, error: evErr } = await supabase
         .from("events")
         .select("id,groom_name,bride_name,ceremony_date,venue_name,created_at,owner_email")
@@ -97,106 +90,89 @@ export default function EventHome() {
   }, [loading, error, events.length]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-5xl px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-xl font-bold">내 이벤트</h1>
-          <p className="text-sm text-muted-foreground mt-1">{headerSubtitle}</p>
-          {meEmail && (
-            <p className="text-xs text-muted-foreground mt-2">
-              로그인: <span className="font-mono">{meEmail}</span>
-            </p>
-          )}
-        </div>
+    <div>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold">내 이벤트</h1>
+        <p className="text-sm text-muted-foreground mt-1">{headerSubtitle}</p>
 
-        {error && (
-          <Card className="mb-6">
-            <CardContent className="p-6">
-              <div className="text-sm font-semibold">이벤트 정보를 불러올 수 없습니다.</div>
-              <div className="text-sm text-muted-foreground mt-2 break-words">{error}</div>
-              <div className="mt-4 flex gap-2">
-                <Button onClick={() => window.location.reload()}>새로고침</Button>
-                <Button variant="outline" onClick={() => navigate("/", { replace: true })}>
-                  랜딩으로
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+        {meEmail && (
+          <p className="text-xs text-muted-foreground mt-2">
+            로그인: <span className="font-mono">{meEmail}</span>
+          </p>
         )}
+      </div>
 
-        {!error && !loading && events.length === 0 && (
-          <Card>
-            <CardContent className="p-6">
-              <div className="text-sm font-semibold">연결된 이벤트가 없습니다.</div>
-              <div className="text-sm text-muted-foreground mt-2">
-                아직 예약/생성된 이벤트가 없거나, 해당 계정에 연결되지 않았습니다.
-              </div>
-            </CardContent>
-          </Card>
-        )}
+      {error && (
+        <Card className="mb-6">
+          <CardContent className="p-6">
+            <div className="text-sm font-semibold">이벤트 정보를 불러올 수 없습니다.</div>
+            <div className="text-sm text-muted-foreground mt-2 break-words">{error}</div>
+            <div className="mt-4 flex gap-2">
+              <Button onClick={() => window.location.reload()}>새로고침</Button>
+              <Button variant="outline" onClick={() => navigate("/", { replace: true })}>
+                랜딩으로
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-        {!error && events.length > 0 && (
-          <div className="grid grid-cols-1 gap-4">
-            {eventId && !selectedEvent && (
-              <Card>
+      {!error && !loading && events.length === 0 && (
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-sm font-semibold">연결된 이벤트가 없습니다.</div>
+            <div className="text-sm text-muted-foreground mt-2">
+              아직 예약/생성된 이벤트가 없거나, 해당 계정에 연결되지 않았습니다.
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {!error && events.length > 0 && (
+        <div className="grid grid-cols-1 gap-4">
+          {events.map((e) => {
+            const title = [e.groom_name, e.bride_name].filter(Boolean).join(" · ") || "이벤트";
+            const meta = [
+              e.ceremony_date ? `예식일 ${fmtDate(e.ceremony_date)}` : null,
+              e.venue_name ? `장소 ${e.venue_name}` : null,
+            ]
+              .filter(Boolean)
+              .join(" / ");
+
+            return (
+              <Card key={e.id} className="overflow-hidden">
                 <CardContent className="p-6">
-                  <div className="text-sm font-semibold">이 이벤트를 찾을 수 없습니다.</div>
-                  <div className="text-sm text-muted-foreground mt-2">
-                    요청한 eventId(<span className="font-mono">{eventId}</span>)가 현재 로그인 계정에
-                    연결되어 있지 않습니다.
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-base font-bold truncate">{title}</div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        {meta || "상세 정보 없음"}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-2 font-mono break-all">
+                        Event ID: {e.id}
+                      </div>
+                    </div>
+
+                    {/* ✅ Primary CTA는 리포트(유저 목적) */}
+                    <div className="flex flex-col gap-2 shrink-0">
+                      <Button onClick={() => openReport(e.id)}>리포트 보기</Button>
+                      <Button variant="outline" onClick={() => openSettings(e.id)}>
+                        예식 설정
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={() => openReplay(e.id)}>
+                      다시보기
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
-            )}
-
-            {events.map((e) => {
-              const title =
-                [e.groom_name, e.bride_name].filter(Boolean).join(" · ") || "이벤트";
-
-              const meta = [
-                e.ceremony_date ? `예식일 ${fmtDate(e.ceremony_date)}` : null,
-                e.venue_name ? `장소 ${e.venue_name}` : null,
-              ]
-                .filter(Boolean)
-                .join(" / ");
-
-              return (
-                <Card key={e.id} className="overflow-hidden">
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="text-base font-bold truncate">{title}</div>
-                        <div className="text-sm text-muted-foreground mt-1">
-                          {meta || "상세 정보 없음"}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-2 font-mono break-all">
-                          Event ID: {e.id}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-2 shrink-0">
-                        <Button onClick={() => navigate(`/app/event/${e.id}`)}>이벤트 홈</Button>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <Button variant="outline" onClick={() => openSettings(e.id)}>
-                        예식 설정(Confirm)
-                      </Button>
-                      <Button variant="outline" onClick={() => openReport(e.id)}>
-                        결과 리포트(Result)
-                      </Button>
-                      <Button variant="outline" onClick={() => openReplay(e.id)}>
-                        다시보기(Replay)
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
