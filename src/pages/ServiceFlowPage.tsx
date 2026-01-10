@@ -39,7 +39,7 @@ const STEPS: StepData[] = [
     id: "setup",
     sectionId: "sf-setup",
     title: "02. 상세 설정",
-    desc: "신랑·신부 정보, 디스플레이 배경,축의금 수취인 별 계좌 등 우리만의 예식 페이지를 맞춤 구성합니다.",
+    desc: "신랑·신부 정보, 디스플레이 배경, 축의금 수취인 별 계좌 등 우리만의 예식 페이지를 맞춤 구성합니다.",
     dDay: "D-14 ~ 30",
     icon: "⚙️",
     label: "상세 설정",
@@ -174,9 +174,10 @@ export default function ServiceFlowPage() {
                     {step.title}
                   </h2>
 
-                  <p className="max-w-2xl text-lg leading-relaxed text-slate-500">
+                  <p className="max-w-2xl text-lg leading-relaxed text-slate-500 whitespace-pre-line">
                     {step.desc}
                   </p>
+
 
                   {/* 03 섹션 각주 */}
                   {step.id === "guest" && (
@@ -226,28 +227,39 @@ export default function ServiceFlowPage() {
                   </>
                 )}
 
-                {/* 02 상세 설정: (모바일/웹 동일 형태) 상단 웹 + 하단 폰 2개 세로 덩어리, 가운데정렬 */}
-                {step.id === "setup" && (
-                  <div className="flex flex-col items-center gap-6 lg:gap-8">
-                    <div className="w-full lg:max-w-3xl overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg">
-                      <img
-                        src="/serviceflow2-1.jpg"
-                        alt="상세설정 웹"
-                        className="w-full object-contain"
-                      />
-                    </div>
-
-                    <div className="flex w-full justify-center gap-4 lg:gap-6">
-                    <div className="lg:scale-[1.15] lg:origin-top">
-                      <PhoneFrame src="/serviceflow2.jpg" alt="상세설정 폰1" />
-                    </div>
-                    <div className="lg:scale-[1.15] lg:origin-top">
-                      <PhoneFrame src="/serviceflow2-2.jpg" alt="상세설정 폰2" />
-                    </div>
+              {/* 02 상세 설정 */}
+              {step.id === "setup" && (
+                <div className="flex flex-col items-center gap-6 lg:gap-8">
+                  <div className="w-full lg:max-w-3xl overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg">
+                    <img
+                      src="/serviceflow2-1.jpg"
+                      alt="상세설정 웹"
+                      className="w-full object-contain"
+                    />
                   </div>
 
+                  {/* 모바일: 기존 PhoneFrame 유지 (지금 딱 좋다고 했으니 그대로) */}
+                  <div className="flex w-full justify-center gap-4 lg:hidden">
+                    <PhoneFrame src="/serviceflow2.jpg" alt="상세설정 폰1" />
+                    <PhoneFrame src="/serviceflow2-2.jpg" alt="상세설정 폰2" />
                   </div>
-                )}
+
+                  {/* 웹(lg+): 01과 동일한 높이(420px)로 강제 */}
+                  <div className="hidden lg:flex w-full justify-center gap-6">
+                    <PhoneFrameDesktop
+                      src="/serviceflow2.jpg"
+                      alt="상세설정 폰1"
+                      heightPx={420}
+                    />
+                    <PhoneFrameDesktop
+                      src="/serviceflow2-2.jpg"
+                      alt="상세설정 폰2"
+                      heightPx={420}
+                    />
+                  </div>
+                </div>
+              )}
+
 
                 {/* 03 하객 참여: 영상은 절대 안 잘리게 (contain), 아래 3장은 알아서 crop */}
                 {step.id === "guest" && (
