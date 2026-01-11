@@ -41,7 +41,7 @@ const App = () => (
           {/* 랜딩 */}
           <Route path="/" element={<Index />} />
 
-          {/* ✅ 서비스 흐름 */}
+          {/* 서비스 흐름 */}
           <Route path="/service-flow" element={<ServiceFlowPage />} />
 
           {/* 예약 */}
@@ -59,6 +59,9 @@ const App = () => (
               </AuthGuard>
             }
           >
+            {/* ✅ 핵심 수정: /app 진입 시 기본 화면 */}
+            <Route index element={<EventHome />} />
+
             <Route path="event/:eventId" element={<EventHome />} />
             <Route path="event/:eventId/settings" element={<ConfirmPage />} />
             <Route path="event/:eventId/report" element={<ReportPage />} />
