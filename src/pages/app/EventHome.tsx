@@ -20,10 +20,9 @@ function fmtDate(d?: string | null) {
   return d; // YYYY-MM-DD
 }
 
-/** ✅ 너의 카톡 문의 링크로 바꿔 */
+/** ✅ 너의 카톡 문의 링크 */
 const KAKAO_INQUIRY_URL =
-  (import.meta.env.VITE_KAKAO_INQUIRY_URL as string) ||
-  "http://pf.kakao.com/_UyaHn/chat"; 
+  (import.meta.env.VITE_KAKAO_INQUIRY_URL as string) || "http://pf.kakao.com/_UyaHn/chat";
 
 export default function EventHome() {
   const navigate = useNavigate();
@@ -58,12 +57,11 @@ export default function EventHome() {
         return;
       }
 
-      // ✅ (1) 로그인은 열어두되, 이벤트가 없으면 아래에서 안내/CTA 처리
-      // 지금은 RLS 정공법 전 단계니까, 전체 events를 그대로 가져오되
-      // "0개" 상태 UX를 확실히 잡는 게 핵심.
+      // ✅ 핵심: 내 이메일(owner_email) 이벤트만 조회
       const { data, error: evErr } = await supabase
         .from("events")
         .select("id,groom_name,bride_name,ceremony_date,venue_name,created_at,owner_email")
+        .eq("owner_email", email)
         .order("created_at", { ascending: false });
 
       if (!mounted) return;
@@ -90,16 +88,16 @@ export default function EventHome() {
   const openReport = (id: string) => navigate(`/app/event/${id}/report`);
   const openReplay = (id: string) => navigate(`/replay/${id}`); // 레거시 유지
 
+  const openKakaoInquiry = () => {
+    window.open(KAKAO_INQUIRY_URL, "_blank", "noopener,noreferrer");
+  };
+
   const headerSubtitle = useMemo(() => {
     if (loading) return "불러오는 중…";
     if (error) return "오류가 발생했습니다";
     if (!events.length) return "아직 준비 중입니다";
     return `내 이벤트 ${events.length}개`;
   }, [loading, error, events.length]);
-
-  const openKakaoInquiry = () => {
-    window.open(KAKAO_INQUIRY_URL, "_blank", "noopener,noreferrer");
-  };
 
   return (
     <div>
@@ -129,7 +127,7 @@ export default function EventHome() {
         </Card>
       )}
 
-      {/* ✅ (2) 이벤트 0개 → 강제 안내 + 카톡문의 CTA */}
+      {/* ✅ 이벤트 0개 → 안내 + 카톡문의 CTA */}
       {!error && !loading && events.length === 0 && (
         <Card>
           <CardContent className="p-6">
@@ -171,8 +169,12 @@ export default function EventHome() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <div className="text-base font-bold truncate">{title}</div>
-                      <div className="text-sm text-muted-foreground mt-1">{meta || "상세 정보 없음"}</div>
-                      <div className="text-xs text-muted-foreground mt-2 font-mono break-all">Event ID: {e.id}</div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        {meta || "상세 정보 없음"}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-2 font-mono break-all">
+                        Event ID: {e.id}
+                      </div>
                     </div>
 
                     <div className="flex flex-col gap-2 shrink-0">

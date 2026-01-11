@@ -1,3 +1,4 @@
+// src/components/ReservatoinForm.tsx (파일명은 네 프로젝트 경로에 맞춰)
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,7 +13,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-import { CalendarIcon, Lock, MapPin, Search } from "lucide-react";
+import { CalendarIcon, Lock, MapPin, Search, Instagram } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -46,8 +47,6 @@ function digitsOnly(v: string) {
 function formatKoreanPhone(v: string) {
   const d = digitsOnly(v).slice(0, 11);
 
-  // 02 지역번호 케이스까지 완벽히 하려면 별도 분기 필요하지만,
-  // 지금 서비스는 대부분 010이라 MVP는 010 기준이 UX 가장 좋음.
   if (d.length <= 3) return d;
   if (d.length <= 7) return `${d.slice(0, 3)}-${d.slice(3)}`;
   return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
@@ -58,28 +57,24 @@ function formatKoreanPhone(v: string) {
    =========================== */
 const baseSchema = z.object({
   name: z.string().min(1, "이름을 입력해주세요."),
-  // ✅ 추가: 이메일(로그인/예약확정 안내용)
   email: z.string().min(1, "이메일을 입력해주세요.").email("올바른 이메일 주소를 입력해주세요."),
-  // ✅ 오타 방지용 확인 입력
   emailConfirm: z.string().min(1, "이메일을 한 번 더 입력해주세요.").email("올바른 이메일 주소를 입력해주세요."),
 
   role: z.enum(["신랑", "신부", "기타"]),
-  relation: z.string().optional(), // role=기타일 때만 필수
+  relation: z.string().optional(),
 
-  phone: z.string().min(10, "연락처를 입력해주세요."), // 입력은 하이픈 포함 가능. 저장은 숫자만.
+  phone: z.string().min(10, "연락처를 입력해주세요."),
   dateStatus: z.enum(["confirmed", "tentative"]),
   weddingDate: z.date().optional(),
-  weddingTime: z.string().optional(), // 30분 단위 "HH:MM"
+  weddingTime: z.string().optional(),
   tentativeDate: z.string().optional(),
 
-  // 카카오 선택 결과로만 세팅
   venueName: z.string().optional(),
   venueAddress: z.string().optional(),
   venueLat: z.number().optional(),
   venueLng: z.number().optional(),
   venueKakaoUrl: z.string().optional(),
 
-  // ✅ 빈 문자열은 undefined 처리 → 선택 항목
   mobileInvitationLink: z.preprocess(
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
     z.string().url("유효한 URL을 입력해주세요.").optional()
@@ -96,7 +91,6 @@ const formSchema = baseSchema
     message: "관계를 입력해주세요. (예: 신랑 친구, 신부 사촌 등)",
     path: ["relation"],
   })
-  // ✅ email 오타 방지
   .refine((v) => normalizeEmail(v.email) === normalizeEmail(v.emailConfirm), {
     message: "이메일이 일치하지 않습니다.",
     path: ["emailConfirm"],
@@ -178,8 +172,8 @@ type Place = {
   place_name: string;
   address_name: string;
   road_address_name: string;
-  x: string; // lng
-  y: string; // lat
+  x: string;
+  y: string;
   place_url: string;
 };
 
@@ -376,7 +370,6 @@ export const ReservationForm = () => {
   const onSubmit = async (data: FormData) => {
     setSubmitting(true);
     try {
-      // ✅ 저장은 숫자만
       const phone = digitsOnly(data.phone);
       const inquiryOnly = data.inquiry?.trim() || null;
 
@@ -384,15 +377,13 @@ export const ReservationForm = () => {
 
       const { error } = await supabase.from("reservations").insert({
         name: data.name,
-        email, // ✅ 추가
+        email,
         role: data.role,
         relation: data.role === "기타" ? (data.relation || null) : null,
 
         phone,
         event_date:
-          data.dateStatus === "confirmed" && data.weddingDate
-            ? format(data.weddingDate, "yyyy-MM-dd")
-            : null,
+          data.dateStatus === "confirmed" && data.weddingDate ? format(data.weddingDate, "yyyy-MM-dd") : null,
         wedding_time: data.weddingTime || null,
         date_status: data.dateStatus,
         tentative_date: data.dateStatus === "tentative" ? (data.tentativeDate || null) : null,
@@ -434,11 +425,20 @@ export const ReservationForm = () => {
     }
   }, [showSuccess]);
 
+  // ✅ 성공 화면: 카톡 → 감사합니다 → (처음으로 + 인스타)
   if (showSuccess) {
     return (
-      <div ref={successRef} className="space-y-10">
+      <div ref={successRef} className="space-y-8">
+        {/* 1) 카카오톡 공식채널 (위로) */}
+        <div className="rounded-3xl overflow-hidden border border-border/60">
+          <KakaoSection />
+        </div>
+
+        {/* 2) 감사합니다 박스 (아래로) */}
         <section className="rounded-3xl bg-white/70 backdrop-blur-xl border border-border/60 shadow-[0_20px_60px_rgba(15,23,42,0.10)] p-8 sm:p-10 text-center">
-          <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground mb-3">감사합니다 💐</h2>
+          <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground mb-3">
+            감사합니다 💐
+          </h2>
           <p className="text-base sm:text-lg text-muted-foreground leading-relaxed">
             문의가 정상 접수되었습니다.
             <br />
@@ -448,9 +448,32 @@ export const ReservationForm = () => {
           </p>
         </section>
 
-        <div className="rounded-3xl overflow-hidden border border-border/60">
-          <KakaoSection />
-        </div>
+        {/* 3) 하단 CTA: 처음으로 + 인스타 */}
+        <section className="rounded-3xl bg-white/70 backdrop-blur-xl border border-border/60 p-6 sm:p-7">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-sm text-muted-foreground">
+              원하시면 랜딩으로 돌아가서 서비스 흐름을 다시 확인할 수 있어요.
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button onClick={() => (window.location.href = "/")} className="rounded-full">
+                처음으로
+              </Button>
+
+              {/* Instagram (footer에서 쓰던 스타일 그대로) */}
+              <a
+                href="https://www.instagram.com/digital_guestbook"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Instagram"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background/60 hover:bg-foreground/5 transition"
+                title="Instagram"
+              >
+                <Instagram className="h-5 w-5" />
+              </a>
+            </div>
+          </div>
+        </section>
       </div>
     );
   }
@@ -491,12 +514,14 @@ export const ReservationForm = () => {
                 {...register("relation")}
                 className="mt-2 bg-white/80 border-border placeholder:text-zinc-400"
               />
-              {errors.relation && <p className="text-sm text-destructive mt-1">{errors.relation.message}</p>}
+              {errors.relation && (
+                <p className="text-sm text-destructive mt-1">{errors.relation.message}</p>
+              )}
             </div>
           )}
         </div>
 
-        {/* ✅ 이메일 */}
+        {/* 이메일 */}
         <div>
           <Label htmlFor="email" className="text-foreground/80">
             이메일
@@ -527,7 +552,9 @@ export const ReservationForm = () => {
           <p className="text-sm text-muted-foreground mt-1">
             이벤트 상세설정 및 리포트를 보기 위한 <b>관리자 로그인(OTP)</b>에 사용됩니다. 오타 방지를 위해 2번 입력해 주세요.
           </p>
-          {errors.emailConfirm && <p className="text-sm text-destructive mt-1">{errors.emailConfirm.message}</p>}
+          {errors.emailConfirm && (
+            <p className="text-sm text-destructive mt-1">{errors.emailConfirm.message}</p>
+          )}
         </div>
 
         {/* 연락처 */}
@@ -619,7 +646,9 @@ export const ReservationForm = () => {
                     />
                   </PopoverContent>
                 </Popover>
-                {errors.weddingDate && <p className="text-sm text-destructive mt-1">{errors.weddingDate.message}</p>}
+                {errors.weddingDate && (
+                  <p className="text-sm text-destructive mt-1">{errors.weddingDate.message}</p>
+                )}
               </div>
 
               {/* 시간 */}
@@ -666,7 +695,9 @@ export const ReservationForm = () => {
                 </div>
 
                 {errors.venueName && <p className="text-sm text-destructive">{errors.venueName.message}</p>}
-                {errors.venueAddress && <p className="text-sm text-destructive">{errors.venueAddress.message}</p>}
+                {errors.venueAddress && (
+                  <p className="text-sm text-destructive">{errors.venueAddress.message}</p>
+                )}
               </div>
             </div>
 
