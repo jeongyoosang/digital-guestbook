@@ -135,7 +135,7 @@ export default function EventHome() {
           <CardContent className="p-6">
             <div className="text-sm font-semibold">아직 준비 중입니다</div>
             <div className="text-sm text-muted-foreground mt-2 leading-relaxed">
-              아직 예약금이 확인되지 않았습니다.
+              예약하지 않았거나, 아직 예약금이 확인되지 않았습니다.
               <br />
               입금 완료에도 상태가 바뀌지 않을 시 카카오톡으로 문의바랍니다.
             </div>
@@ -143,12 +143,12 @@ export default function EventHome() {
             <div className="mt-5 flex flex-col sm:flex-row gap-2">
               <Button onClick={openKakaoInquiry}>카카오톡 문의하기</Button>
               <Button variant="outline" onClick={() => navigate("/reserve", { replace: true })}>
-                예약 문의 다시 남기기
+                예약문의 하기
               </Button>
             </div>
 
             <div className="mt-4 text-[12px] text-muted-foreground">
-              * 이벤트 생성/연결은 입금 확인 후 자동으로 진행됩니다.
+              * 이벤트 생성/연결은 예약금 입금 확인 후 자동으로 진행됩니다.
             </div>
           </CardContent>
         </Card>
