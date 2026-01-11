@@ -11,6 +11,10 @@ type ReservationRow = {
   id: string;
   created_at: string;
   name: string | null;
+
+  // ✅ 추가 (reservations 테이블에 email 컬럼이 이미 있음)
+  email?: string | null;
+
   role: string | null;
   relation: string | null;
   phone: string | null;
@@ -42,12 +46,23 @@ export const AdminPage = () => {
   const [statusChanging, setStatusChanging] = useState(false);
 
   // reservation_id -> event_id 매핑
-  const [eventIdMap, setEventIdMap] = useState<Record<string, string | undefined>>(
-    {}
-  );
+  const [eventIdMap, setEventIdMap] = useState<Record<string, string | undefined>>({});
   const [creatingEvent, setCreatingEvent] = useState(false);
 
   const selected = reservations.find((r) => r.id === selectedId) ?? null;
+
+  // ✅ "예약설정 페이지" URL (IA 정공법 기준)
+  const getSettingsUrl = (eventId: string) => `${window.location.origin}/app/event/${eventId}/settings`;
+
+  const copyToClipboardBestEffort = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("예약설정 링크가 클립보드에 복사되었습니다.");
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   // reservations에 해당하는 events를 한 번에 가져와 맵으로 저장
   const fetchEventsForReservations = async (rows: ReservationRow[]) => {
@@ -58,30 +73,24 @@ export const AdminPage = () => {
     }
 
     try {
-      const { data, error } = await supabase
-        .from("events")
-        .select("id, reservation_id")
-        .in("reservation_id", ids);
-
+      const { data, error } = await supabase.from("events").select("id, reservation_id").in("reservation_id", ids);
       if (error) throw error;
 
       const map: Record<string, string> = {};
       (data as EventRowForMap[]).forEach((row) => {
-        if (row.reservation_id) {
-          map[row.reservation_id] = row.id;
-        }
+        if (row.reservation_id) map[row.reservation_id] = row.id;
       });
 
       setEventIdMap(map);
     } catch (e) {
       console.error("이벤트 매핑 조회 오류:", e);
-      // 치명적인 건 아니라서 alert 까진 안 띄움
     }
   };
 
   const fetchReservations = async () => {
     setLoading(true);
     try {
+      // ✅ email 포함해서 가져오기 (select *면 이미 포함되지만 명시해도 OK)
       const { data, error } = await supabase
         .from("reservations")
         .select("*")
@@ -106,18 +115,6 @@ export const AdminPage = () => {
     }
   };
 
-  const getConfirmUrl = (eventId: string) => `${window.location.origin}/confirm/${eventId}`;
-
-  const copyToClipboardBestEffort = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      alert("Confirm 링크가 클립보드에 복사되었습니다.");
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
   // ✅ 이벤트가 없으면 생성하고, 있으면 기존 eventId 반환
   const ensureEventForReservation = async (row: ReservationRow) => {
     const existingEventId = eventIdMap[row.id];
@@ -139,21 +136,22 @@ export const AdminPage = () => {
     return newEventId;
   };
 
-  // ✅ 진행 전환(예약금 확인) 시 Confirm 링크 발급/복사/열기
-  const promptOpenOrCopyConfirm = async (eventId: string) => {
-    const confirmUrl = getConfirmUrl(eventId);
+  // ✅ 진행 전환(예약금 확인) 시 예약설정 링크 발급/복사/열기
+  const promptOpenOrCopySettings = async (eventId: string) => {
+    const settingsUrl = getSettingsUrl(eventId);
+
     const openNow = window.confirm(
-      `진행 상태로 전환되며 Confirm 링크가 준비되었습니다.\n\nConfirm 페이지를 새 창에서 여시겠습니까?\n\n${confirmUrl}`
+      `진행 상태로 전환되며 예약설정 링크가 준비되었습니다.\n\n예약설정 페이지를 새 창에서 여시겠습니까?\n\n${settingsUrl}`
     );
 
     if (openNow) {
-      window.open(confirmUrl, "_blank", "noopener,noreferrer");
+      window.open(settingsUrl, "_blank", "noopener,noreferrer");
       return;
     }
 
-    const copied = await copyToClipboardBestEffort(confirmUrl);
+    const copied = await copyToClipboardBestEffort(settingsUrl);
     if (!copied) {
-      alert(`아래 링크를 복사해 고객에게 전달해주세요:\n\n${confirmUrl}`);
+      alert(`아래 링크를 복사해 고객에게 전달해주세요:\n\n${settingsUrl}`);
     }
   };
 
@@ -168,22 +166,16 @@ export const AdminPage = () => {
         current === "new" ? "in_progress" : current === "in_progress" ? "done" : "new";
 
       // 1) 상태 업데이트
-      const { error } = await supabase
-        .from("reservations")
-        .update({ status: next })
-        .eq("id", row.id);
-
+      const { error } = await supabase.from("reservations").update({ status: next }).eq("id", row.id);
       if (error) throw error;
 
       // 2) 로컬 state 동기화
-      setReservations((prev) =>
-        prev.map((r) => (r.id === row.id ? { ...r, status: next } : r))
-      );
+      setReservations((prev) => prev.map((r) => (r.id === row.id ? { ...r, status: next } : r)));
 
-      // 3) ✅ 신규 -> 진행(in_progress) 이라면 이벤트 자동 생성 + Confirm 링크 처리
+      // 3) ✅ 신규 -> 진행(in_progress) 이라면 이벤트 자동 생성 + 예약설정 링크 처리
       if (current === "new" && next === "in_progress") {
         const eventId = await ensureEventForReservation(row);
-        await promptOpenOrCopyConfirm(eventId);
+        await promptOpenOrCopySettings(eventId);
       }
     } catch (e) {
       console.error("상태 변경 오류:", e);
@@ -193,23 +185,21 @@ export const AdminPage = () => {
     }
   };
 
-  // 선택된 예약에 대한 이벤트 생성 또는 Confirm 페이지 열기
+  // 선택된 예약에 대한 이벤트 생성 또는 예약설정 페이지 열기
   const handleCreateOrOpenEvent = async (row: ReservationRow) => {
     if (!row.id) return;
 
     setCreatingEvent(true);
     try {
       const eventId = await ensureEventForReservation(row);
-      const confirmUrl = getConfirmUrl(eventId);
+      const settingsUrl = getSettingsUrl(eventId);
 
-      const openNow = window.confirm(
-        `Confirm 페이지를 새 창에서 여시겠습니까?\n\n${confirmUrl}`
-      );
+      const openNow = window.confirm(`예약설정 페이지를 새 창에서 여시겠습니까?\n\n${settingsUrl}`);
       if (openNow) {
-        window.open(confirmUrl, "_blank", "noopener,noreferrer");
+        window.open(settingsUrl, "_blank", "noopener,noreferrer");
       } else {
-        const copied = await copyToClipboardBestEffort(confirmUrl);
-        if (!copied) alert(confirmUrl);
+        const copied = await copyToClipboardBestEffort(settingsUrl);
+        if (!copied) alert(settingsUrl);
       }
     } catch (e) {
       console.error("이벤트 생성/열기 오류:", e);
@@ -221,7 +211,6 @@ export const AdminPage = () => {
 
   useEffect(() => {
     fetchReservations();
-    // 간단한 auto-refresh (30초마다)
     const t = setInterval(fetchReservations, 30_000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -233,15 +222,11 @@ export const AdminPage = () => {
         {/* 헤더 */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div>
-            <h1 className="font-display text-3xl sm:text-4xl text-ink/90">
-              Admin 대시보드
-            </h1>
+            <h1 className="font-display text-3xl sm:text-4xl text-ink/90">Admin 대시보드</h1>
             <p className="text-sm text-ink/60 mt-1">
-              현재는 <strong>예약 관리</strong>와 <strong>이벤트 생성</strong> 기능만
-              활성화된 상태입니다.
+              현재는 <strong>예약 관리</strong>와 <strong>이벤트 생성</strong> 기능만 활성화된 상태입니다.
               <br className="hidden sm:block" />
-              추후 이 화면에서 이벤트(결혼식), 디스플레이 템플릿, 데이터 리포트까지
-              한 번에 확인할 수 있게 확장할 예정입니다.
+              추후 이 화면에서 이벤트(결혼식), 디스플레이 템플릿, 데이터 리포트까지 한 번에 확인할 수 있게 확장할 예정입니다.
             </p>
           </div>
 
@@ -279,21 +264,13 @@ export const AdminPage = () => {
                       const hasEvent = !!eventIdMap[r.id];
 
                       const dateText =
-                        r.date_status === "confirmed"
-                          ? r.event_date ?? "-"
-                          : r.tentative_date || "미정";
+                        r.date_status === "confirmed" ? r.event_date ?? "-" : r.tentative_date || "미정";
 
                       const timeText =
-                        r.date_status === "confirmed" && r.wedding_time
-                          ? r.wedding_time.slice(0, 5)
-                          : "";
+                        r.date_status === "confirmed" && r.wedding_time ? r.wedding_time.slice(0, 5) : "";
 
                       const statusLabel =
-                        r.status === "done"
-                          ? "완료"
-                          : r.status === "in_progress"
-                          ? "진행 중"
-                          : "신규";
+                        r.status === "done" ? "완료" : r.status === "in_progress" ? "진행 중" : "신규";
 
                       return (
                         <li key={r.id}>
@@ -308,9 +285,7 @@ export const AdminPage = () => {
                             <div className="flex items-center justify-between gap-2">
                               <div className="font-medium text-ink truncate">
                                 {r.name || "(이름 없음)"}{" "}
-                                {r.role && (
-                                  <span className="text-xs text-ink/60">/ {r.role}</span>
-                                )}
+                                {r.role && <span className="text-xs text-ink/60">/ {r.role}</span>}
                               </div>
                               <div className="flex items-center gap-1">
                                 {hasEvent && (
@@ -334,9 +309,7 @@ export const AdminPage = () => {
                             </div>
 
                             <div className="text-xs text-ink/60 flex flex-wrap gap-x-2 gap-y-0.5">
-                              <span>
-                                {r.date_status === "confirmed" ? "날짜 확정" : "날짜 미정"}
-                              </span>
+                              <span>{r.date_status === "confirmed" ? "날짜 확정" : "날짜 미정"}</span>
                               <span>·</span>
                               <span>
                                 {dateText}
@@ -344,9 +317,7 @@ export const AdminPage = () => {
                               </span>
                             </div>
 
-                            {r.venue_name && (
-                              <div className="text-xs text-ink/70 truncate">{r.venue_name}</div>
-                            )}
+                            {r.venue_name && <div className="text-xs text-ink/70 truncate">{r.venue_name}</div>}
 
                             <div className="text-[11px] text-ink/50">
                               접수 :{" "}
@@ -373,9 +344,7 @@ export const AdminPage = () => {
               <h2 className="text-lg font-semibold text-ink/90 mb-4">예약 상세</h2>
 
               {!selected ? (
-                <div className="py-20 text-center text-ink/60 text-sm">
-                  왼쪽 목록에서 확인하고 싶은 예약을 선택해주세요.
-                </div>
+                <div className="py-20 text-center text-ink/60 text-sm">왼쪽 목록에서 확인하고 싶은 예약을 선택해주세요.</div>
               ) : (
                 <div className="space-y-5 text-sm text-ink/80">
                   {/* 기본 정보 */}
@@ -388,6 +357,10 @@ export const AdminPage = () => {
                         {selected.role && <span className="text-ink/60">/ {selected.role}</span>}
                       </span>
 
+                      {/* ✅ 이메일 표시 */}
+                      <span className="text-ink/60">이메일</span>
+                      <span className="font-mono break-all">{selected.email || "-"}</span>
+
                       <span className="text-ink/60">관계</span>
                       <span>{selected.relation || "-"}</span>
 
@@ -396,11 +369,7 @@ export const AdminPage = () => {
 
                       <span className="text-ink/60">상태</span>
                       <span>
-                        {selected.status === "done"
-                          ? "완료"
-                          : selected.status === "in_progress"
-                          ? "진행 중"
-                          : "신규"}
+                        {selected.status === "done" ? "완료" : selected.status === "in_progress" ? "진행 중" : "신규"}
                       </span>
                     </div>
 
@@ -427,8 +396,8 @@ export const AdminPage = () => {
                         {creatingEvent
                           ? "처리 중..."
                           : eventIdMap[selected.id]
-                          ? "Confirm 페이지 열기"
-                          : "Confirm 링크 생성/열기"}
+                          ? "예약설정페이지 열기"
+                          : "예약설정 링크 생성/열기"}
                       </Button>
                     </div>
                   </section>
@@ -442,9 +411,7 @@ export const AdminPage = () => {
 
                       <span className="text-ink/60">예식일자</span>
                       <span>
-                        {selected.date_status === "confirmed"
-                          ? selected.event_date || "-"
-                          : selected.tentative_date || "미정"}
+                        {selected.date_status === "confirmed" ? selected.event_date || "-" : selected.tentative_date || "미정"}
                       </span>
 
                       <span className="text-ink/60">예식 시간</span>
@@ -486,11 +453,9 @@ export const AdminPage = () => {
                   <section className="border-t border-dashed border-leafLight/60 pt-3 text-xs text-ink/60">
                     <p className="mb-1">
                       • 예약금 입금 확인 후 <strong>신규 → 진행</strong>으로 변경하면{" "}
-                      <strong>이벤트가 자동 생성</strong>되고 Confirm 링크가 발급됩니다.
+                      <strong>이벤트가 자동 생성</strong>되고 <strong>예약설정 링크</strong>가 발급됩니다.
                     </p>
-                    <p>
-                      • 당일 종료 및 리포트 발송까지 완료되면 <strong>완료</strong>로 변경하세요.
-                    </p>
+                    <p>• 당일 종료 및 리포트 발송까지 완료되면 <strong>완료</strong>로 변경하세요.</p>
                   </section>
                 </div>
               )}
