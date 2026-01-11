@@ -59,10 +59,10 @@ const App = () => (
               </AuthGuard>
             }
           >
-            {/* ✅ 핵심 수정: /app 진입 시 기본 화면 */}
+            {/* ✅ /app 진입 시 기본 화면 */}
             <Route index element={<EventHome />} />
 
-            <Route path="event/:eventId" element={<EventHome />} />
+            {/* ✅ event 하위 탭들 */}
             <Route path="event/:eventId/settings" element={<ConfirmPage />} />
             <Route path="event/:eventId/report" element={<ReportPage />} />
           </Route>

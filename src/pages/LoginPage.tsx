@@ -1,3 +1,4 @@
+// src/pages/LoginPage.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
@@ -65,7 +66,7 @@ export default function LoginPage() {
   const [savedEmails, setSavedEmails] = useState<string[]>(() => loadSavedEmails());
 
   // 입력값 초기값: 저장된 것 중 첫 번째(최근) 있으면 채워줌
-  const [email, setEmail] = useState(() => (loadSavedEmails()[0] ?? ""));
+  const [email, setEmail] = useState(() => loadSavedEmails()[0] ?? "");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -88,8 +89,6 @@ export default function LoginPage() {
     setEmail(e);
     setStep("email");
     setOtp("");
-    // ✅ 저장 이메일을 선택하더라도 OTP는 "무조건 다시 받는" 정책이라
-    // 여기서는 그냥 입력만 채우고 끝.
     setTimeout(() => emailInputRef.current?.focus(), 0);
   };
 
@@ -97,7 +96,6 @@ export default function LoginPage() {
     const nextList = removeEmailFromSavedList(e);
     setSavedEmails(nextList);
 
-    // 현재 입력칸이 삭제된 이메일이면 비움
     if (normalizeEmail(email) === normalizeEmail(e)) {
       setEmail(nextList[0] ?? "");
     }
@@ -114,10 +112,13 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
+      const redirectTo = `${window.location.origin}/login?next=${encodeURIComponent(next)}`;
+
       const { error } = await supabase.auth.signInWithOtp({
         email: trimmed,
         options: {
-          emailRedirectTo: `${window.location.origin}/app`,
+          // ✅ 혹시 “메일 클릭(매직링크)” 케이스가 섞여도 next로 복귀 가능하게
+          emailRedirectTo: redirectTo,
           shouldCreateUser: true,
         },
       });
@@ -133,7 +134,7 @@ export default function LoginPage() {
 
       toast({
         title: "인증 코드를 이메일로 보냈습니다",
-        description: "메일에 있는 6자리(또는 표시된) 코드를 복사해 입력해 주세요.",
+        description: "메일에 있는 코드를 복사해 입력해 주세요.",
       });
     } catch (e: any) {
       toast({ title: "인증 메일 발송 실패", description: e?.message ?? "잠시 후 다시 시도해 주세요." });
@@ -168,7 +169,7 @@ export default function LoginPage() {
       }
 
       toast({ title: "로그인 정보를 확인 중입니다", description: "새로고침 후 다시 시도해 주세요." });
-    } catch (e: any) {
+    } catch {
       toast({
         title: "인증 실패",
         description: "코드가 만료되었거나 올바르지 않습니다. 최신 메일의 코드를 확인해 주세요.",
@@ -204,7 +205,6 @@ export default function LoginPage() {
 
           {step === "email" && (
             <>
-              {/* ✅ 저장된 이메일(여러 개) */}
               {savedEmails.length > 0 && (
                 <div className="mb-4">
                   <div className="text-xs font-medium text-muted-foreground mb-2">최근 로그인 이메일</div>
@@ -265,7 +265,6 @@ export default function LoginPage() {
                   처음으로 돌아가기
                 </button>
 
-                {/* ✅ 의미 명확한 전환 링크 */}
                 <button className="underline underline-offset-4" onClick={useDifferentEmail} disabled={loading}>
                   다른 이메일로 입력
                 </button>
