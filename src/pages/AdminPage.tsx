@@ -12,8 +12,8 @@ type ReservationRow = {
   created_at: string;
   name: string | null;
 
-  // ✅ 추가 (reservations 테이블에 email 컬럼이 이미 있음)
-  email?: string | null;
+  // ✅ reservations 테이블에 email 컬럼 존재
+  email: string | null;
 
   role: string | null;
   relation: string | null;
@@ -52,7 +52,8 @@ export const AdminPage = () => {
   const selected = reservations.find((r) => r.id === selectedId) ?? null;
 
   // ✅ "예약설정 페이지" URL (IA 정공법 기준)
-  const getSettingsUrl = (eventId: string) => `${window.location.origin}/app/event/${eventId}/settings`;
+  const getSettingsUrl = (eventId: string) =>
+    `${window.location.origin}/app/event/${eventId}/settings`;
 
   const copyToClipboardBestEffort = async (text: string) => {
     try {
@@ -73,7 +74,11 @@ export const AdminPage = () => {
     }
 
     try {
-      const { data, error } = await supabase.from("events").select("id, reservation_id").in("reservation_id", ids);
+      const { data, error } = await supabase
+        .from("events")
+        .select("id, reservation_id")
+        .in("reservation_id", ids);
+
       if (error) throw error;
 
       const map: Record<string, string> = {};
@@ -84,13 +89,13 @@ export const AdminPage = () => {
       setEventIdMap(map);
     } catch (e) {
       console.error("이벤트 매핑 조회 오류:", e);
+      // 치명적이진 않음
     }
   };
 
   const fetchReservations = async () => {
     setLoading(true);
     try {
-      // ✅ email 포함해서 가져오기 (select *면 이미 포함되지만 명시해도 OK)
       const { data, error } = await supabase
         .from("reservations")
         .select("*")
@@ -116,13 +121,23 @@ export const AdminPage = () => {
   };
 
   // ✅ 이벤트가 없으면 생성하고, 있으면 기존 eventId 반환
+  // ✅ 핵심: owner_email = reservations.email 로 넣어야 /app에서 보임
   const ensureEventForReservation = async (row: ReservationRow) => {
     const existingEventId = eventIdMap[row.id];
     if (existingEventId) return existingEventId;
 
+    const ownerEmail = (row.email || "").trim().toLowerCase();
+    if (!ownerEmail) {
+      alert("예약자 이메일이 없어 이벤트를 생성할 수 없습니다. reservations.email을 확인해 주세요.");
+      throw new Error("missing reservation email");
+    }
+
     const { data, error } = await supabase
       .from("events")
-      .insert({ reservation_id: row.id })
+      .insert({
+        reservation_id: row.id,
+        owner_email: ownerEmail, // ✅ 여기!
+      })
       .select("id")
       .single();
 
@@ -151,7 +166,7 @@ export const AdminPage = () => {
 
     const copied = await copyToClipboardBestEffort(settingsUrl);
     if (!copied) {
-      alert(`아래 링크를 복사해 고객에게 전달해주세요:\n\n${settingsUrl}`);
+      alert(`아래 링크를 복사해 전달해주세요:\n\n${settingsUrl}`);
     }
   };
 
@@ -166,7 +181,11 @@ export const AdminPage = () => {
         current === "new" ? "in_progress" : current === "in_progress" ? "done" : "new";
 
       // 1) 상태 업데이트
-      const { error } = await supabase.from("reservations").update({ status: next }).eq("id", row.id);
+      const { error } = await supabase
+        .from("reservations")
+        .update({ status: next })
+        .eq("id", row.id);
+
       if (error) throw error;
 
       // 2) 로컬 state 동기화
@@ -357,7 +376,6 @@ export const AdminPage = () => {
                         {selected.role && <span className="text-ink/60">/ {selected.role}</span>}
                       </span>
 
-                      {/* ✅ 이메일 표시 */}
                       <span className="text-ink/60">이메일</span>
                       <span className="font-mono break-all">{selected.email || "-"}</span>
 
@@ -411,7 +429,9 @@ export const AdminPage = () => {
 
                       <span className="text-ink/60">예식일자</span>
                       <span>
-                        {selected.date_status === "confirmed" ? selected.event_date || "-" : selected.tentative_date || "미정"}
+                        {selected.date_status === "confirmed"
+                          ? selected.event_date || "-"
+                          : selected.tentative_date || "미정"}
                       </span>
 
                       <span className="text-ink/60">예식 시간</span>
@@ -455,7 +475,9 @@ export const AdminPage = () => {
                       • 예약금 입금 확인 후 <strong>신규 → 진행</strong>으로 변경하면{" "}
                       <strong>이벤트가 자동 생성</strong>되고 <strong>예약설정 링크</strong>가 발급됩니다.
                     </p>
-                    <p>• 당일 종료 및 리포트 발송까지 완료되면 <strong>완료</strong>로 변경하세요.</p>
+                    <p>
+                      • 당일 종료 및 리포트 발송까지 완료되면 <strong>완료</strong>로 변경하세요.
+                    </p>
                   </section>
                 </div>
               )}
