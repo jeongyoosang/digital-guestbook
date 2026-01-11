@@ -1,5 +1,5 @@
 // src/pages/AdminPage.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,10 +11,7 @@ type ReservationRow = {
   id: string;
   created_at: string;
   name: string | null;
-
-  // ✅ reservations 테이블에 email 컬럼 존재
-  email: string | null;
-
+  email?: string | null;
   role: string | null;
   relation: string | null;
   phone: string | null;
@@ -39,26 +36,58 @@ type EventRowForMap = {
   reservation_id: string | null;
 };
 
+type EventSettingsRow = {
+  id: string;
+  event_id: string;
+
+  ceremony_start_time?: string | null;
+  ceremony_end_time?: string | null;
+
+  display_style?: string | null; // basic/garden/luxury...
+  background_mode?: string | null; // template/photo...
+  background_photo_path?: string | null;
+
+  // 네 프로젝트에서 쓰는 필드가 더 있으면 여기에 추가해도 됨
+  updated_at?: string | null;
+};
+
 export const AdminPage = () => {
   const [reservations, setReservations] = useState<ReservationRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusChanging, setStatusChanging] = useState(false);
 
-  // reservation_id -> event_id 매핑
-  const [eventIdMap, setEventIdMap] = useState<Record<string, string | undefined>>({});
+  // reservation_id -> event_id
+  const [eventIdMap, setEventIdMap] = useState<Record<string, string | undefined>>(
+    {}
+  );
   const [creatingEvent, setCreatingEvent] = useState(false);
 
-  const selected = reservations.find((r) => r.id === selectedId) ?? null;
+  // ✅ 선택된 예약의 event_settings 미리보기
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [eventSettings, setEventSettings] = useState<EventSettingsRow | null>(null);
+
+  const selected = useMemo(
+    () => reservations.find((r) => r.id === selectedId) ?? null,
+    [reservations, selectedId]
+  );
 
   // ✅ "예약설정 페이지" URL (IA 정공법 기준)
   const getSettingsUrl = (eventId: string) =>
     `${window.location.origin}/app/event/${eventId}/settings`;
 
-  const copyToClipboardBestEffort = async (text: string) => {
+  // ✅ "디스플레이" URL (너의 라우트에 맞춰 조정 가능)
+  const getDisplayUrl = (eventId: string) =>
+    `${window.location.origin}/display/${eventId}`;
+
+  // ✅ "리포트" URL (현재 내부 라우트 쓰면 맞춰 바꾸면 됨)
+  const getReportUrl = (eventId: string) =>
+    `${window.location.origin}/app/event/${eventId}/report`;
+
+  const copyToClipboardBestEffort = async (text: string, okMsg: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      alert("예약설정 링크가 클립보드에 복사되었습니다.");
+      alert(okMsg);
       return true;
     } catch {
       return false;
@@ -89,7 +118,6 @@ export const AdminPage = () => {
       setEventIdMap(map);
     } catch (e) {
       console.error("이벤트 매핑 조회 오류:", e);
-      // 치명적이진 않음
     }
   };
 
@@ -109,9 +137,7 @@ export const AdminPage = () => {
       void fetchEventsForReservations(rows);
 
       // 첫 로드 시 맨 위 예약 자동 선택
-      if (!selectedId && rows.length > 0) {
-        setSelectedId(rows[0].id);
-      }
+      if (!selectedId && rows.length > 0) setSelectedId(rows[0].id);
     } catch (e) {
       console.error("예약 조회 오류:", e);
       alert("예약 목록을 불러오는 중 오류가 발생했습니다.");
@@ -121,37 +147,26 @@ export const AdminPage = () => {
   };
 
   // ✅ 이벤트가 없으면 생성하고, 있으면 기존 eventId 반환
-  // ✅ 핵심: owner_email = reservations.email 로 넣어야 /app에서 보임
   const ensureEventForReservation = async (row: ReservationRow) => {
     const existingEventId = eventIdMap[row.id];
     if (existingEventId) return existingEventId;
 
-    const ownerEmail = (row.email || "").trim().toLowerCase();
-    if (!ownerEmail) {
-      alert("예약자 이메일이 없어 이벤트를 생성할 수 없습니다. reservations.email을 확인해 주세요.");
-      throw new Error("missing reservation email");
-    }
-
+    // owner_email은 DB default/trigger로 채워지게 되어있으면 여기서 넣지 않아도 됨.
+    // (너는 지금 events row에 owner_email이 예약자 email로 잘 들어간다고 했으니 DB 쪽 로직이 이미 있는 상태)
     const { data, error } = await supabase
       .from("events")
-      .insert({
-        reservation_id: row.id,
-        owner_email: ownerEmail, // ✅ 여기!
-      })
+      .insert({ reservation_id: row.id })
       .select("id")
       .single();
 
     if (error) throw error;
 
     const newEventId = (data as { id: string }).id;
-
-    // 매핑 업데이트
     setEventIdMap((prev) => ({ ...prev, [row.id]: newEventId }));
-
     return newEventId;
   };
 
-  // ✅ 진행 전환(예약금 확인) 시 예약설정 링크 발급/복사/열기
+  // ✅ 신규 -> 진행 전환 시 예약설정 링크 발급/복사/열기
   const promptOpenOrCopySettings = async (eventId: string) => {
     const settingsUrl = getSettingsUrl(eventId);
 
@@ -164,10 +179,11 @@ export const AdminPage = () => {
       return;
     }
 
-    const copied = await copyToClipboardBestEffort(settingsUrl);
-    if (!copied) {
-      alert(`아래 링크를 복사해 전달해주세요:\n\n${settingsUrl}`);
-    }
+    const copied = await copyToClipboardBestEffort(
+      settingsUrl,
+      "예약설정 링크가 클립보드에 복사되었습니다."
+    );
+    if (!copied) alert(settingsUrl);
   };
 
   // 상태 변경 (신규 → 진행 중 → 완료 → 신규)
@@ -180,7 +196,6 @@ export const AdminPage = () => {
       const next: ReservationStatus =
         current === "new" ? "in_progress" : current === "in_progress" ? "done" : "new";
 
-      // 1) 상태 업데이트
       const { error } = await supabase
         .from("reservations")
         .update({ status: next })
@@ -188,13 +203,15 @@ export const AdminPage = () => {
 
       if (error) throw error;
 
-      // 2) 로컬 state 동기화
-      setReservations((prev) => prev.map((r) => (r.id === row.id ? { ...r, status: next } : r)));
+      setReservations((prev) =>
+        prev.map((r) => (r.id === row.id ? { ...r, status: next } : r))
+      );
 
-      // 3) ✅ 신규 -> 진행(in_progress) 이라면 이벤트 자동 생성 + 예약설정 링크 처리
       if (current === "new" && next === "in_progress") {
         const eventId = await ensureEventForReservation(row);
         await promptOpenOrCopySettings(eventId);
+        // 진행 전환 직후 미리보기 갱신
+        void fetchEventSettingsByEventId(eventId);
       }
     } catch (e) {
       console.error("상태 변경 오류:", e);
@@ -217,9 +234,15 @@ export const AdminPage = () => {
       if (openNow) {
         window.open(settingsUrl, "_blank", "noopener,noreferrer");
       } else {
-        const copied = await copyToClipboardBestEffort(settingsUrl);
+        const copied = await copyToClipboardBestEffort(
+          settingsUrl,
+          "예약설정 링크가 클립보드에 복사되었습니다."
+        );
         if (!copied) alert(settingsUrl);
       }
+
+      // 미리보기 갱신
+      void fetchEventSettingsByEventId(eventId);
     } catch (e) {
       console.error("이벤트 생성/열기 오류:", e);
       alert("이벤트를 생성/열기 하는 중 오류가 발생했습니다.");
@@ -228,6 +251,43 @@ export const AdminPage = () => {
     }
   };
 
+  // ✅ event_settings 조회
+  const fetchEventSettingsByEventId = async (eventId: string) => {
+    setSettingsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("event_settings")
+        .select("*")
+        .eq("event_id", eventId)
+        .maybeSingle();
+
+      if (error) throw error;
+      setEventSettings((data as EventSettingsRow) ?? null);
+    } catch (e) {
+      console.error("event_settings 조회 오류:", e);
+      setEventSettings(null);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  // ✅ 선택이 바뀌면, 해당 예약의 eventId로 settings 미리보기 로드
+  useEffect(() => {
+    const run = async () => {
+      setEventSettings(null);
+
+      if (!selected) return;
+
+      const eventId = selected.id ? eventIdMap[selected.id] : undefined;
+      if (!eventId) return;
+
+      await fetchEventSettingsByEventId(eventId);
+    };
+
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, eventIdMap]);
+
   useEffect(() => {
     fetchReservations();
     const t = setInterval(fetchReservations, 30_000);
@@ -235,17 +295,22 @@ export const AdminPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const selectedEventId = selected ? eventIdMap[selected.id] : undefined;
+
   return (
     <section className="min-h-screen bg-ivory px-4 py-8">
       <div className="container mx-auto max-w-6xl">
         {/* 헤더 */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div>
-            <h1 className="font-display text-3xl sm:text-4xl text-ink/90">Admin 대시보드</h1>
+            <h1 className="font-display text-3xl sm:text-4xl text-ink/90">
+              Admin 대시보드
+            </h1>
             <p className="text-sm text-ink/60 mt-1">
-              현재는 <strong>예약 관리</strong>와 <strong>이벤트 생성</strong> 기능만 활성화된 상태입니다.
+              현재는 <strong>예약 관리</strong>와 <strong>이벤트 생성</strong>이
+              활성화된 상태입니다.
               <br className="hidden sm:block" />
-              추후 이 화면에서 이벤트(결혼식), 디스플레이 템플릿, 데이터 리포트까지 한 번에 확인할 수 있게 확장할 예정입니다.
+              운영을 위해 <strong>예약설정 미리보기</strong>까지 이 화면에서 확인합니다.
             </p>
           </div>
 
@@ -274,7 +339,7 @@ export const AdminPage = () => {
                   <div className="py-16 text-center text-ink/60 text-sm">
                     아직 접수된 예약이 없습니다.
                     <br />
-                    랜딩페이지의 예약 문의가 접수되면 이곳에 순서대로 표시됩니다.
+                    랜딩페이지의 예약 문의가 접수되면 이곳에 표시됩니다.
                   </div>
                 ) : (
                   <ul className="divide-y divide-leafLight/40 overflow-auto max-h-[520px]">
@@ -283,13 +348,21 @@ export const AdminPage = () => {
                       const hasEvent = !!eventIdMap[r.id];
 
                       const dateText =
-                        r.date_status === "confirmed" ? r.event_date ?? "-" : r.tentative_date || "미정";
+                        r.date_status === "confirmed"
+                          ? r.event_date ?? "-"
+                          : r.tentative_date || "미정";
 
                       const timeText =
-                        r.date_status === "confirmed" && r.wedding_time ? r.wedding_time.slice(0, 5) : "";
+                        r.date_status === "confirmed" && r.wedding_time
+                          ? r.wedding_time.slice(0, 5)
+                          : "";
 
                       const statusLabel =
-                        r.status === "done" ? "완료" : r.status === "in_progress" ? "진행 중" : "신규";
+                        r.status === "done"
+                          ? "완료"
+                          : r.status === "in_progress"
+                          ? "진행 중"
+                          : "신규";
 
                       return (
                         <li key={r.id}>
@@ -304,7 +377,9 @@ export const AdminPage = () => {
                             <div className="flex items-center justify-between gap-2">
                               <div className="font-medium text-ink truncate">
                                 {r.name || "(이름 없음)"}{" "}
-                                {r.role && <span className="text-xs text-ink/60">/ {r.role}</span>}
+                                {r.role && (
+                                  <span className="text-xs text-ink/60">/ {r.role}</span>
+                                )}
                               </div>
                               <div className="flex items-center gap-1">
                                 {hasEvent && (
@@ -328,7 +403,9 @@ export const AdminPage = () => {
                             </div>
 
                             <div className="text-xs text-ink/60 flex flex-wrap gap-x-2 gap-y-0.5">
-                              <span>{r.date_status === "confirmed" ? "날짜 확정" : "날짜 미정"}</span>
+                              <span>
+                                {r.date_status === "confirmed" ? "날짜 확정" : "날짜 미정"}
+                              </span>
                               <span>·</span>
                               <span>
                                 {dateText}
@@ -336,7 +413,9 @@ export const AdminPage = () => {
                               </span>
                             </div>
 
-                            {r.venue_name && <div className="text-xs text-ink/70 truncate">{r.venue_name}</div>}
+                            {r.venue_name && (
+                              <div className="text-xs text-ink/70 truncate">{r.venue_name}</div>
+                            )}
 
                             <div className="text-[11px] text-ink/50">
                               접수 :{" "}
@@ -363,7 +442,9 @@ export const AdminPage = () => {
               <h2 className="text-lg font-semibold text-ink/90 mb-4">예약 상세</h2>
 
               {!selected ? (
-                <div className="py-20 text-center text-ink/60 text-sm">왼쪽 목록에서 확인하고 싶은 예약을 선택해주세요.</div>
+                <div className="py-20 text-center text-ink/60 text-sm">
+                  왼쪽 목록에서 확인하고 싶은 예약을 선택해주세요.
+                </div>
               ) : (
                 <div className="space-y-5 text-sm text-ink/80">
                   {/* 기본 정보 */}
@@ -387,7 +468,16 @@ export const AdminPage = () => {
 
                       <span className="text-ink/60">상태</span>
                       <span>
-                        {selected.status === "done" ? "완료" : selected.status === "in_progress" ? "진행 중" : "신규"}
+                        {selected.status === "done"
+                          ? "완료"
+                          : selected.status === "in_progress"
+                          ? "진행 중"
+                          : "신규"}
+                      </span>
+
+                      <span className="text-ink/60">Event ID</span>
+                      <span className="font-mono break-all">
+                        {selectedEventId ?? "-"}
                       </span>
                     </div>
 
@@ -413,9 +503,38 @@ export const AdminPage = () => {
                       >
                         {creatingEvent
                           ? "처리 중..."
-                          : eventIdMap[selected.id]
+                          : selectedEventId
                           ? "예약설정페이지 열기"
                           : "예약설정 링크 생성/열기"}
+                      </Button>
+
+                      {/* ✅ 운영 바로가기 2개 */}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={!selectedEventId}
+                        className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                        onClick={() => {
+                          if (!selectedEventId) return;
+                          window.open(getDisplayUrl(selectedEventId), "_blank", "noopener,noreferrer");
+                        }}
+                      >
+                        디스플레이 열기
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={!selectedEventId}
+                        className="border-slate-200 text-slate-700 hover:bg-slate-50"
+                        onClick={() => {
+                          if (!selectedEventId) return;
+                          window.open(getReportUrl(selectedEventId), "_blank", "noopener,noreferrer");
+                        }}
+                      >
+                        리포트 열기
                       </Button>
                     </div>
                   </section>
@@ -443,6 +562,47 @@ export const AdminPage = () => {
                       <span className="text-ink/60">주소</span>
                       <span className="whitespace-pre-line">{selected.venue_address || "-"}</span>
                     </div>
+                  </section>
+
+                  {/* ✅ 예약설정 미리보기 */}
+                  <section className="space-y-2">
+                    <h3 className="font-semibold text-ink/90">예약설정 미리보기</h3>
+
+                    {!selectedEventId ? (
+                      <div className="text-xs text-ink/60 bg-ivory/70 border border-leafLight/50 rounded-xl px-3 py-2">
+                        아직 이벤트가 생성되지 않았습니다. (신규 → 진행으로 바꾸면 자동 생성)
+                      </div>
+                    ) : settingsLoading ? (
+                      <div className="text-xs text-ink/60 bg-ivory/70 border border-leafLight/50 rounded-xl px-3 py-2">
+                        불러오는 중…
+                      </div>
+                    ) : !eventSettings ? (
+                      <div className="text-xs text-ink/60 bg-ivory/70 border border-leafLight/50 rounded-xl px-3 py-2">
+                        아직 event_settings가 없습니다. (설정 페이지에서 저장되면 여기 표시됨)
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-y-1.5 text-xs bg-white/70 border border-leafLight/50 rounded-xl px-3 py-3">
+                        <span className="text-ink/60">배경 모드</span>
+                        <span>{eventSettings.background_mode || "-"}</span>
+
+                        <span className="text-ink/60">디스플레이 스타일</span>
+                        <span>{eventSettings.display_style || "-"}</span>
+
+                        <span className="text-ink/60">사진 배경</span>
+                        <span>
+                          {eventSettings.background_photo_path ? "설정됨" : "없음"}
+                        </span>
+
+                        <span className="text-ink/60">예식 시작</span>
+                        <span>{eventSettings.ceremony_start_time || "-"}</span>
+
+                        <span className="text-ink/60">예식 종료</span>
+                        <span>{eventSettings.ceremony_end_time || "-"}</span>
+
+                        <span className="text-ink/60">업데이트</span>
+                        <span>{eventSettings.updated_at ? String(eventSettings.updated_at) : "-"}</span>
+                      </div>
+                    )}
                   </section>
 
                   {/* 모바일 청첩장 */}
