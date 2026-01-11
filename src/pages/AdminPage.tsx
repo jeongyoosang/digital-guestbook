@@ -214,7 +214,10 @@ export const AdminPage = () => {
       return;
     }
 
-    const copied = await copyToClipboardBestEffort(settingsUrl, "예약설정 링크가 클립보드에 복사되었습니다.");
+    const copied = await copyToClipboardBestEffort(
+      settingsUrl,
+      "예약설정 링크가 클립보드에 복사되었습니다."
+    );
     if (!copied) alert(settingsUrl);
   };
 
@@ -327,9 +330,7 @@ export const AdminPage = () => {
       <section className="min-h-screen bg-ivory px-4 py-10">
         <div className="container mx-auto max-w-4xl">
           <Card className="bg-white/90 border-leafLight/60">
-            <CardContent className="p-6 text-sm text-ink/70">
-              권한 확인 중…
-            </CardContent>
+            <CardContent className="p-6 text-sm text-ink/70">권한 확인 중…</CardContent>
           </Card>
         </div>
       </section>
@@ -337,6 +338,9 @@ export const AdminPage = () => {
   }
 
   if (!isAdmin) {
+    // ✅ 여기 핵심: /admin에서 로그인하면 다시 /admin으로 돌아오도록 redirect 붙임
+    const loginUrl = `/login?redirect=${encodeURIComponent("/admin")}`;
+
     return (
       <section className="min-h-screen bg-ivory px-4 py-10">
         <div className="container mx-auto max-w-4xl">
@@ -360,14 +364,14 @@ export const AdminPage = () => {
               <div className="flex gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => window.location.href = "/login"}
+                  onClick={() => (window.location.href = loginUrl)}
                   className="border-leafLight text-ink hover:bg-ivory/70"
                 >
                   로그인으로
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => window.location.href = "/"}
+                  onClick={() => (window.location.href = "/")}
                   className="border-leafLight text-ink hover:bg-ivory/70"
                 >
                   랜딩으로
@@ -416,9 +420,7 @@ export const AdminPage = () => {
 
               <div className="border border-leafLight/50 rounded-2xl overflow-hidden bg-ivory/40 max-h-[520px]">
                 {reservations.length === 0 ? (
-                  <div className="py-16 text-center text-ink/60 text-sm">
-                    아직 접수된 예약이 없습니다.
-                  </div>
+                  <div className="py-16 text-center text-ink/60 text-sm">아직 접수된 예약이 없습니다.</div>
                 ) : (
                   <ul className="divide-y divide-leafLight/40 overflow-auto max-h-[520px]">
                     {reservations.map((r) => {
@@ -427,14 +429,10 @@ export const AdminPage = () => {
                       const hasEvent = !!ev?.id;
 
                       const dateText =
-                        r.date_status === "confirmed"
-                          ? r.event_date ?? "-"
-                          : r.tentative_date || "미정";
+                        r.date_status === "confirmed" ? r.event_date ?? "-" : r.tentative_date || "미정";
 
                       const timeText =
-                        r.date_status === "confirmed" && r.wedding_time
-                          ? r.wedding_time.slice(0, 5)
-                          : "";
+                        r.date_status === "confirmed" && r.wedding_time ? r.wedding_time.slice(0, 5) : "";
 
                       return (
                         <li key={r.id}>
@@ -483,18 +481,12 @@ export const AdminPage = () => {
                             </div>
 
                             {!!r.email && (
-                              <div className="text-[11px] text-ink/55 font-mono truncate">
-                                {r.email}
-                              </div>
+                              <div className="text-[11px] text-ink/55 font-mono truncate">{r.email}</div>
                             )}
 
-                            {r.venue_name && (
-                              <div className="text-xs text-ink/70 truncate">{r.venue_name}</div>
-                            )}
+                            {r.venue_name && <div className="text-xs text-ink/70 truncate">{r.venue_name}</div>}
 
-                            <div className="text-[11px] text-ink/50">
-                              접수 : {formatDateTime(r.created_at)}
-                            </div>
+                            <div className="text-[11px] text-ink/50">접수 : {formatDateTime(r.created_at)}</div>
                           </button>
                         </li>
                       );
@@ -511,9 +503,7 @@ export const AdminPage = () => {
               <h2 className="text-lg font-semibold text-ink/90 mb-4">운영 상세</h2>
 
               {!selected ? (
-                <div className="py-20 text-center text-ink/60 text-sm">
-                  왼쪽 목록에서 예약을 선택해주세요.
-                </div>
+                <div className="py-20 text-center text-ink/60 text-sm">왼쪽 목록에서 예약을 선택해주세요.</div>
               ) : (
                 <div className="space-y-5 text-sm text-ink/80">
                   {/* 기본 정보 */}
@@ -593,7 +583,9 @@ export const AdminPage = () => {
                             variant="outline"
                             size="sm"
                             className="border-blue-200 text-blue-700 hover:bg-blue-50"
-                            onClick={() => window.open(getSettingsUrl(selectedEvent.id), "_blank", "noopener,noreferrer")}
+                            onClick={() =>
+                              window.open(getSettingsUrl(selectedEvent.id), "_blank", "noopener,noreferrer")
+                            }
                           >
                             예식 설정
                           </Button>
@@ -601,7 +593,9 @@ export const AdminPage = () => {
                             variant="outline"
                             size="sm"
                             className="border-blue-200 text-blue-700 hover:bg-blue-50"
-                            onClick={() => window.open(getReportUrl(selectedEvent.id), "_blank", "noopener,noreferrer")}
+                            onClick={() =>
+                              window.open(getReportUrl(selectedEvent.id), "_blank", "noopener,noreferrer")
+                            }
                           >
                             리포트
                           </Button>
@@ -609,7 +603,9 @@ export const AdminPage = () => {
                             variant="outline"
                             size="sm"
                             className="border-blue-200 text-blue-700 hover:bg-blue-50"
-                            onClick={() => window.open(getDisplayUrl(selectedEvent.id), "_blank", "noopener,noreferrer")}
+                            onClick={() =>
+                              window.open(getDisplayUrl(selectedEvent.id), "_blank", "noopener,noreferrer")
+                            }
                           >
                             디스플레이
                           </Button>
@@ -617,7 +613,9 @@ export const AdminPage = () => {
                             variant="outline"
                             size="sm"
                             className="border-blue-200 text-blue-700 hover:bg-blue-50"
-                            onClick={() => window.open(getGuestUrl(selectedEvent.id), "_blank", "noopener,noreferrer")}
+                            onClick={() =>
+                              window.open(getGuestUrl(selectedEvent.id), "_blank", "noopener,noreferrer")
+                            }
                           >
                             게스트 입력
                           </Button>
@@ -628,7 +626,10 @@ export const AdminPage = () => {
                             className="border-leafLight text-ink hover:bg-ivory/70"
                             onClick={async () => {
                               const url = getSettingsUrl(selectedEvent.id);
-                              const ok = await copyToClipboardBestEffort(url, "예약설정 링크가 클립보드에 복사되었습니다.");
+                              const ok = await copyToClipboardBestEffort(
+                                url,
+                                "예약설정 링크가 클립보드에 복사되었습니다."
+                              );
                               if (!ok) alert(url);
                             }}
                           >
@@ -636,11 +637,9 @@ export const AdminPage = () => {
                           </Button>
                         </div>
 
-                        {/* settings 미리보기 (컬럼명 몰라도 안전하게 표시) */}
+                        {/* settings 미리보기 */}
                         <div className="bg-ivory/70 border border-leafLight/50 rounded-xl px-3 py-3">
-                          <div className="text-xs text-ink/60 mb-2">
-                            event_settings 요약 (없으면 “-”)
-                          </div>
+                          <div className="text-xs text-ink/60 mb-2">event_settings 요약 (없으면 “-”)</div>
 
                           <div className="grid grid-cols-[140px_minmax(0,1fr)] gap-y-1.5 text-sm">
                             <span className="text-ink/60">예식일자</span>
@@ -681,7 +680,7 @@ export const AdminPage = () => {
                           </div>
 
                           <div className="mt-2 text-[11px] text-ink/55">
-                            ※ settings 컬럼명은 앞으로 바뀔 수 있어서, 여기서는 “있으면 보여주고 없으면 -”로 안전하게 처리해뒀어.
+                            ※ settings 컬럼명은 바뀔 수 있어서, 여기서는 “있으면 보여주고 없으면 -”로 안전 처리.
                           </div>
                         </div>
                       </div>
@@ -699,7 +698,7 @@ export const AdminPage = () => {
                   <section className="border-t border-dashed border-leafLight/60 pt-3 text-xs text-ink/60">
                     <p className="mb-1">
                       • 예약금 입금 확인 후 <strong>신규 → 진행</strong>으로 바꾸면{" "}
-                      <strong>이벤트가 자동 생성</strong>되고 <strong>예약설정 링크</strong>로 바로 운영 가능합니다.
+                      <strong>이벤트가 자동 생성</strong>되고 <strong>예약설정 링크</strong>로 운영 가능.
                     </p>
                     <p>
                       • 운영자 계정은 <strong>/app</strong>에서 전체 이벤트를 조회할 수 있고, 개인 계정은 자기 이벤트만 봅니다.

@@ -6,10 +6,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 
-function getNextParam(search: string) {
+// ✅ redirect 우선, 없으면 기존 next, 없으면 /app
+function getSafePathParam(search: string, key: string) {
   const params = new URLSearchParams(search);
-  const next = params.get("next");
-  return next && next.startsWith("/") ? next : "/app";
+  const v = params.get(key);
+  return v && v.startsWith("/") ? v : null;
+}
+
+function getAfterLoginPath(search: string) {
+  const redirect = getSafePathParam(search, "redirect");
+  if (redirect) return redirect;
+
+  const next = getSafePathParam(search, "next");
+  if (next) return next;
+
+  return "/app";
 }
 
 const EMAIL_KEY = "dg_emails";
@@ -58,7 +69,7 @@ export default function LoginPage() {
   const location = useLocation();
   const { toast } = useToast();
 
-  const next = useMemo(() => getNextParam(location.search), [location.search]);
+  const afterLogin = useMemo(() => getAfterLoginPath(location.search), [location.search]);
 
   const [step, setStep] = useState<"email" | "otp">("email");
 
@@ -74,11 +85,11 @@ export default function LoginPage() {
   const otpInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    // 이미 로그인 세션이 있으면 바로 next로 이동
+    // 이미 로그인 세션이 있으면 바로 afterLogin으로 이동
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate(next, { replace: true });
+      if (data.session) navigate(afterLogin, { replace: true });
     });
-  }, [navigate, next]);
+  }, [navigate, afterLogin]);
 
   useEffect(() => {
     if (step === "email") emailInputRef.current?.focus();
@@ -112,12 +123,12 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const redirectTo = `${window.location.origin}/login?next=${encodeURIComponent(next)}`;
+      // ✅ 이메일 링크(매직링크)로 돌아오더라도, redirect/next를 그대로 유지
+      const redirectTo = `${window.location.origin}/login${location.search || ""}`;
 
       const { error } = await supabase.auth.signInWithOtp({
         email: trimmed,
         options: {
-          // ✅ 혹시 “메일 클릭(매직링크)” 케이스가 섞여도 next로 복귀 가능하게
           emailRedirectTo: redirectTo,
           shouldCreateUser: true,
         },
@@ -164,7 +175,7 @@ export default function LoginPage() {
 
       if (data.session) {
         toast({ title: "로그인 완료" });
-        navigate(next, { replace: true });
+        navigate(afterLogin, { replace: true });
         return;
       }
 
