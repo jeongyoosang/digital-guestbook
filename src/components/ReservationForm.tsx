@@ -37,6 +37,22 @@ function normalizeEmail(v: string) {
   return v.trim().toLowerCase();
 }
 
+/** 숫자만 남기기 */
+function digitsOnly(v: string) {
+  return (v || "").replace(/[^0-9]/g, "");
+}
+
+/** 010-1234-5678 포맷 (입력 UX용) */
+function formatKoreanPhone(v: string) {
+  const d = digitsOnly(v).slice(0, 11);
+
+  // 02 지역번호 케이스까지 완벽히 하려면 별도 분기 필요하지만,
+  // 지금 서비스는 대부분 010이라 MVP는 010 기준이 UX 가장 좋음.
+  if (d.length <= 3) return d;
+  if (d.length <= 7) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+}
+
 /* ===========================
    Zod 스키마 (검증)
    =========================== */
@@ -44,9 +60,13 @@ const baseSchema = z.object({
   name: z.string().min(1, "이름을 입력해주세요."),
   // ✅ 추가: 이메일(로그인/예약확정 안내용)
   email: z.string().min(1, "이메일을 입력해주세요.").email("올바른 이메일 주소를 입력해주세요."),
+  // ✅ 오타 방지용 확인 입력
+  emailConfirm: z.string().min(1, "이메일을 한 번 더 입력해주세요.").email("올바른 이메일 주소를 입력해주세요."),
+
   role: z.enum(["신랑", "신부", "기타"]),
   relation: z.string().optional(), // role=기타일 때만 필수
-  phone: z.string().min(10, "연락처를 입력해주세요."), // 숫자만 기대
+
+  phone: z.string().min(10, "연락처를 입력해주세요."), // 입력은 하이픈 포함 가능. 저장은 숫자만.
   dateStatus: z.enum(["confirmed", "tentative"]),
   weddingDate: z.date().optional(),
   weddingTime: z.string().optional(), // 30분 단위 "HH:MM"
@@ -75,6 +95,11 @@ const formSchema = baseSchema
   .refine((v) => (v.role !== "기타" ? true : !!v.relation?.trim()), {
     message: "관계를 입력해주세요. (예: 신랑 친구, 신부 사촌 등)",
     path: ["relation"],
+  })
+  // ✅ email 오타 방지
+  .refine((v) => normalizeEmail(v.email) === normalizeEmail(v.emailConfirm), {
+    message: "이메일이 일치하지 않습니다.",
+    path: ["emailConfirm"],
   })
   .refine((v) => (v.dateStatus === "confirmed" ? !!v.weddingDate : true), {
     message: "예식일자를 선택해주세요.",
@@ -309,14 +334,29 @@ export const ReservationForm = () => {
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
-    // ✅ 이메일은 필수라 빈 값으로 시작
-    defaultValues: { dateStatus: "confirmed", role: "신랑", email: "" },
+    defaultValues: {
+      dateStatus: "confirmed",
+      role: "신랑",
+      email: "",
+      emailConfirm: "",
+      phone: "",
+    },
   });
 
   const dateStatus = watch("dateStatus");
   const role = watch("role");
   const venueName = watch("venueName");
   const venueAddress = watch("venueAddress");
+  const phoneValue = watch("phone");
+
+  // ✅ phone 자동 하이픈 포맷팅
+  useEffect(() => {
+    const formatted = formatKoreanPhone(phoneValue || "");
+    if (formatted !== (phoneValue || "")) {
+      setValue("phone", formatted, { shouldValidate: true, shouldDirty: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phoneValue]);
 
   const timeOptions = useMemo(() => {
     const out: { value: string; label: string }[] = [];
@@ -336,10 +376,10 @@ export const ReservationForm = () => {
   const onSubmit = async (data: FormData) => {
     setSubmitting(true);
     try {
-      const phone = (data.phone || "").replace(/[^0-9]/g, "");
+      // ✅ 저장은 숫자만
+      const phone = digitsOnly(data.phone);
       const inquiryOnly = data.inquiry?.trim() || null;
 
-      // ✅ email normalize 저장
       const email = normalizeEmail(data.email);
 
       const { error } = await supabase.from("reservations").insert({
@@ -376,10 +416,7 @@ export const ReservationForm = () => {
       reset();
       setDate(undefined);
 
-      setTimeout(
-        () => successRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
-        50
-      );
+      setTimeout(() => successRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
       (document.activeElement as HTMLElement)?.blur?.();
     } catch (e) {
       console.error(e);
@@ -401,13 +438,11 @@ export const ReservationForm = () => {
     return (
       <div ref={successRef} className="space-y-10">
         <section className="rounded-3xl bg-white/70 backdrop-blur-xl border border-border/60 shadow-[0_20px_60px_rgba(15,23,42,0.10)] p-8 sm:p-10 text-center">
-          <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground mb-3">
-            감사합니다 💐
-          </h2>
+          <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground mb-3">감사합니다 💐</h2>
           <p className="text-base sm:text-lg text-muted-foreground leading-relaxed">
             문의가 정상 접수되었습니다.
             <br />
-            예약 확정 안내와 디지털 방명록 링크는
+            예약 확정 안내와 디지털 방명록 질의응답은
             <br />
             <span className="font-semibold text-foreground">공식 카카오톡 채널</span>로 발송됩니다.
           </p>
@@ -456,9 +491,7 @@ export const ReservationForm = () => {
                 {...register("relation")}
                 className="mt-2 bg-white/80 border-border placeholder:text-zinc-400"
               />
-              {errors.relation && (
-                <p className="text-sm text-destructive mt-1">{errors.relation.message}</p>
-              )}
+              {errors.relation && <p className="text-sm text-destructive mt-1">{errors.relation.message}</p>}
             </div>
           )}
         </div>
@@ -477,10 +510,24 @@ export const ReservationForm = () => {
             className="mt-2 bg-white/80 border-border placeholder:text-zinc-400"
             autoComplete="email"
           />
-          <p className="text-sm text-muted-foreground mt-1">
-            예약 확정 안내 및 <b>관리자 로그인(OTP)</b>에 사용됩니다.
-          </p>
           {errors.email && <p className="text-sm text-destructive mt-1">{errors.email.message}</p>}
+
+          <Label htmlFor="emailConfirm" className="text-foreground/80 mt-4 block">
+            이메일 확인
+          </Label>
+          <Input
+            id="emailConfirm"
+            type="email"
+            inputMode="email"
+            placeholder="이메일을 한 번 더 입력해주세요"
+            {...register("emailConfirm")}
+            className="mt-2 bg-white/80 border-border placeholder:text-zinc-400"
+            autoComplete="email"
+          />
+          <p className="text-sm text-muted-foreground mt-1">
+            이벤트 상세설정 및 리포트를 보기 위한 <b>관리자 로그인(OTP)</b>에 사용됩니다. 오타 방지를 위해 2번 입력해 주세요.
+          </p>
+          {errors.emailConfirm && <p className="text-sm text-destructive mt-1">{errors.emailConfirm.message}</p>}
         </div>
 
         {/* 연락처 */}
@@ -492,11 +539,11 @@ export const ReservationForm = () => {
             id="phone"
             type="tel"
             inputMode="numeric"
-            placeholder="예: 01012345678"
+            placeholder="예: 010-1234-5678"
             {...register("phone")}
             className="mt-2 bg-white/80 border-border placeholder:text-zinc-400"
           />
-          <p className="text-sm text-muted-foreground mt-1">하이픈(-) 없이 숫자만 입력해주세요.</p>
+          <p className="text-sm text-muted-foreground mt-1">숫자만 입력해도 자동으로 하이픈이 들어갑니다.</p>
           {errors.phone && <p className="text-sm text-destructive mt-1">{errors.phone.message}</p>}
         </div>
 
@@ -572,9 +619,7 @@ export const ReservationForm = () => {
                     />
                   </PopoverContent>
                 </Popover>
-                {errors.weddingDate && (
-                  <p className="text-sm text-destructive mt-1">{errors.weddingDate.message}</p>
-                )}
+                {errors.weddingDate && <p className="text-sm text-destructive mt-1">{errors.weddingDate.message}</p>}
               </div>
 
               {/* 시간 */}
@@ -621,9 +666,7 @@ export const ReservationForm = () => {
                 </div>
 
                 {errors.venueName && <p className="text-sm text-destructive">{errors.venueName.message}</p>}
-                {errors.venueAddress && (
-                  <p className="text-sm text-destructive">{errors.venueAddress.message}</p>
-                )}
+                {errors.venueAddress && <p className="text-sm text-destructive">{errors.venueAddress.message}</p>}
               </div>
             </div>
 
@@ -654,7 +697,7 @@ export const ReservationForm = () => {
             </Label>
             <Input
               id="tentativeDate"
-              placeholder="예: 2026년 봄 / 내년 하반기 / 미정"
+              placeholder="예: 2027년 봄 / 내년 상반기 / 미정"
               {...register("tentativeDate")}
               className="mt-2 bg-white/80 border-border placeholder:text-zinc-400"
             />
@@ -686,8 +729,7 @@ export const ReservationForm = () => {
               </span>
               <br />
               <span className="text-muted-foreground">
-                입력하신 정보와 얼굴 이미지는 예약 상담 및 서비스 제공 목적 외에는 사용하지 않으며,
-                동의 철회 요청 시 지체 없이 삭제합니다.
+                입력하신 정보와 얼굴 이미지는 예약 상담 및 서비스 제공 목적 외에는 사용하지 않으며, 동의 철회 요청 시 지체 없이 삭제합니다.
               </span>
             </span>
           </label>
