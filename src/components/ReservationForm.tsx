@@ -33,11 +33,17 @@ const KAKAO_APP_KEY = import.meta.env.VITE_KAKAO_JS_APPKEY as string;
 const todayStart = new Date();
 todayStart.setHours(0, 0, 0, 0);
 
+function normalizeEmail(v: string) {
+  return v.trim().toLowerCase();
+}
+
 /* ===========================
    Zod 스키마 (검증)
    =========================== */
 const baseSchema = z.object({
   name: z.string().min(1, "이름을 입력해주세요."),
+  // ✅ 추가: 이메일(로그인/예약확정 안내용)
+  email: z.string().min(1, "이메일을 입력해주세요.").email("올바른 이메일 주소를 입력해주세요."),
   role: z.enum(["신랑", "신부", "기타"]),
   relation: z.string().optional(), // role=기타일 때만 필수
   phone: z.string().min(10, "연락처를 입력해주세요."), // 숫자만 기대
@@ -195,13 +201,11 @@ function KakaoPlacePicker({ open, onClose, onSelect }: KakaoPickerProps) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
-      // ✅ 바깥(오버레이) 클릭/터치로 닫기
       onMouseDown={onClose}
       onTouchStart={onClose}
     >
       <div
         className="w-full max-w-lg rounded-2xl bg-white shadow-xl overflow-hidden border border-border/60"
-        // ✅ 내부 클릭/터치는 버블링 막기 (검색 누를 때 닫히는 문제 해결)
         onMouseDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
       >
@@ -237,7 +241,6 @@ function KakaoPlacePicker({ open, onClose, onSelect }: KakaoPickerProps) {
           </form>
         </div>
 
-        {/* ✅ 모바일 키보드 대비: 내부만 스크롤 */}
         <div className="max-h-[55vh] overflow-auto">
           {loading ? (
             <div className="p-6 text-center text-muted-foreground">검색 중…</div>
@@ -306,7 +309,8 @@ export const ReservationForm = () => {
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
-    defaultValues: { dateStatus: "confirmed", role: "신랑" },
+    // ✅ 이메일은 필수라 빈 값으로 시작
+    defaultValues: { dateStatus: "confirmed", role: "신랑", email: "" },
   });
 
   const dateStatus = watch("dateStatus");
@@ -335,13 +339,20 @@ export const ReservationForm = () => {
       const phone = (data.phone || "").replace(/[^0-9]/g, "");
       const inquiryOnly = data.inquiry?.trim() || null;
 
+      // ✅ email normalize 저장
+      const email = normalizeEmail(data.email);
+
       const { error } = await supabase.from("reservations").insert({
         name: data.name,
+        email, // ✅ 추가
         role: data.role,
         relation: data.role === "기타" ? (data.relation || null) : null,
 
         phone,
-        event_date: data.dateStatus === "confirmed" && data.weddingDate ? format(data.weddingDate, "yyyy-MM-dd") : null,
+        event_date:
+          data.dateStatus === "confirmed" && data.weddingDate
+            ? format(data.weddingDate, "yyyy-MM-dd")
+            : null,
         wedding_time: data.weddingTime || null,
         date_status: data.dateStatus,
         tentative_date: data.dateStatus === "tentative" ? (data.tentativeDate || null) : null,
@@ -365,7 +376,10 @@ export const ReservationForm = () => {
       reset();
       setDate(undefined);
 
-      setTimeout(() => successRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+      setTimeout(
+        () => successRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+        50
+      );
       (document.activeElement as HTMLElement)?.blur?.();
     } catch (e) {
       console.error(e);
@@ -383,7 +397,6 @@ export const ReservationForm = () => {
     }
   }, [showSuccess]);
 
-  /* ✅ 성공 화면: 여기에서 KakaoSection을 반드시 보여줌 */
   if (showSuccess) {
     return (
       <div ref={successRef} className="space-y-10">
@@ -400,7 +413,6 @@ export const ReservationForm = () => {
           </p>
         </section>
 
-        {/* ✅ 제출 후에만 보이게 */}
         <div className="rounded-3xl overflow-hidden border border-border/60">
           <KakaoSection />
         </div>
@@ -444,9 +456,31 @@ export const ReservationForm = () => {
                 {...register("relation")}
                 className="mt-2 bg-white/80 border-border placeholder:text-zinc-400"
               />
-              {errors.relation && <p className="text-sm text-destructive mt-1">{errors.relation.message}</p>}
+              {errors.relation && (
+                <p className="text-sm text-destructive mt-1">{errors.relation.message}</p>
+              )}
             </div>
           )}
+        </div>
+
+        {/* ✅ 이메일 */}
+        <div>
+          <Label htmlFor="email" className="text-foreground/80">
+            이메일
+          </Label>
+          <Input
+            id="email"
+            type="email"
+            inputMode="email"
+            placeholder="예: example@email.com"
+            {...register("email")}
+            className="mt-2 bg-white/80 border-border placeholder:text-zinc-400"
+            autoComplete="email"
+          />
+          <p className="text-sm text-muted-foreground mt-1">
+            예약 확정 안내 및 <b>관리자 로그인(OTP)</b>에 사용됩니다.
+          </p>
+          {errors.email && <p className="text-sm text-destructive mt-1">{errors.email.message}</p>}
         </div>
 
         {/* 연락처 */}
@@ -538,7 +572,9 @@ export const ReservationForm = () => {
                     />
                   </PopoverContent>
                 </Popover>
-                {errors.weddingDate && <p className="text-sm text-destructive mt-1">{errors.weddingDate.message}</p>}
+                {errors.weddingDate && (
+                  <p className="text-sm text-destructive mt-1">{errors.weddingDate.message}</p>
+                )}
               </div>
 
               {/* 시간 */}
@@ -585,7 +621,9 @@ export const ReservationForm = () => {
                 </div>
 
                 {errors.venueName && <p className="text-sm text-destructive">{errors.venueName.message}</p>}
-                {errors.venueAddress && <p className="text-sm text-destructive">{errors.venueAddress.message}</p>}
+                {errors.venueAddress && (
+                  <p className="text-sm text-destructive">{errors.venueAddress.message}</p>
+                )}
               </div>
             </div>
 
