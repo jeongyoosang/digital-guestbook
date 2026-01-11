@@ -1,201 +1,209 @@
 // src/pages/app/EventHome.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type EventRow = {
   id: string;
-  groom_name?: string | null;
-  bride_name?: string | null;
-  ceremony_date?: string | null;
-  venue_name?: string | null;
-  created_at?: string | null;
-  owner_email?: string | null;
+  created_at?: string;
+  owner_email: string | null;
+  ceremony_date: string | null;
+  venue_name: string | null;
+  venue_address: string | null;
 };
 
-function fmtDate(d?: string | null) {
-  if (!d) return "";
-  return d; // YYYY-MM-DD
-}
-
-/** ✅ 너의 카톡 문의 링크 */
-const KAKAO_INQUIRY_URL =
-  (import.meta.env.VITE_KAKAO_INQUIRY_URL as string) || "http://pf.kakao.com/_UyaHn/chat";
+const ADMIN_EMAIL = "goraeuniverse@gmail.com";
 
 export default function EventHome() {
-  const navigate = useNavigate();
+  const [email, setEmail] = useState<string>("");
+  const isAdmin = useMemo(() => email === ADMIN_EMAIL, [email]);
 
-  const [loading, setLoading] = useState(true);
-  const [meEmail, setMeEmail] = useState<string | null>(null);
+  // 관리자 UX: 전체/내것 토글 + 검색(옵션이지만 운영에 도움됨)
+  const [scope, setScope] = useState<"all" | "mine">("all");
+  const [q, setQ] = useState("");
   const [events, setEvents] = useState<EventRow[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string>("");
 
-  useEffect(() => {
-    let mounted = true;
+  const effectiveScope = isAdmin ? scope : "mine";
 
-    const run = async () => {
-      setLoading(true);
-      setError(null);
+  const fetchEvents = async () => {
+    setLoading(true);
+    setErrorMsg("");
 
-      const { data: userData, error: userErr } = await supabase.auth.getUser();
-      if (!mounted) return;
+    try {
+      const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+      if (sessionErr) throw sessionErr;
 
-      if (userErr) {
-        setError(userErr.message);
-        setLoading(false);
-        return;
-      }
+      const userEmail = sessionData.session?.user?.email ?? "";
+      setEmail(userEmail);
 
-      const email = userData?.user?.email ?? null;
-      setMeEmail(email);
-
-      if (!email) {
-        setError("로그인 정보를 확인할 수 없습니다. 다시 로그인해 주세요.");
-        setLoading(false);
-        return;
-      }
-
-      // ✅ 핵심: 내 이메일(owner_email) 이벤트만 조회
-      const { data, error: evErr } = await supabase
+      // ✅ 핵심: 관리자면 owner_email 필터를 걸지 않는다.
+      let query = supabase
         .from("events")
-        .select("id,groom_name,bride_name,ceremony_date,venue_name,created_at,owner_email")
-        .eq("owner_email", email)
-        .order("created_at", { ascending: false });
+        .select("id, created_at, owner_email, ceremony_date, venue_name, venue_address")
+        .order("created_at", { ascending: false })
+        .limit(50);
 
-      if (!mounted) return;
-
-      if (evErr) {
-        setError(evErr.message);
-        setEvents([]);
-        setLoading(false);
-        return;
+      if (effectiveScope === "mine") {
+        query = query.eq("owner_email", userEmail);
       }
 
-      setEvents((data ?? []) as EventRow[]);
+      // 관리자 검색(이메일 부분검색)
+      if (isAdmin && q.trim()) {
+        query = query.ilike("owner_email", `%${q.trim()}%`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      setEvents((data || []) as EventRow[]);
+    } catch (e: any) {
+      console.error(e);
+      setErrorMsg(e?.message || "이벤트 정보를 불러올 수 없습니다.");
+      setEvents([]);
+    } finally {
       setLoading(false);
-    };
-
-    run();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const openSettings = (id: string) => navigate(`/app/event/${id}/settings`);
-  const openReport = (id: string) => navigate(`/app/event/${id}/report`);
-  const openReplay = (id: string) => navigate(`/replay/${id}`); // 레거시 유지
-
-  const openKakaoInquiry = () => {
-    window.open(KAKAO_INQUIRY_URL, "_blank", "noopener,noreferrer");
+    }
   };
 
-  const headerSubtitle = useMemo(() => {
-    if (loading) return "불러오는 중…";
-    if (error) return "오류가 발생했습니다";
-    if (!events.length) return "아직 준비 중입니다";
-    return `내 이벤트 ${events.length}개`;
-  }, [loading, error, events.length]);
+  useEffect(() => {
+    fetchEvents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveScope]);
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-xl font-bold">내 이벤트</h1>
-        <p className="text-sm text-muted-foreground mt-1">{headerSubtitle}</p>
+    <section className="min-h-screen bg-white">
+      <div className="mx-auto max-w-5xl px-4 py-10">
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-ink/90">내 이벤트</h1>
+            <p className="mt-1 text-sm text-ink/60">
+              {loading ? "불러오는 중..." : isAdmin ? "운영자 계정" : "계정"}
+              {email ? ` · 로그인: ${email}` : ""}
+            </p>
+          </div>
 
-        {meEmail && (
-          <p className="text-xs text-muted-foreground mt-2">
-            로그인: <span className="font-mono">{meEmail}</span>
-          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={fetchEvents} disabled={loading}>
+              {loading ? "새로고침 중..." : "새로고침"}
+            </Button>
+          </div>
+        </div>
+
+        {/* ✅ 관리자 전용 컨트롤 */}
+        {isAdmin && (
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={scope === "all" ? "default" : "outline"}
+                onClick={() => setScope("all")}
+              >
+                전체 이벤트
+              </Button>
+              <Button
+                type="button"
+                variant={scope === "mine" ? "default" : "outline"}
+                onClick={() => setScope("mine")}
+              >
+                내 이벤트만
+              </Button>
+            </div>
+
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") fetchEvents();
+              }}
+              placeholder="owner_email 검색 (Enter)"
+              className="h-10 w-full sm:w-[320px] rounded-xl border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+            />
+          </div>
         )}
-      </div>
 
-      {error && (
-        <Card className="mb-6">
-          <CardContent className="p-6">
-            <div className="text-sm font-semibold">이벤트 정보를 불러올 수 없습니다.</div>
-            <div className="text-sm text-muted-foreground mt-2 break-words">{error}</div>
-            <div className="mt-4 flex gap-2">
-              <Button onClick={() => window.location.reload()}>새로고침</Button>
-              <Button variant="outline" onClick={() => navigate("/", { replace: true })}>
-                랜딩으로
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+        {/* 에러 */}
+        {errorMsg && (
+          <Card className="mb-6 border-slate-200">
+            <CardContent className="p-5">
+              <p className="text-sm text-ink/80 font-medium">이벤트 정보를 불러올 수 없습니다.</p>
+              <p className="mt-1 text-sm text-ink/60">{errorMsg}</p>
+              <div className="mt-4 flex gap-2">
+                <Button onClick={fetchEvents}>새로고침</Button>
+                <Link to="/">
+                  <Button variant="outline">랜딩으로</Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-      {/* ✅ 이벤트 0개 → 안내 + 카톡문의 CTA */}
-      {!error && !loading && events.length === 0 && (
-        <Card>
-          <CardContent className="p-6">
-            <div className="text-sm font-semibold">아직 준비 중입니다</div>
-            <div className="text-sm text-muted-foreground mt-2 leading-relaxed">
-              예약하지 않았거나, 아직 예약금이 확인되지 않았습니다.
-              <br />
-              입금 완료에도 상태가 바뀌지 않을 시 카카오톡으로 문의바랍니다.
-            </div>
-
-            <div className="mt-5 flex flex-col sm:flex-row gap-2">
-              <Button onClick={openKakaoInquiry}>카카오톡 문의하기</Button>
-              <Button variant="outline" onClick={() => navigate("/reserve", { replace: true })}>
-                예약문의 하기
-              </Button>
-            </div>
-
-            <div className="mt-4 text-[12px] text-muted-foreground">
-              * 이벤트 생성/연결은 예약금 입금 확인 후 자동으로 진행됩니다.
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!error && events.length > 0 && (
-        <div className="grid grid-cols-1 gap-4">
-          {events.map((e) => {
-            const title = [e.groom_name, e.bride_name].filter(Boolean).join(" · ") || "이벤트";
-            const meta = [
-              e.ceremony_date ? `예식일 ${fmtDate(e.ceremony_date)}` : null,
-              e.venue_name ? `장소 ${e.venue_name}` : null,
-            ]
-              .filter(Boolean)
-              .join(" / ");
-
-            return (
-              <Card key={e.id} className="overflow-hidden">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="text-base font-bold truncate">{title}</div>
-                      <div className="text-sm text-muted-foreground mt-1">
-                        {meta || "상세 정보 없음"}
+        {/* 리스트 */}
+        {events.length === 0 && !loading && !errorMsg ? (
+          <Card className="border-slate-200">
+            <CardContent className="p-6">
+              <p className="text-sm text-ink/80 font-medium">아직 준비 중입니다</p>
+              <p className="mt-1 text-sm text-ink/60">
+                {isAdmin
+                  ? "현재 조건에서 조회되는 이벤트가 없습니다."
+                  : "예약하지 않았거나, 아직 예약금이 확인되지 않았습니다."}
+              </p>
+              <p className="mt-3 text-xs text-ink/50">
+                * 이벤트 생성/연결은 예약금 입금 확인 후 자동으로 진행됩니다.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {events.map((ev) => (
+              <Card key={ev.id} className="border-slate-200">
+                <CardContent className="p-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-ink/90">이벤트</div>
+                      <div className="mt-1 text-sm text-ink/60">
+                        {ev.ceremony_date ? (
+                          <span>{ev.ceremony_date}</span>
+                        ) : (
+                          <span className="text-ink/50">상세 정보 없음</span>
+                        )}
                       </div>
-                      <div className="text-xs text-muted-foreground mt-2 font-mono break-all">
-                        Event ID: {e.id}
+                      <div className="mt-2 text-xs text-ink/50">
+                        Event ID: <span className="font-mono">{ev.id}</span>
                       </div>
+                      {isAdmin && ev.owner_email && (
+                        <div className="mt-1 text-xs text-ink/50">
+                          owner: <span className="font-mono">{ev.owner_email}</span>
+                        </div>
+                      )}
                     </div>
 
-                    <div className="flex flex-col gap-2 shrink-0">
-                      <Button onClick={() => openReport(e.id)}>리포트 보기</Button>
-                      <Button variant="outline" onClick={() => openSettings(e.id)}>
-                        예식 설정
-                      </Button>
+                    <div className="flex flex-wrap gap-2 justify-end">
+                      <Link to={`/app/event/${ev.id}/report`}>
+                        <Button className="rounded-xl">리포트 보기</Button>
+                      </Link>
+                      <Link to={`/app/event/${ev.id}/settings`}>
+                        <Button variant="outline" className="rounded-xl">
+                          예식 설정
+                        </Button>
+                      </Link>
+                      <Link to={`/app/event/${ev.id}/replay`}>
+                        <Button variant="outline" className={cn("rounded-xl")}>
+                          다시보기
+                        </Button>
+                      </Link>
                     </div>
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Button variant="outline" onClick={() => openReplay(e.id)}>
-                      다시보기
-                    </Button>
                   </div>
                 </CardContent>
               </Card>
-            );
-          })}
-        </div>
-      )}
-    </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
