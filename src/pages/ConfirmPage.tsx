@@ -71,7 +71,7 @@ const DISPLAY_STYLE_OPTIONS = [
   { value: "christmas", label: "크리스마스 에디션" },
   { value: "garden", label: "야외 가든 웨딩" },
   { value: "luxury", label: "럭셔리 호텔 스타일" },
-  { value: "smallwedding", label: "스몰웨딩" }, // ✅ 폴더가 있으면 자동 동작
+  { value: "smallwedding", label: "스몰웨딩" },
 ];
 
 const BANK_OPTIONS = [
@@ -134,6 +134,9 @@ export default function ConfirmPage() {
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
 
+  // 템플릿 미리보기 로드 실패 여부
+  const [templatePreviewError, setTemplatePreviewError] = useState(false);
+
   // 예식장 검색
   const [venueSearchOpen, setVenueSearchOpen] = useState(false);
   const [venueSearchKeyword, setVenueSearchKeyword] = useState("");
@@ -148,8 +151,12 @@ export default function ConfirmPage() {
 
   // ✅ 템플릿 미리보기 URL
   const templatePreviewUrl = useMemo(() => {
-    // public/display-templates/{value}/background.jpg 를 가정
     return `/display-templates/${displayStyle}/background.jpg`;
+  }, [displayStyle]);
+
+  // displayStyle 바뀔 때마다 에러 상태 초기화
+  useEffect(() => {
+    setTemplatePreviewError(false);
   }, [displayStyle]);
 
   async function fetchData(eventId: string) {
@@ -306,9 +313,7 @@ export default function ConfirmPage() {
   }
 
   function handleAccountChange(index: number, field: keyof AccountForm, value: string | boolean) {
-    setAccounts((prev) =>
-      prev.map((acct, i) => (i === index ? { ...acct, [field]: value } : acct))
-    );
+    setAccounts((prev) => prev.map((acct, i) => (i === index ? { ...acct, [field]: value } : acct)));
   }
 
   function addAccount() {
@@ -327,9 +332,7 @@ export default function ConfirmPage() {
   }
 
   function removeAccount(index: number) {
-    setAccounts((prev) =>
-      prev.filter((_, i) => i !== index).map((acct, i) => ({ ...acct, sort_order: i }))
-    );
+    setAccounts((prev) => prev.filter((_, i) => i !== index).map((acct, i) => ({ ...acct, sort_order: i })));
   }
 
   function removePhoto(index: number) {
@@ -354,10 +357,7 @@ export default function ConfirmPage() {
         const filename = `${Date.now()}_${i}.${ext}`;
         const path = `${eventId}/${filename}`;
 
-        const { error: uploadError } = await supabase.storage
-          .from("event-media")
-          .upload(path, file, { upsert: false });
-
+        const { error: uploadError } = await supabase.storage.from("event-media").upload(path, file, { upsert: false });
         if (uploadError) throw uploadError;
 
         const { data } = supabase.storage.from("event-media").getPublicUrl(path);
@@ -393,11 +393,8 @@ export default function ConfirmPage() {
     const ps = new kakao.maps.services.Places();
     ps.keywordSearch(venueSearchKeyword, (data: any[], status: string) => {
       setVenueSearchLoading(false);
-      if (status === kakao.maps.services.Status.OK) {
-        setVenueSearchResults(data);
-      } else {
-        setVenueSearchResults([]);
-      }
+      if (status === kakao.maps.services.Status.OK) setVenueSearchResults(data);
+      else setVenueSearchResults([]);
     });
   };
 
@@ -421,7 +418,7 @@ export default function ConfirmPage() {
     }
   };
 
-  // ✅ 필수값 검증 (요구사항 #5)
+  // ✅ 필수값 검증
   const validateBeforeSave = () => {
     if (!mobileInvitationLink.trim()) return "모바일 청첩장 링크는 필수입니다.";
     if (!isValidUrl(mobileInvitationLink.trim())) return "모바일 청첩장 링크가 유효한 URL 형식이 아닙니다.";
@@ -438,9 +435,7 @@ export default function ConfirmPage() {
     if (!ceremonyEndTime) return "예식 종료 시간을 선택해주세요.";
 
     // 디스플레이
-    if (backgroundMode === "template") {
-      if (!displayStyle) return "디스플레이 배경사진을 선택해주세요.";
-    }
+    if (backgroundMode === "template" && !displayStyle) return "디스플레이 배경사진을 선택해주세요.";
 
     // 계좌(최소 1개 필수)
     const validAccounts = accounts
@@ -481,10 +476,7 @@ export default function ConfirmPage() {
         venue_lng: venueLng,
       };
 
-      const { error: eventUpdateError } = await supabase
-        .from("events")
-        .update(eventPayload)
-        .eq("id", eventId);
+      const { error: eventUpdateError } = await supabase.from("events").update(eventPayload).eq("id", eventId);
       if (eventUpdateError) throw eventUpdateError;
 
       // 2) recipients (신랑/신부)
@@ -495,8 +487,7 @@ export default function ConfirmPage() {
       // 배경모드/사진 배열
       const cleaned = photoUrls.map((u) => u.trim()).filter(Boolean);
       const isPhotoValid = cleaned.length > 0;
-      const modeToSave: "photo" | "template" =
-        backgroundMode === "photo" && isPhotoValid ? "photo" : "template";
+      const modeToSave: "photo" | "template" = backgroundMode === "photo" && isPhotoValid ? "photo" : "template";
       const mediaToSave = modeToSave === "photo" ? cleaned : null;
 
       // ✅ theme_prompt는 UI에서 제거 → 저장 시 null
@@ -511,23 +502,16 @@ export default function ConfirmPage() {
         lower_message: lowerMessage || null,
         display_start_offset_minutes: startOffsetNum,
         display_end_offset_minutes: endOffsetNum,
-
-        // ✅ 템플릿일 때만 의미 있음 (photo 모드여도 저장은 하되, display에서는 background_mode가 우선)
         display_style: displayStyle || "basic",
-
         recipients: recipients.length > 0 ? recipients : null,
         background_mode: modeToSave,
         media_urls: mediaToSave,
-
         mobile_invitation_link: link,
       };
 
       // 3) event_settings upsert
       if (settings?.id) {
-        const { error: updateError } = await supabase
-          .from("event_settings")
-          .update(payload)
-          .eq("id", settings.id);
+        const { error: updateError } = await supabase.from("event_settings").update(payload).eq("id", settings.id);
         if (updateError) throw updateError;
       } else {
         const { data: inserted, error: insertError } = await supabase
@@ -553,15 +537,10 @@ export default function ConfirmPage() {
           is_active: a.is_active,
         }));
 
-      const { error: deleteError } = await supabase
-        .from("event_accounts")
-        .delete()
-        .eq("event_id", eventId);
+      const { error: deleteError } = await supabase.from("event_accounts").delete().eq("event_id", eventId);
       if (deleteError && deleteError.code !== "42P01") throw deleteError;
 
-      const { error: insertAccountsError } = await supabase
-        .from("event_accounts")
-        .insert(validAccounts);
+      const { error: insertAccountsError } = await supabase.from("event_accounts").insert(validAccounts);
       if (insertAccountsError && insertAccountsError.code !== "42P01") throw insertAccountsError;
 
       setSuccess("모든 설정이 저장되었습니다.");
@@ -600,8 +579,8 @@ export default function ConfirmPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
-      {/* ✅ 상단: 이벤트 홈 버튼 (요구사항 #6) */}
-      <div className="flex items-center justify-between">
+      {/* ✅ 상단: 이벤트 홈 버튼 */}
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl md:text-2xl font-bold">디지털방명록 세부사항 확정</h1>
           <p className="text-xs md:text-sm text-gray-600 mt-1">
@@ -609,17 +588,18 @@ export default function ConfirmPage() {
           </p>
         </div>
 
+        {/* ✅ 여기만 바뀜: /app/event/${eventId} -> /app */}
         <button
           type="button"
           className="shrink-0 px-3 py-2 text-sm border rounded-full bg-white hover:bg-gray-50"
-          onClick={() => navigate(`/app/event/${eventId}`)}
+          onClick={() => navigate("/app")}
         >
           이벤트 홈 →
         </button>
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">
-        {/* ✅ 모바일 청첩장 (필수) */}
+        {/* 모바일 청첩장 */}
         <section className="border rounded-xl p-4 space-y-2 bg-gray-50">
           <h2 className="text-sm md:text-lg font-semibold">모바일 청첩장 (필수)</h2>
           <p className="text-[11px] text-gray-500">
@@ -802,11 +782,11 @@ export default function ConfirmPage() {
           </div>
         </section>
 
-        {/* 디스플레이 + 사진 업로드 */}
+        {/* 디스플레이 */}
         <section className="border rounded-xl p-4 space-y-4">
           <h2 className="text-sm md:text-lg font-semibold">디스플레이 디자인 & 사진</h2>
 
-          {/* ✅ 1) 배경 방식 먼저 */}
+          {/* 배경 방식 */}
           <div className="space-y-2">
             <label className="block text-[11px] font-medium text-gray-600 mb-1">배경 방식</label>
             <div className="flex flex-col gap-1 text-sm">
@@ -836,12 +816,10 @@ export default function ConfirmPage() {
             </p>
           </div>
 
-          {/* ✅ 2) 템플릿 모드일 때만 ‘디스플레이 배경사진’ 노출 + 미리보기 */}
+          {/* 템플릿일 때만 배경사진 선택 + 미리보기 */}
           {backgroundMode === "template" && (
             <div className="space-y-2">
-              <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                디스플레이 배경사진
-              </label>
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">디스플레이 배경사진</label>
               <select
                 className="w-full border rounded-md px-3 py-2 text-sm"
                 value={displayStyle}
@@ -855,20 +833,25 @@ export default function ConfirmPage() {
               </select>
 
               <div className="border rounded-xl overflow-hidden bg-gray-50">
-                <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">
-                  미리보기
-                </div>
-                {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                <img
-                  src={templatePreviewUrl}
-                  className="w-full h-56 object-cover"
-                  onError={(e) => {
-                    // 폴더/파일 없을 때 깨지는 것 방지
-                    (e.currentTarget as HTMLImageElement).style.display = "none";
-                  }}
-                />
-                <div className="px-3 py-2 text-[11px] text-gray-500">
-                  파일 경로: <span className="font-mono">{templatePreviewUrl}</span>
+                <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">미리보기</div>
+
+                <div className="p-3">
+                  {!templatePreviewError ? (
+                    // eslint-disable-next-line jsx-a11y/alt-text
+                    <img
+                      src={templatePreviewUrl}
+                      className="w-full h-56 object-cover rounded-lg border bg-white"
+                      onError={() => setTemplatePreviewError(true)}
+                    />
+                  ) : (
+                    <div className="w-full h-56 rounded-lg border bg-white flex items-center justify-center text-xs text-gray-500">
+                      미리보기를 불러올 수 없습니다. (경로/파일 확인 필요)
+                    </div>
+                  )}
+
+                  <div className="mt-2 text-[11px] text-gray-500">
+                    파일 경로: <span className="font-mono">{templatePreviewUrl}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -878,9 +861,7 @@ export default function ConfirmPage() {
           {backgroundMode === "photo" && (
             <>
               <div className="space-y-2">
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                  신랑·신부 사진 올리기 (선택)
-                </label>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">신랑·신부 사진 올리기 (선택)</label>
                 <label className="block">
                   <div className="w-full border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-center bg-white active:scale-[0.99] transition">
                     <span className="text-3xl mb-1">📷</span>
@@ -897,9 +878,7 @@ export default function ConfirmPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-gray-700">업로드된 사진 ({photoUrls.length}/8)</span>
-                  <span className="text-[11px] text-gray-500">
-                    왼쪽부터 순서대로 슬라이드 재생됩니다. (✕ 버튼으로 삭제)
-                  </span>
+                  <span className="text-[11px] text-gray-500">왼쪽부터 순서대로 슬라이드 재생됩니다. (✕ 삭제)</span>
                 </div>
 
                 {photoUrls.length === 0 ? (
@@ -909,10 +888,7 @@ export default function ConfirmPage() {
                 ) : (
                   <div className="flex gap-2 overflow-x-auto pb-1">
                     {photoUrls.map((url, idx) => (
-                      <div
-                        key={idx}
-                        className="relative flex-shrink-0 w-20 h-28 rounded-lg overflow-hidden border bg-gray-100"
-                      >
+                      <div key={idx} className="relative flex-shrink-0 w-20 h-28 rounded-lg overflow-hidden border bg-gray-100">
                         {/* eslint-disable-next-line jsx-a11y/alt-text */}
                         <img src={url} className="w-full h-full object-cover" />
                         <button
@@ -946,8 +922,8 @@ export default function ConfirmPage() {
           </div>
 
           <p className="text-[11px] text-gray-500">
-            신랑 / 신부 / 양가 부모 등 최대 {MAX_ACCOUNTS}개의 계좌를 등록할 수 있습니다.
-            QR을 스캔하면 하객이 송금할 계좌를 선택하게 됩니다.
+            신랑 / 신부 / 양가 부모 등 최대 {MAX_ACCOUNTS}개의 계좌를 등록할 수 있습니다. QR을 스캔하면 하객이 송금할 계좌를
+            선택하게 됩니다.
           </p>
 
           <div className="space-y-4">
@@ -1062,11 +1038,7 @@ export default function ConfirmPage() {
           )}
 
           <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-4 py-2 rounded-md bg-black text-white text-sm disabled:opacity-50"
-            >
+            <button type="submit" disabled={saving} className="px-4 py-2 rounded-md bg-black text-white text-sm disabled:opacity-50">
               {saving ? "저장 중..." : "확정하기"}
             </button>
           </div>
@@ -1125,9 +1097,7 @@ export default function ConfirmPage() {
                         onClick={() => handleSelectVenue(place)}
                       >
                         <div className="font-medium">{place.place_name}</div>
-                        <div className="text-xs text-gray-600">
-                          {place.road_address_name || place.address_name}
-                        </div>
+                        <div className="text-xs text-gray-600">{place.road_address_name || place.address_name}</div>
                       </button>
                     </li>
                   ))}
