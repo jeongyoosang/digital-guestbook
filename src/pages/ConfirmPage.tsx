@@ -1,6 +1,6 @@
 // src/pages/ConfirmPage.tsx
-import React, { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 interface RouteParams {
@@ -28,16 +28,19 @@ type EventSettingsRow = {
   ceremony_end_time: string | null;
   title: string | null;
   subtitle: string | null;
+
+  // ✅ 메모 삭제(필드 자체는 유지될 수 있어도 UI에선 사용 안 함)
   theme_prompt: string | null;
+
   recipients: any | null;
   display_start_offset_minutes: number | null;
   display_end_offset_minutes: number | null;
   lower_message: string | null;
+
   display_style?: string | null;
   background_mode?: "photo" | "template" | null;
   media_urls?: string[] | null;
 
-  // ✅ 추가
   mobile_invitation_link?: string | null;
 };
 
@@ -56,8 +59,6 @@ const MAX_ACCOUNTS = 6;
 const DEFAULT_TITLE = "WEDDING MESSAGES";
 const DEFAULT_SUBTITLE = "하객 분들의 마음이 전해지고 있어요 💐";
 const DEFAULT_LOWER_MESSAGE = "친히 오셔서 축복해주시어 감사합니다.";
-const DEFAULT_THEME_PROMPT =
-  "따뜻한 결혼식, 은은한 조명, 크리스마스 분위기, 부드러운 움직임의 배경 애니메이션 등";
 
 const DEFAULT_START_OFFSET = -60; // 예식 시작 1시간 전
 const DEFAULT_END_OFFSET = -10; // 예식 종료 10분 전
@@ -70,6 +71,7 @@ const DISPLAY_STYLE_OPTIONS = [
   { value: "christmas", label: "크리스마스 에디션" },
   { value: "garden", label: "야외 가든 웨딩" },
   { value: "luxury", label: "럭셔리 호텔 스타일" },
+  { value: "smallwedding", label: "스몰웨딩" }, // ✅ 폴더가 있으면 자동 동작
 ];
 
 const BANK_OPTIONS = [
@@ -95,6 +97,7 @@ const BANK_OPTIONS = [
 
 export default function ConfirmPage() {
   const { eventId } = useParams<RouteParams>();
+  const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -118,9 +121,9 @@ export default function ConfirmPage() {
   const [ceremonyEndTime, setCeremonyEndTime] = useState("");
   const [displayTitle, setDisplayTitle] = useState(DEFAULT_TITLE);
   const [displaySubtitle, setDisplaySubtitle] = useState(DEFAULT_SUBTITLE);
-  const [themePrompt, setThemePrompt] = useState("");
   const [lowerMessage, setLowerMessage] = useState(DEFAULT_LOWER_MESSAGE);
 
+  // ✅ 디스플레이 배경사진(템플릿 선택 시만 사용)
   const [displayStyle, setDisplayStyle] = useState("basic");
 
   // ✅ 모바일 청첩장 링크 (필수)
@@ -142,6 +145,12 @@ export default function ConfirmPage() {
     void fetchData(eventId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
+
+  // ✅ 템플릿 미리보기 URL
+  const templatePreviewUrl = useMemo(() => {
+    // public/display-templates/{value}/background.jpg 를 가정
+    return `/display-templates/${displayStyle}/background.jpg`;
+  }, [displayStyle]);
 
   async function fetchData(eventId: string) {
     setLoading(true);
@@ -221,7 +230,6 @@ export default function ConfirmPage() {
 
         setDisplayTitle(s.title ?? DEFAULT_TITLE);
         setDisplaySubtitle(s.subtitle ?? DEFAULT_SUBTITLE);
-        setThemePrompt(s.theme_prompt ?? "");
         setLowerMessage(s.lower_message ?? DEFAULT_LOWER_MESSAGE);
 
         setDisplayStyle(s.display_style || "basic");
@@ -238,7 +246,6 @@ export default function ConfirmPage() {
           setPhotoUrls([]);
         }
 
-        // ✅ 모바일 청첩장 링크 로드
         setMobileInvitationLink(s.mobile_invitation_link ?? "");
       } else {
         setCeremonyDate(e.ceremony_date ?? "");
@@ -246,7 +253,6 @@ export default function ConfirmPage() {
         setCeremonyEndTime("");
         setDisplayTitle(DEFAULT_TITLE);
         setDisplaySubtitle(DEFAULT_SUBTITLE);
-        setThemePrompt("");
         setLowerMessage(DEFAULT_LOWER_MESSAGE);
         setDisplayStyle("basic");
         setBackgroundMode("template");
@@ -415,6 +421,39 @@ export default function ConfirmPage() {
     }
   };
 
+  // ✅ 필수값 검증 (요구사항 #5)
+  const validateBeforeSave = () => {
+    if (!mobileInvitationLink.trim()) return "모바일 청첩장 링크는 필수입니다.";
+    if (!isValidUrl(mobileInvitationLink.trim())) return "모바일 청첩장 링크가 유효한 URL 형식이 아닙니다.";
+
+    // 기본 정보
+    if (!groomName.trim()) return "신랑 이름을 입력해주세요.";
+    if (!brideName.trim()) return "신부 이름을 입력해주세요.";
+    if (!venueName.trim()) return "예식장을 선택해주세요.";
+    if (!venueAddress.trim()) return "예식장 주소가 필요합니다. (검색으로 선택해주세요.)";
+
+    // 예식 시간
+    if (!ceremonyDate) return "예식 날짜를 입력해주세요.";
+    if (!ceremonyStartTime) return "예식 시작 시간을 선택해주세요.";
+    if (!ceremonyEndTime) return "예식 종료 시간을 선택해주세요.";
+
+    // 디스플레이
+    if (backgroundMode === "template") {
+      if (!displayStyle) return "디스플레이 배경사진을 선택해주세요.";
+    }
+
+    // 계좌(최소 1개 필수)
+    const validAccounts = accounts
+      .filter((a) => a.is_active)
+      .filter((a) => a.label.trim() && a.holder_name.trim() && a.bank_name.trim() && a.account_number.trim());
+
+    if (validAccounts.length === 0) {
+      return "축의금 계좌를 최소 1개 이상 등록해주세요. (구분/예금주/은행/계좌번호 모두 필요)";
+    }
+
+    return null;
+  };
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!eventId) return;
@@ -424,14 +463,10 @@ export default function ConfirmPage() {
     setSuccess(null);
 
     try {
-      // ✅ 필수: 모바일 청첩장 링크
+      const msg = validateBeforeSave();
+      if (msg) throw new Error(msg);
+
       const link = mobileInvitationLink.trim();
-      if (!link) {
-        throw new Error("모바일 청첩장 링크는 필수입니다.");
-      }
-      if (!isValidUrl(link)) {
-        throw new Error("모바일 청첩장 링크가 유효한 URL 형식이 아닙니다.");
-      }
 
       const startOffsetNum = DEFAULT_START_OFFSET;
       const endOffsetNum = DEFAULT_END_OFFSET;
@@ -464,7 +499,7 @@ export default function ConfirmPage() {
         backgroundMode === "photo" && isPhotoValid ? "photo" : "template";
       const mediaToSave = modeToSave === "photo" ? cleaned : null;
 
-      // 3) event_settings upsert
+      // ✅ theme_prompt는 UI에서 제거 → 저장 시 null
       const payload = {
         event_id: eventId,
         ceremony_date: ceremonyDate || null,
@@ -472,19 +507,22 @@ export default function ConfirmPage() {
         ceremony_end_time: ceremonyEndTime || null,
         title: displayTitle || null,
         subtitle: displaySubtitle || null,
-        theme_prompt: themePrompt || null,
+        theme_prompt: null,
         lower_message: lowerMessage || null,
         display_start_offset_minutes: startOffsetNum,
         display_end_offset_minutes: endOffsetNum,
+
+        // ✅ 템플릿일 때만 의미 있음 (photo 모드여도 저장은 하되, display에서는 background_mode가 우선)
         display_style: displayStyle || "basic",
+
         recipients: recipients.length > 0 ? recipients : null,
         background_mode: modeToSave,
         media_urls: mediaToSave,
 
-        // ✅ 추가 저장
         mobile_invitation_link: link,
       };
 
+      // 3) event_settings upsert
       if (settings?.id) {
         const { error: updateError } = await supabase
           .from("event_settings")
@@ -501,15 +539,10 @@ export default function ConfirmPage() {
         if (inserted) setSettings(inserted as EventSettingsRow);
       }
 
-      // 4) 계좌 저장
+      // 4) 계좌 저장(전부 삭제 후 insert)
       const validAccounts = accounts
-        .filter(
-          (a) =>
-            a.label.trim() &&
-            a.holder_name.trim() &&
-            a.bank_name.trim() &&
-            a.account_number.trim()
-        )
+        .filter((a) => a.is_active)
+        .filter((a) => a.label.trim() && a.holder_name.trim() && a.bank_name.trim() && a.account_number.trim())
         .map((a, index) => ({
           event_id: eventId,
           label: a.label.trim(),
@@ -526,14 +559,10 @@ export default function ConfirmPage() {
         .eq("event_id", eventId);
       if (deleteError && deleteError.code !== "42P01") throw deleteError;
 
-      if (validAccounts.length > 0) {
-        const { error: insertAccountsError } = await supabase
-          .from("event_accounts")
-          .insert(validAccounts);
-        if (insertAccountsError && insertAccountsError.code !== "42P01") {
-          throw insertAccountsError;
-        }
-      }
+      const { error: insertAccountsError } = await supabase
+        .from("event_accounts")
+        .insert(validAccounts);
+      if (insertAccountsError && insertAccountsError.code !== "42P01") throw insertAccountsError;
 
       setSuccess("모든 설정이 저장되었습니다.");
     } catch (e: any) {
@@ -571,12 +600,23 @@ export default function ConfirmPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
-      <header className="space-y-2">
-        <h1 className="text-xl md:text-2xl font-bold">디지털방명록 세부사항 확정</h1>
-        <p className="text-xs md:text-sm text-gray-600">
-          예식 시간, 디스플레이 분위기, 축의금 수취 계좌, 사진을 한 번에 설정하면 결혼식 당일 디스플레이에 그대로 적용됩니다.
-        </p>
-      </header>
+      {/* ✅ 상단: 이벤트 홈 버튼 (요구사항 #6) */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold">디지털방명록 세부사항 확정</h1>
+          <p className="text-xs md:text-sm text-gray-600 mt-1">
+            예식 시간, 디스플레이, 축의금 계좌, 사진을 한 번에 설정하면 결혼식 당일 디스플레이에 그대로 적용됩니다.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          className="shrink-0 px-3 py-2 text-sm border rounded-full bg-white hover:bg-gray-50"
+          onClick={() => navigate(`/app/event/${eventId}`)}
+        >
+          이벤트 홈 →
+        </button>
+      </div>
 
       <form onSubmit={handleSave} className="space-y-6">
         {/* ✅ 모바일 청첩장 (필수) */}
@@ -659,6 +699,7 @@ export default function ConfirmPage() {
               </div>
             </div>
           </div>
+
           <p className="text-[11px] text-gray-500 mt-1">
             여기에서 입력한 정보는 디지털 방명록 화면과 최종 리포트에 그대로 사용됩니다.
           </p>
@@ -765,21 +806,7 @@ export default function ConfirmPage() {
         <section className="border rounded-xl p-4 space-y-4">
           <h2 className="text-sm md:text-lg font-semibold">디스플레이 디자인 & 사진</h2>
 
-          <div>
-            <label className="block text-[11px] font-medium text-gray-600 mb-1">디스플레이 레이아웃</label>
-            <select
-              className="w-full border rounded-md px-3 py-2 text-sm"
-              value={displayStyle}
-              onChange={(e) => setDisplayStyle(e.target.value)}
-            >
-              {DISPLAY_STYLE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
+          {/* ✅ 1) 배경 방식 먼저 */}
           <div className="space-y-2">
             <label className="block text-[11px] font-medium text-gray-600 mb-1">배경 방식</label>
             <div className="flex flex-col gap-1 text-sm">
@@ -809,10 +836,51 @@ export default function ConfirmPage() {
             </p>
           </div>
 
+          {/* ✅ 2) 템플릿 모드일 때만 ‘디스플레이 배경사진’ 노출 + 미리보기 */}
+          {backgroundMode === "template" && (
+            <div className="space-y-2">
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">
+                디스플레이 배경사진
+              </label>
+              <select
+                className="w-full border rounded-md px-3 py-2 text-sm"
+                value={displayStyle}
+                onChange={(e) => setDisplayStyle(e.target.value)}
+              >
+                {DISPLAY_STYLE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+
+              <div className="border rounded-xl overflow-hidden bg-gray-50">
+                <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">
+                  미리보기
+                </div>
+                {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                <img
+                  src={templatePreviewUrl}
+                  className="w-full h-56 object-cover"
+                  onError={(e) => {
+                    // 폴더/파일 없을 때 깨지는 것 방지
+                    (e.currentTarget as HTMLImageElement).style.display = "none";
+                  }}
+                />
+                <div className="px-3 py-2 text-[11px] text-gray-500">
+                  파일 경로: <span className="font-mono">{templatePreviewUrl}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* photo 모드 */}
           {backgroundMode === "photo" && (
             <>
               <div className="space-y-2">
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">신랑·신부 사진 올리기 (선택)</label>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">
+                  신랑·신부 사진 올리기 (선택)
+                </label>
                 <label className="block">
                   <div className="w-full border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-center bg-white active:scale-[0.99] transition">
                     <span className="text-3xl mb-1">📷</span>
@@ -830,7 +898,7 @@ export default function ConfirmPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-gray-700">업로드된 사진 ({photoUrls.length}/8)</span>
                   <span className="text-[11px] text-gray-500">
-                    왼쪽부터 순서대로 슬라이드 재생됩니다. (썸네일의 ✕ 버튼으로 삭제할 수 있습니다.)
+                    왼쪽부터 순서대로 슬라이드 재생됩니다. (✕ 버튼으로 삭제)
                   </span>
                 </div>
 
@@ -861,18 +929,6 @@ export default function ConfirmPage() {
               </div>
             </>
           )}
-
-          <div>
-            <label className="block text-[11px] font-medium text-gray-600 mb-1">디스플레이 전체 분위기 메모</label>
-            <textarea
-              className={`w-full border rounded-md px-3 py-2 text-sm min-h-[60px] ${
-                themePrompt ? "text-gray-800" : "text-gray-400"
-              }`}
-              value={themePrompt}
-              onChange={(e) => setThemePrompt(e.target.value)}
-              placeholder={DEFAULT_THEME_PROMPT}
-            />
-          </div>
         </section>
 
         {/* 축의금 계좌 */}
@@ -890,7 +946,8 @@ export default function ConfirmPage() {
           </div>
 
           <p className="text-[11px] text-gray-500">
-            신랑 / 신부 / 양가 부모 등 최대 {MAX_ACCOUNTS}개의 계좌를 등록할 수 있습니다. QR을 스캔하면 하객이 송금할 계좌를 선택하게 됩니다.
+            신랑 / 신부 / 양가 부모 등 최대 {MAX_ACCOUNTS}개의 계좌를 등록할 수 있습니다.
+            QR을 스캔하면 하객이 송금할 계좌를 선택하게 됩니다.
           </p>
 
           <div className="space-y-4">
@@ -1087,4 +1144,3 @@ export default function ConfirmPage() {
     </div>
   );
 }
- 

@@ -391,7 +391,7 @@ export const AdminPage = () => {
         {/* 헤더 */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div>
-            <h1 className="font-display text-3xl sm:text-4xl text-ink/90">운영 콘솔</h1>
+            <h1 className="font-display text-3xl sm:text-4xl text-ink/90">관리자 페이지</h1>
             <p className="text-sm text-ink/60 mt-1">
               운영자 계정: <span className="font-mono">{adminEmail}</span>
               <br className="hidden sm:block" />
