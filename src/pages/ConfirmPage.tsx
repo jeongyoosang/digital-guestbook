@@ -591,10 +591,10 @@ export default function ConfirmPage() {
         {/* ✅ 여기만 바뀜: /app/event/${eventId} -> /app */}
         <button
           type="button"
-          className="shrink-0 px-3 py-2 text-sm border rounded-full bg-white hover:bg-gray-50"
           onClick={() => navigate("/app")}
+          className="text-sm text-gray-500 hover:text-black"
         >
-          이벤트 홈 →
+          ← 이벤트 홈
         </button>
       </div>
 
@@ -835,23 +835,21 @@ export default function ConfirmPage() {
               <div className="border rounded-xl overflow-hidden bg-gray-50">
                 <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">미리보기</div>
 
-                <div className="p-3">
+                <div className="p-3 flex justify-center">
                   {!templatePreviewError ? (
-                    // eslint-disable-next-line jsx-a11y/alt-text
-                    <img
-                      src={templatePreviewUrl}
-                      className="w-full h-56 object-cover rounded-lg border bg-white"
-                      onError={() => setTemplatePreviewError(true)}
-                    />
+                    <div className="w-[220px] aspect-[9/16] rounded-xl overflow-hidden border bg-white shadow">
+                      {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                      <img
+                        src={templatePreviewUrl}
+                        className="w-full h-full object-cover"
+                        onError={() => setTemplatePreviewError(true)}
+                      />
+                    </div>
                   ) : (
-                    <div className="w-full h-56 rounded-lg border bg-white flex items-center justify-center text-xs text-gray-500">
-                      미리보기를 불러올 수 없습니다. (경로/파일 확인 필요)
+                    <div className="w-[220px] aspect-[9/16] rounded-xl border bg-white flex items-center justify-center text-xs text-gray-500">
+                      미리보기를 불러올 수 없습니다.
                     </div>
                   )}
-
-                  <div className="mt-2 text-[11px] text-gray-500">
-                    파일 경로: <span className="font-mono">{templatePreviewUrl}</span>
-                  </div>
                 </div>
               </div>
             </div>
