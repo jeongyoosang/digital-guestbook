@@ -67,12 +67,13 @@ const HOURS: string[] = Array.from({ length: 24 }, (_, i) => String(i).padStart(
 const MINUTES_10: string[] = ["00", "10", "20", "30", "40", "50"];
 
 const DISPLAY_STYLE_OPTIONS = [
-  { value: "basic", label: "베이직 (기본)" },
-  { value: "christmas", label: "크리스마스 에디션" },
-  { value: "garden", label: "야외 가든 웨딩" },
-  { value: "luxury", label: "럭셔리 호텔 스타일" },
-  { value: "smallwedding", label: "스몰웨딩" },
+  { value: "basic", label: "기본" },
+  { value: "spring", label: "봄" },
+  { value: "summer", label: "여름" },
+  { value: "autumn", label: "가을" },
+  { value: "winter", label: "겨울" },
 ];
+
 
 const BANK_OPTIONS = [
   "국민은행",
