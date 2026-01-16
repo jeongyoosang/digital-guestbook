@@ -815,7 +815,7 @@ export default function ConfirmPage() {
                         checked={backgroundMode === "template"}
                         onChange={() => setBackgroundMode("template")}
                       />
-                      <span>예식장 분위기에 맞춘 기본 템플릿 사용</span>
+                      <span>기본 계절템플릿 사용</span>
                     </label>
                   </div>
                   <p className="text-[11px] text-gray-500">
