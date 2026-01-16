@@ -408,6 +408,16 @@ export const AdminPage = () => {
           >
             {loading ? "불러오는 중…" : "예약 새로고침"}
           </Button>
+          <Button
+          variant="outline"
+          onClick={async () => {
+            await supabaseAdmin.auth.signOut();
+            window.location.href = "/admin/login";
+          }}
+          className="border-red-200 text-red-600 hover:bg-red-50"
+        >
+          로그아웃
+        </Button>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)]">
@@ -442,7 +452,7 @@ export const AdminPage = () => {
                             onClick={() => setSelectedId(r.id)}
                             className={cn(
                               "w-full text-left px-4 py-3 sm:px-5 sm:py-4 flex flex-col gap-1 hover:bg-white/70",
-                              isSelected && "bg-white"
+                              isSelected && "bg-bg-blue-50 ring-2 ring-blue-400 ring-inset"
                             )}
                           >
                             <div className="flex items-center justify-between gap-2">
