@@ -593,11 +593,13 @@ export default function ConfirmPage() {
         <button
           type="button"
           onClick={() => navigate("/app")}
-          className="shrink-0 whitespace-nowrap rounded-full border bg-white px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 md:text-sm"
+          className="shrink-0 whitespace-nowrap text-xs md:text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900"
         >
           <span className="md:hidden">← 홈</span>
           <span className="hidden md:inline">← 이벤트 홈</span>
         </button>
+
+
 
       </div>
 
