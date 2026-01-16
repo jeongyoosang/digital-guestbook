@@ -5,28 +5,32 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
+/* ===== Public Pages ===== */
 import Index from "./pages/Index";
 import ReservePage from "./pages/ReservePage";
+import ServiceFlowPage from "./pages/ServiceFlowPage";
+import LoginPage from "./pages/LoginPage";
 import NotFound from "./pages/NotFound";
+
+/* ===== Guest / Display ===== */
 import GuestPage from "./pages/GuestPage";
 import DisplayPage from "./pages/DisplayPage";
-import ConfirmPage from "./pages/ConfirmPage";
 import ReplayPage from "./pages/ReplayPage";
-import { AdminPage } from "./pages/AdminPage";
 
-// ✅ IA
-import LoginPage from "./pages/LoginPage";
-import AuthGuard from "@/components/AuthGuard";
-import AppLayout from "./pages/app/AppLayout";
-import EventHome from "./pages/app/EventHome";
-import ReportPage from "./pages/app/ReportPage";
-
-// ✅ Legacy redirect
+/* ===== Legacy Redirects ===== */
 import LegacyConfirmRedirect from "./pages/LegacyConfirmRedirect";
 import LegacyResultRedirect from "./pages/LegacyResultRedirect";
 
-// ✅ Service Flow
-import ServiceFlowPage from "./pages/ServiceFlowPage.tsx";
+/* ===== IA (Logged-in App) ===== */
+import AuthGuard from "@/components/AuthGuard";
+import AppLayout from "./pages/app/AppLayout";
+import EventHome from "./pages/app/EventHome";
+import ConfirmPage from "./pages/ConfirmPage";
+import ReportPage from "./pages/app/ReportPage";
+
+/* ===== Admin ===== */
+import { AdminPage } from "./pages/admin/AdminPage";
+import AdminLoginPage from "./pages/admin/AdminLoginPage";
 
 const queryClient = new QueryClient();
 
@@ -38,19 +42,17 @@ const App = () => (
 
       <BrowserRouter>
         <Routes>
-          {/* 랜딩 */}
+          {/* ===============================
+              Public / Landing
+          =============================== */}
           <Route path="/" element={<Index />} />
-
-          {/* 서비스 흐름 */}
           <Route path="/service-flow" element={<ServiceFlowPage />} />
-
-          {/* 예약 */}
           <Route path="/reserve" element={<ReservePage />} />
-
-          {/* 로그인 */}
           <Route path="/login" element={<LoginPage />} />
 
-          {/* ✅ /app (로그인 필수 IA) */}
+          {/* ===============================
+              IA App (Login Required)
+          =============================== */}
           <Route
             path="/app"
             element={
@@ -59,31 +61,36 @@ const App = () => (
               </AuthGuard>
             }
           >
-            {/* ✅ /app 진입 시 기본 화면 */}
+            {/* /app */}
             <Route index element={<EventHome />} />
 
-            {/* ✅ event 하위 탭들 */}
+            {/* /app/event/:eventId */}
             <Route path="event/:eventId/settings" element={<ConfirmPage />} />
             <Route path="event/:eventId/report" element={<ReportPage />} />
           </Route>
 
-          {/* 하객 입력 */}
+          {/* ===============================
+              Guest / Display (No Login)
+          =============================== */}
           <Route path="/guest/:eventId" element={<GuestPage />} />
-
-          {/* 디스플레이 */}
           <Route path="/display/:eventId" element={<DisplayPage />} />
+          <Route path="/replay/:eventId" element={<ReplayPage />} />
 
-          {/* 레거시 링크 유지 */}
+          {/* ===============================
+              Legacy URLs (Backward Compat)
+          =============================== */}
           <Route path="/confirm/:eventId" element={<LegacyConfirmRedirect />} />
           <Route path="/result/:eventId" element={<LegacyResultRedirect />} />
 
-          {/* 다시보기 */}
-          <Route path="/replay/:eventId" element={<ReplayPage />} />
-
-          {/* Admin */}
+          {/* ===============================
+              Admin (Isolated Auth)
+          =============================== */}
+          <Route path="/admin/login" element={<AdminLoginPage />} />
           <Route path="/admin" element={<AdminPage />} />
 
-          {/* 404 */}
+          {/* ===============================
+              404
+          =============================== */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

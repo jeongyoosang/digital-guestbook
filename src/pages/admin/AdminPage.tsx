@@ -1,6 +1,6 @@
 // src/pages/AdminPage.tsx
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -80,14 +80,10 @@ export const AdminPage = () => {
   }, [selectedEvent?.id, settingsMap]);
 
   // ✅ IA 정공법 URL들
-  const getSettingsUrl = (eventId: string) =>
-    `${window.location.origin}/app/event/${eventId}/settings`;
-  const getReportUrl = (eventId: string) =>
-    `${window.location.origin}/app/event/${eventId}/report`;
-  const getDisplayUrl = (eventId: string) =>
-    `${window.location.origin}/display/${eventId}`;
-  const getGuestUrl = (eventId: string) =>
-    `${window.location.origin}/guest/${eventId}`;
+  const getSettingsUrl = (eventId: string) => `${window.location.origin}/app/event/${eventId}/settings`;
+  const getReportUrl = (eventId: string) => `${window.location.origin}/app/event/${eventId}/report`;
+  const getDisplayUrl = (eventId: string) => `${window.location.origin}/display/${eventId}`;
+  const getGuestUrl = (eventId: string) => `${window.location.origin}/guest/${eventId}`;
 
   const copyToClipboardBestEffort = async (text: string, okMessage: string) => {
     try {
@@ -108,7 +104,8 @@ export const AdminPage = () => {
     }
 
     try {
-      const { data, error } = await supabase
+      // ✅ supabase -> supabaseAdmin
+      const { data, error } = await supabaseAdmin
         .from("events")
         .select("*")
         .in("reservation_id", ids);
@@ -138,7 +135,8 @@ export const AdminPage = () => {
     }
 
     try {
-      const { data, error } = await supabase
+      // ✅ supabase -> supabaseAdmin
+      const { data, error } = await supabaseAdmin
         .from("event_settings")
         .select("*")
         .in("event_id", eventIds);
@@ -158,7 +156,8 @@ export const AdminPage = () => {
   const fetchReservations = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // ✅ supabase -> supabaseAdmin
+      const { data, error } = await supabaseAdmin
         .from("reservations")
         .select("*")
         .order("created_at", { ascending: false });
@@ -184,7 +183,8 @@ export const AdminPage = () => {
     const existing = eventMap[row.id];
     if (existing?.id) return existing.id;
 
-    const { data, error } = await supabase
+    // ✅ supabase -> supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from("events")
       .insert({ reservation_id: row.id })
       .select("*")
@@ -230,7 +230,8 @@ export const AdminPage = () => {
       const next: ReservationStatus =
         current === "new" ? "in_progress" : current === "in_progress" ? "done" : "new";
 
-      const { error } = await supabase
+      // ✅ supabase -> supabaseAdmin
+      const { error } = await supabaseAdmin
         .from("reservations")
         .update({ status: next })
         .eq("id", row.id);
@@ -280,7 +281,7 @@ export const AdminPage = () => {
   useEffect(() => {
     const boot = async () => {
       try {
-        const { data, error } = await supabase.auth.getUser();
+        const { data, error } = await supabaseAdmin.auth.getUser();
         if (error) throw error;
 
         const email = data.user?.email ?? null;
@@ -338,8 +339,8 @@ export const AdminPage = () => {
   }
 
   if (!isAdmin) {
-    // ✅ 여기 핵심: /admin에서 로그인하면 다시 /admin으로 돌아오도록 redirect 붙임
-    const loginUrl = `/login?redirect=${encodeURIComponent("/admin")}`;
+    // ✅ B안: /admin/login으로 이동 (redirect는 /admin)
+    const loginUrl = `/admin/login?redirect=${encodeURIComponent("/admin")}`;
 
     return (
       <section className="min-h-screen bg-ivory px-4 py-10">
@@ -367,7 +368,7 @@ export const AdminPage = () => {
                   onClick={() => (window.location.href = loginUrl)}
                   className="border-leafLight text-ink hover:bg-ivory/70"
                 >
-                  로그인으로
+                  운영자 로그인
                 </Button>
                 <Button
                   variant="outline"
@@ -583,9 +584,7 @@ export const AdminPage = () => {
                             variant="outline"
                             size="sm"
                             className="border-blue-200 text-blue-700 hover:bg-blue-50"
-                            onClick={() =>
-                              window.open(getSettingsUrl(selectedEvent.id), "_blank", "noopener,noreferrer")
-                            }
+                            onClick={() => window.open(getSettingsUrl(selectedEvent.id), "_blank", "noopener,noreferrer")}
                           >
                             예식 설정
                           </Button>
@@ -593,9 +592,7 @@ export const AdminPage = () => {
                             variant="outline"
                             size="sm"
                             className="border-blue-200 text-blue-700 hover:bg-blue-50"
-                            onClick={() =>
-                              window.open(getReportUrl(selectedEvent.id), "_blank", "noopener,noreferrer")
-                            }
+                            onClick={() => window.open(getReportUrl(selectedEvent.id), "_blank", "noopener,noreferrer")}
                           >
                             리포트
                           </Button>
@@ -603,9 +600,7 @@ export const AdminPage = () => {
                             variant="outline"
                             size="sm"
                             className="border-blue-200 text-blue-700 hover:bg-blue-50"
-                            onClick={() =>
-                              window.open(getDisplayUrl(selectedEvent.id), "_blank", "noopener,noreferrer")
-                            }
+                            onClick={() => window.open(getDisplayUrl(selectedEvent.id), "_blank", "noopener,noreferrer")}
                           >
                             디스플레이
                           </Button>
@@ -613,9 +608,7 @@ export const AdminPage = () => {
                             variant="outline"
                             size="sm"
                             className="border-blue-200 text-blue-700 hover:bg-blue-50"
-                            onClick={() =>
-                              window.open(getGuestUrl(selectedEvent.id), "_blank", "noopener,noreferrer")
-                            }
+                            onClick={() => window.open(getGuestUrl(selectedEvent.id), "_blank", "noopener,noreferrer")}
                           >
                             게스트 입력
                           </Button>
@@ -626,10 +619,7 @@ export const AdminPage = () => {
                             className="border-leafLight text-ink hover:bg-ivory/70"
                             onClick={async () => {
                               const url = getSettingsUrl(selectedEvent.id);
-                              const ok = await copyToClipboardBestEffort(
-                                url,
-                                "예약설정 링크가 클립보드에 복사되었습니다."
-                              );
+                              const ok = await copyToClipboardBestEffort(url, "예약설정 링크가 클립보드에 복사되었습니다.");
                               if (!ok) alert(url);
                             }}
                           >
@@ -673,9 +663,7 @@ export const AdminPage = () => {
 
                             <span className="text-ink/60">배경 이미지 URL</span>
                             <span className="font-mono break-all">
-                              {selectedSettings?.background_photo_url ??
-                                selectedSettings?.background_image_url ??
-                                "-"}
+                              {selectedSettings?.background_photo_url ?? selectedSettings?.background_image_url ?? "-"}
                             </span>
                           </div>
 
