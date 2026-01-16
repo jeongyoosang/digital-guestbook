@@ -593,10 +593,12 @@ export default function ConfirmPage() {
         <button
           type="button"
           onClick={() => navigate("/app")}
-          className="text-sm text-gray-500 hover:text-black"
+          className="shrink-0 whitespace-nowrap rounded-full border bg-white px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 md:text-sm"
         >
-          ← 이벤트 홈
+          <span className="md:hidden">← 홈</span>
+          <span className="hidden md:inline">← 이벤트 홈</span>
         </button>
+
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">
