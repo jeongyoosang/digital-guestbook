@@ -21,23 +21,21 @@ export default function ReportPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* ✅ 이벤트 홈 = 이벤트 목록(/app) */}
+        <div className="flex items-center gap-3">
           <button
             type="button"
-            className="px-3 py-2 text-sm border rounded-full bg-white hover:bg-gray-50"
-            onClick={() => navigate(`/app`)}
+            onClick={() => navigate("/app")}
+            className="text-xs md:text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900 whitespace-nowrap"
           >
-            이벤트 홈 →
+            이벤트 홈
           </button>
 
-          {/* ✅ (옵션) 바로 예식설정으로 */}
           <button
             type="button"
-            className="px-3 py-2 text-sm border rounded-full bg-white hover:bg-gray-50"
             onClick={() => navigate(`/app/event/${safeEventId}/settings`)}
+            className="text-xs md:text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900 whitespace-nowrap"
           >
-            예식 설정 →
+            예식 설정
           </button>
         </div>
       </div>

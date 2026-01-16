@@ -581,27 +581,36 @@ export default function ConfirmPage() {
   return (
     <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
       {/* ✅ 상단: 이벤트 홈 버튼 */}
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold">디지털방명록 세부사항 확정</h1>
-          <p className="text-xs md:text-sm text-gray-600 mt-1">
-            예식 시간, 디스플레이, 축의금 계좌, 사진을 한 번에 설정하면 결혼식 당일 디스플레이에 그대로 적용됩니다.
-          </p>
+     {/* ✅ 상단: 우측 링크(모바일에서도 제목 위 라인) + 타이틀 */}
+        <div className="flex flex-col gap-2">
+          {/* 링크 라인 */}
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => navigate("/app")}
+              className="text-xs md:text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900 whitespace-nowrap"
+            >
+              이벤트 홈
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate(`/app/event/${eventId}/report`)}
+              className="text-xs md:text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900 whitespace-nowrap"
+            >
+              리포트
+            </button>
+          </div>
+
+          {/* 타이틀/설명 */}
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold">디지털방명록 세부사항 확정</h1>
+            <p className="text-xs md:text-sm text-gray-600 mt-1">
+              예식 시간, 디스플레이, 축의금 계좌, 사진을 한 번에 설정하면 결혼식 당일 디스플레이에 그대로 적용됩니다.
+            </p>
+          </div>
         </div>
 
-        {/* ✅ 여기만 바뀜: /app/event/${eventId} -> /app */}
-        <button
-          type="button"
-          onClick={() => navigate("/app")}
-          className="shrink-0 whitespace-nowrap text-xs md:text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900"
-        >
-          <span className="md:hidden">← 홈</span>
-          <span className="hidden md:inline">← 이벤트 홈</span>
-        </button>
-
-
-
-      </div>
 
       <form onSubmit={handleSave} className="space-y-6">
         {/* 모바일 청첩장 */}
