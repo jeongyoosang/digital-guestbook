@@ -787,87 +787,119 @@ export default function ConfirmPage() {
         <section className="border rounded-xl p-4 space-y-4">
           <h2 className="text-sm md:text-lg font-semibold">디스플레이 디자인 & 사진</h2>
 
-          {/* ✅ Template 모드: 데스크탑에서만 2열(오른쪽 미리보기) */}
-          {backgroundMode === "template" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* 왼쪽: 배경 방식 + 템플릿 선택 */}
-              <div className="space-y-4">
-                {/* 배경 방식 */}
-                <div className="space-y-2">
-                  <label className="block text-[11px] font-medium text-gray-600 mb-1">배경 방식</label>
-                  <div className="flex flex-col gap-1 text-sm">
-                    {/* 추천 먼저 */}
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        className="h-4 w-4"
-                        value="photo"
-                        checked={backgroundMode === "photo"}
-                        onChange={() => setBackgroundMode("photo")}
-                      />
-                      <span>신랑·신부 웨딩사진 사용 (추천)</span>
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        className="h-4 w-4"
-                        value="template"
-                        checked={backgroundMode === "template"}
-                        onChange={() => setBackgroundMode("template")}
-                      />
-                      <span>기본 계절템플릿 사용</span>
-                    </label>
-                  </div>
-                  <p className="text-[11px] text-gray-500">
-                    사진을 올리면 신랑·신부 사진 위로 축하 메시지가 자연스럽게 표시됩니다.
-                  </p>
-                </div>
+          {/* 배경 방식 (공통) */}
+          <div className="space-y-2">
+            <label className="block text-[11px] font-medium text-gray-600 mb-1">배경 방식</label>
+            <div className="flex flex-col gap-1 text-sm">
+              {/* ✅ 1순위: 웨딩사진 */}
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  className="h-4 w-4"
+                  value="photo"
+                  checked={backgroundMode === "photo"}
+                  onChange={() => setBackgroundMode("photo")}
+                />
+                <span>신랑·신부 웨딩사진 사용 (추천)</span>
+              </label>
 
-                {/* 템플릿 선택 */}
-                <div className="space-y-2">
-                  <label className="block text-[11px] font-medium text-gray-600 mb-1">디스플레이 배경사진</label>
-                  <select
-                    className="w-full border rounded-md px-3 py-2 text-sm"
-                    value={displayStyle}
-                    onChange={(e) => setDisplayStyle(e.target.value)}
-                  >
-                    {DISPLAY_STYLE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+              {/* ✅ 2순위: 계절 템플릿 */}
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  className="h-4 w-4"
+                  value="template"
+                  checked={backgroundMode === "template"}
+                  onChange={() => setBackgroundMode("template")}
+                />
+                <span>기본 계절템플릿 사용</span>
+              </label>
+            </div>
 
-                  {/* 모바일에서는 아래쪽 미리보기 사용 (데스크탑은 오른쪽에 있음) */}
-                  <div className="md:hidden border rounded-xl overflow-hidden bg-gray-50">
-                    <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">미리보기</div>
-                    <div className="p-3 flex justify-center">
-                      {!templatePreviewError ? (
-                        <div className="w-[220px] aspect-[9/16] rounded-xl overflow-hidden border bg-white shadow">
-                          {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                          <img
-                            src={templatePreviewUrl}
-                            className="w-full h-full object-cover"
-                            onError={() => setTemplatePreviewError(true)}
-                          />
-                        </div>
-                      ) : (
-                        <div className="w-[220px] aspect-[9/16] rounded-xl border bg-white flex items-center justify-center text-xs text-gray-500">
-                          미리보기를 불러올 수 없습니다.
-                        </div>
-                      )}
-                    </div>
+            <p className="text-[11px] text-gray-500">
+              사진을 올리면 신랑·신부 사진 위로 축하 메시지가 자연스럽게 표시됩니다.
+            </p>
+          </div>
+
+          {/* =========================
+              ✅ PHOTO 모드 (기존 가로 썸네일 유지)
+            ========================= */}
+          {backgroundMode === "photo" && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">신랑·신부 사진 올리기 (선택)</label>
+                <label className="block">
+                  <div className="w-full border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-center bg-white active:scale-[0.99] transition">
+                    <span className="text-3xl mb-1">📷</span>
+                    <p className="text-sm font-medium text-gray-800">핸드폰 앨범에서 사진 선택하기</p>
+                    <p className="mt-1 text-[11px] text-gray-500">
+                      여러 장을 한 번에 선택해 업로드할 수 있고, 최대 8장까지 사용됩니다.
+                    </p>
                   </div>
-                </div>
+                  <input type="file" accept="image/*" multiple onChange={handleFilesSelected} className="hidden" />
+                </label>
+                {uploadStatus && <p className="text-[11px] text-gray-500">{uploadStatus}</p>}
               </div>
 
-              {/* 오른쪽: 미리보기 (데스크탑만) */}
-              <div className="hidden md:flex justify-end">
-                <div className="border rounded-xl overflow-hidden bg-gray-50 w-fit">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gray-700">업로드된 사진 ({photoUrls.length}/8)</span>
+                  <span className="text-[11px] text-gray-500">왼쪽부터 순서대로 슬라이드 재생됩니다. (✕ 삭제)</span>
+                </div>
+
+                {photoUrls.length === 0 ? (
+                  <div className="border border-dashed border-gray-300 rounded-xl py-4 text-center text-[11px] text-gray-400 bg-white">
+                    아직 업로드된 사진이 없습니다. 원하시면 위 버튼으로 사진을 추가해주세요.
+                  </div>
+                ) : (
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {photoUrls.map((url, idx) => (
+                      <div key={idx} className="relative flex-shrink-0 w-20 h-28 rounded-lg overflow-hidden border bg-gray-100">
+                        {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                        <img src={url} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(idx)}
+                          className="absolute top-1 right-1 bg-black/75 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center shadow"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* =========================
+              ✅ TEMPLATE 모드
+              - 모바일: 아래쪽(1열) 미리보기 1번
+              - 데스크탑: 2열(오른쪽) 미리보기
+            ========================= */}
+          {backgroundMode === "template" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* 왼쪽: 템플릿 선택 + (모바일 미리보기) */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">디스플레이 배경사진</label>
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                  value={displayStyle}
+                  onChange={(e) => setDisplayStyle(e.target.value)}
+                >
+                  {DISPLAY_STYLE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+
+                {/* ✅ 모바일 미리보기 (딱 1번만) */}
+                <div className="md:hidden border rounded-xl overflow-hidden bg-gray-50">
                   <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">미리보기</div>
                   <div className="p-3 flex justify-center">
                     {!templatePreviewError ? (
-                      <div className="w-[240px] aspect-[9/16] rounded-xl overflow-hidden border bg-white shadow">
+                      <div className="w-[220px] aspect-[9/16] rounded-xl overflow-hidden border bg-white shadow">
                         {/* eslint-disable-next-line jsx-a11y/alt-text */}
                         <img
                           src={templatePreviewUrl}
@@ -876,118 +908,35 @@ export default function ConfirmPage() {
                         />
                       </div>
                     ) : (
-                      <div className="w-[240px] aspect-[9/16] rounded-xl border bg-white flex items-center justify-center text-xs text-gray-500">
+                      <div className="w-[220px] aspect-[9/16] rounded-xl border bg-white flex items-center justify-center text-xs text-gray-500">
                         미리보기를 불러올 수 없습니다.
                       </div>
                     )}
                   </div>
                 </div>
               </div>
-            </div>
+
+              {/* 오른쪽: 데스크탑 미리보기 */}
+              <div className="hidden md:flex justify-end">
+                <div className="border rounded-xl overflow-hidden bg-gray-50 w-fit">
+                  <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">미리보기</div>
+                  <div className="p-3 flex justify-center">
+                    {!templatePreviewError ? (
+                      <div className="w-[260px] aspect-[9/16] rounded-xl overflow-hidden border bg-white shadow">
+                        {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                        <img
+                          src={templatePreviewUrl}
+                          className="w-full h-full object-cover"
+                          onError={() => setTemplatePreviewError(true)}
+                        />
+                      </div>
                     ) : (
-            /* ✅ Photo 모드: 기존처럼 풀폭(1열) */
-            <div className="space-y-4">
-              {/* 배경 방식 */}
-              <div className="space-y-2">
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">배경 방식</label>
-                <div className="flex flex-col gap-1 text-sm">
-                  {/* 추천 먼저 */}
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      className="h-4 w-4"
-                      value="photo"
-                      checked={backgroundMode === "photo"}
-                      onChange={() => setBackgroundMode("photo")}
-                    />
-                    <span>신랑·신부 웨딩사진 사용 (추천)</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      className="h-4 w-4"
-                      value="template"
-                      checked={backgroundMode === "template"}
-                      onChange={() => setBackgroundMode("template")}
-                    />
-                    <span>예식장 분위기에 맞춘 기본 템플릿 사용</span>
-                  </label>
-                </div>
-                <p className="text-[11px] text-gray-500">
-                  사진을 올리면 신랑·신부 사진 위로 축하 메시지가 자연스럽게 표시됩니다.
-                </p>
-              </div>
-
-              {/* photo 모드 UI (너 원래 쓰던 그대로 유지) */}
-              <>
-                <div className="space-y-2">
-                  <label className="block text-[11px] font-medium text-gray-600 mb-1">신랑·신부 사진 올리기 (선택)</label>
-                  <label className="block">
-                    <div className="w-full border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-center bg-white active:scale-[0.99] transition">
-                      <span className="text-3xl mb-1">📷</span>
-                      <p className="text-sm font-medium text-gray-800">핸드폰 앨범에서 사진 선택하기</p>
-                      <p className="mt-1 text-[11px] text-gray-500">
-                        여러 장을 한 번에 선택해 업로드할 수 있고, 최대 8장까지 사용됩니다.
-                      </p>
-                    </div>
-                    <input type="file" accept="image/*" multiple onChange={handleFilesSelected} className="hidden" />
-                  </label>
-                  {uploadStatus && <p className="text-[11px] text-gray-500">{uploadStatus}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-gray-700">업로드된 사진 ({photoUrls.length}/8)</span>
-                    <span className="text-[11px] text-gray-500">왼쪽부터 순서대로 슬라이드 재생됩니다. (✕ 삭제)</span>
+                      <div className="w-[260px] aspect-[9/16] rounded-xl border bg-white flex items-center justify-center text-xs text-gray-500">
+                        미리보기를 불러올 수 없습니다.
+                      </div>
+                    )}
                   </div>
-
-                  {photoUrls.length === 0 ? (
-                    <div className="border border-dashed border-gray-300 rounded-xl py-4 text-center text-[11px] text-gray-400 bg-white">
-                      아직 업로드된 사진이 없습니다. 원하시면 위 버튼으로 사진을 추가해주세요.
-                    </div>
-                  ) : (
-                    <div className="flex gap-2 overflow-x-auto pb-1">
-                      {photoUrls.map((url, idx) => (
-                        <div key={idx} className="relative flex-shrink-0 w-20 h-28 rounded-lg overflow-hidden border bg-gray-100">
-                          {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                          <img src={url} className="w-full h-full object-cover" />
-                          <button
-                            type="button"
-                            onClick={() => removePhoto(idx)}
-                            className="absolute top-1 right-1 bg-black/75 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center shadow"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
-              </>
-            </div>
-          )}
-
-
-          {/* 모바일에서 템플릿 미리보기는 기존처럼 아래쪽에 유지 */}
-          {backgroundMode === "template" && (
-            <div className="md:hidden border rounded-xl overflow-hidden bg-gray-50">
-              <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">미리보기</div>
-
-              <div className="p-3 flex justify-center">
-                {!templatePreviewError ? (
-                  <div className="w-[220px] aspect-[9/16] rounded-xl overflow-hidden border bg-white shadow">
-                    {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                    <img
-                      src={templatePreviewUrl}
-                      className="w-full h-full object-cover"
-                      onError={() => setTemplatePreviewError(true)}
-                    />
-                  </div>
-                ) : (
-                  <div className="w-[220px] aspect-[9/16] rounded-xl border bg-white flex items-center justify-center text-xs text-gray-500">
-                    미리보기를 불러올 수 없습니다.
-                  </div>
-                )}
               </div>
             </div>
           )}
