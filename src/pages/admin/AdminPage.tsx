@@ -178,29 +178,36 @@ export const AdminPage = () => {
     }
   };
 
-  // ✅ 이벤트 없으면 생성 (관리자는 insert 가능)
-  const ensureEventForReservation = async (row: ReservationRow) => {
-    const existing = eventMap[row.id];
-    if (existing?.id) return existing.id;
+         // ✅ 이벤트 없으면 생성 (관리자는 insert 가능)
+    const ensureEventForReservation = async (row: ReservationRow) => {
+      const existing = eventMap[row.id];
+      if (existing?.id) return existing.id;
 
-    // ✅ supabase -> supabaseAdmin
-    const { data, error } = await supabaseAdmin
-      .from("events")
-      .insert({ reservation_id: row.id })
-      .select("*")
-      .single();
+      // ✅ owner_email / is_public까지 같이 넣어서 재발 방지
+      const payload: Partial<EventRow> = {
+        reservation_id: row.id,
+        owner_email: row.email ?? null,   // ✅ 핵심
+        is_public: true,                 // ✅ 기본값(원하면 false로)
+      };
 
-    if (error) throw error;
+      const { data, error } = await supabaseAdmin
+        .from("events")
+        .insert(payload)
+        .select("*")
+        .single();
 
-    const newEvent = data as EventRow;
+      if (error) throw error;
 
-    setEventMap((prev) => ({ ...prev, [row.id]: newEvent }));
+      const newEvent = data as EventRow;
 
-    // settings도 미리 로드
-    void fetchSettingsForEvents([newEvent.id]);
+      setEventMap((prev) => ({ ...prev, [row.id]: newEvent }));
 
-    return newEvent.id;
-  };
+      // settings도 미리 로드
+      void fetchSettingsForEvents([newEvent.id]);
+
+      return newEvent.id;
+    };
+
 
   const promptOpenOrCopySettings = async (eventId: string) => {
     const settingsUrl = getSettingsUrl(eventId);
@@ -390,35 +397,39 @@ export const AdminPage = () => {
     <section className="min-h-screen bg-ivory px-4 py-8">
       <div className="container mx-auto max-w-6xl">
         {/* 헤더 */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
-          <div>
-            <h1 className="font-display text-3xl sm:text-4xl text-ink/90">관리자 페이지</h1>
-            <p className="text-sm text-ink/60 mt-1">
-              운영자 계정: <span className="font-mono">{adminEmail}</span>
-              <br className="hidden sm:block" />
-              예약 → 이벤트 생성 → 예식 설정/리포트/디스플레이 운영까지 한 화면에서 확인합니다.
-            </p>
-          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+            <div>
+              <h1 className="font-display text-3xl sm:text-4xl text-ink/90">관리자 페이지</h1>
+              <p className="text-sm text-ink/60 mt-1">
+                운영자 계정: <span className="font-mono">{adminEmail}</span>
+                <br className="hidden sm:block" />
+                예약 → 이벤트 생성 → 예식 설정/리포트/디스플레이 운영까지 한 화면에서 확인합니다.
+              </p>
+            </div>
 
-          <Button
-            variant="outline"
-            onClick={fetchReservations}
-            disabled={loading}
-            className="self-start border-leafLight text-ink hover:bg-ivory/70"
-          >
-            {loading ? "불러오는 중…" : "예약 새로고침"}
-          </Button>
-          <Button
-          variant="outline"
-          onClick={async () => {
-            await supabaseAdmin.auth.signOut();
-            window.location.href = "/admin/login";
-          }}
-          className="border-red-200 text-red-600 hover:bg-red-50"
-        >
-          로그아웃
-        </Button>
-        </div>
+            {/* ✅ 우측 액션: 새로고침 + 로그아웃 */}
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <Button
+                variant="outline"
+                onClick={fetchReservations}
+                disabled={loading}
+                className="border-leafLight text-ink hover:bg-ivory/70"
+              >
+                {loading ? "불러오는 중…" : "예약 새로고침"}
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  await supabaseAdmin.auth.signOut();
+                  window.location.href = "/admin/login";
+                }}
+                className="border-red-200 text-red-600 hover:bg-red-50"
+              >
+                로그아웃
+              </Button>
+            </div>
+          </div>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)]">
           {/* 왼쪽: 예약 리스트 */}
