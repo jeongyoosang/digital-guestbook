@@ -21,6 +21,10 @@ import ReplayPage from "./pages/ReplayPage";
 import LegacyConfirmRedirect from "./pages/LegacyConfirmRedirect";
 import LegacyResultRedirect from "./pages/LegacyResultRedirect";
 
+/* ===== Link + Code Join ===== */
+import InviteAcceptPage from "./pages/app/InviteAcceptPage";
+import JoinByCodePage from "./pages/app/JoinByCodePage";
+
 /* ===== IA (Logged-in App) ===== */
 import AuthGuard from "@/components/AuthGuard";
 import AppLayout from "./pages/app/AppLayout";
@@ -51,6 +55,14 @@ const App = () => (
           <Route path="/login" element={<LoginPage />} />
 
           {/* ===============================
+              Invite / Join
+              - 링크 공유: /invite/{token}
+              - 코드 입력: /join
+          =============================== */}
+          <Route path="/invite/:token" element={<InviteAcceptPage />} />
+          <Route path="/join" element={<JoinByCodePage />} />
+
+          {/* ===============================
               IA App (Login Required)
           =============================== */}
           <Route
@@ -61,10 +73,7 @@ const App = () => (
               </AuthGuard>
             }
           >
-            {/* /app */}
             <Route index element={<EventHome />} />
-
-            {/* /app/event/:eventId */}
             <Route path="event/:eventId/settings" element={<ConfirmPage />} />
             <Route path="event/:eventId/report" element={<ReportPage />} />
           </Route>
