@@ -123,7 +123,6 @@ export default function EventHome() {
           content: {
             title: "예식 공동관리 초대",
             description: `${getDisplayTitle(ev)}에 초대받으셨습니다. 예식 설정과 리포트를 함께 확인해보세요.`,
-            // ✅ 실제 이미지 URL이 있으면 넣고, 없으면 제거(카카오 정책/동작 이슈 방지)
             // imageUrl: "https://<YOUR_DOMAIN>/kakao-share.png",
             link: { mobileWebUrl: inviteLink, webUrl: inviteLink },
           },
@@ -230,24 +229,28 @@ export default function EventHome() {
   }, [effectiveScope]);
 
   return (
-    <section className="relative min-h-screen">
-      {/* Hero Section 스타일 배경 연동 */}
+    // ✅ AppLayout에서 전체 배경을 깔고 있으므로, 여기서는 투명으로 “얹기”
+    <section className="relative min-h-[calc(100vh-72px)] bg-transparent">
       <div className="relative mx-auto max-w-4xl px-6 py-16 lg:py-20">
         <header className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">내 이벤트</h1>
             <p className="mt-2 text-muted-foreground">
               {isAdmin ? "운영자 모드" : "소중한 예식 데이터를 안전하게 관리하세요."}
             </p>
-          </motion.div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={fetchEvents}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            새로고침
-          </Button>
+          </div>
+
+          {/* ✅ 모바일: 오른쪽 정렬 / 데스크탑: 기존처럼 오른쪽 */}
+          <div className="flex justify-end sm:justify-start">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={fetchEvents}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              새로고침
+            </Button>
+          </div>
         </header>
 
         {isAdmin && (
@@ -328,19 +331,18 @@ export default function EventHome() {
                               </span>
                             </div>
 
-                            {ev.venue_address && (
-                              <div className="text-xs text-slate-400">{ev.venue_address}</div>
-                            )}
+                            {ev.venue_address && <div className="text-xs text-slate-400">{ev.venue_address}</div>}
                           </div>
 
                           <div className="flex flex-wrap gap-2">
                             <Link to={`/app/event/${ev.id}/report`}>
+                              {/* ✅ 블랙 대신 “인디고” 유지 (가독성+고급톤) */}
                               <Button className="rounded-full bg-indigo-600 text-white font-bold hover:bg-indigo-700">
                                 웨딩 리포트
                               </Button>
                             </Link>
                             <Link to={`/app/event/${ev.id}/settings`}>
-                              <Button variant="outline" className="rounded-full border-slate-200">
+                              <Button variant="outline" className="rounded-full border-slate-200 bg-white/60 hover:bg-white/70">
                                 상세 설정
                               </Button>
                             </Link>
@@ -434,7 +436,7 @@ export default function EventHome() {
                                       <Button
                                         variant="outline"
                                         onClick={() => handleCopy(invite.code, `${ev.id}-code`)}
-                                        className="flex-1 rounded-2xl h-12 font-bold"
+                                        className="flex-1 rounded-2xl h-12 font-bold bg-white/60 hover:bg-white/70"
                                       >
                                         {copiedKey === `${ev.id}-code` ? (
                                           <Check className="mr-2 h-4 w-4 text-green-500" />
@@ -449,7 +451,7 @@ export default function EventHome() {
                                         onClick={() =>
                                           handleCopy(`${window.location.origin}/invite/${invite.token}`, `${ev.id}-link`)
                                         }
-                                        className="flex-1 rounded-2xl h-12 font-bold"
+                                        className="flex-1 rounded-2xl h-12 font-bold bg-white/60 hover:bg-white/70"
                                       >
                                         {copiedKey === `${ev.id}-link` ? (
                                           <Check className="mr-2 h-4 w-4 text-green-500" />
@@ -483,7 +485,8 @@ export default function EventHome() {
         </div>
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-background to-transparent" />
+      {/* ✅ from-background 때문에 AppLayout 배경이 “흰색”으로 덮이는 느낌이 날 수 있어서, 투명 기반으로 교체 */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-transparent to-transparent" />
     </section>
   );
 }

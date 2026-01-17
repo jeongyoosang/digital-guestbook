@@ -1,3 +1,4 @@
+// src/pages/app/AppLayout.tsx
 import { Outlet, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 
@@ -10,26 +11,33 @@ export default function AppLayout() {
   };
 
   return (
-    <div className="relative min-h-screen bg-background">
-      {/* 🌸 Background Gradient Overlay (장식용, 실제 배경은 흰색 유지) */}
+    <div className="relative min-h-screen overflow-x-hidden bg-[#FFF7FB]">
+      {/* ✅ 전체 배경(헤더 포함) */}
       <div
         aria-hidden
         className="
-          pointer-events-none
-          absolute inset-0
-          bg-[radial-gradient(circle_at_20%_15%,rgba(244,114,182,0.18),transparent_55%),
+          pointer-events-none absolute inset-0
+          bg-[radial-gradient(circle_at_20%_15%,rgba(244,114,182,0.22),transparent_55%),
               radial-gradient(circle_at_80%_20%,rgba(167,139,250,0.18),transparent_55%),
-              radial-gradient(circle_at_50%_85%,rgba(253,224,71,0.12),transparent_60%)]
+              radial-gradient(circle_at_50%_85%,rgba(253,224,71,0.10),transparent_60%)]
         "
       />
+      {/* 아주 얇은 톤 보정(전체가 너무 하얘지는 것 방지) */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 bg-white/20" />
 
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-slate-200/60 bg-background/80 backdrop-blur">
+      <header
+        className="
+          sticky top-0 z-20
+          border-b border-rose-100/60
+          bg-[#FFF7FB]/85
+          backdrop-blur-xl
+        "
+      >
         <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
-          {/* 랜딩으로 이동 */}
           <button
             type="button"
-            className="font-bold tracking-tight text-sm md:text-base"
+            className="font-bold tracking-tight text-sm md:text-base text-ink/90"
             onClick={() => navigate("/", { replace: true })}
           >
             DIGITAL GUESTBOOK
@@ -37,7 +45,12 @@ export default function AppLayout() {
 
           <button
             type="button"
-            className="text-sm rounded-xl border border-slate-200 px-3 py-1.5 hover:bg-slate-50"
+            className="
+              text-sm rounded-xl border border-rose-200/70
+              bg-white/55 px-3 py-1.5
+              hover:bg-white/70
+              text-ink/80
+            "
             onClick={logout}
           >
             로그아웃
