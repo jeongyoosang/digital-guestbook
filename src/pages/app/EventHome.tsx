@@ -341,7 +341,7 @@ export default function EventHome() {
                             </Link>
                             <Link to={`/app/event/${ev.id}/settings`}>
                               <Button variant="outline" className="rounded-full border-slate-200">
-                                설정
+                                상세 설정
                               </Button>
                             </Link>
 
