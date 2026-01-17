@@ -1,21 +1,31 @@
 // src/pages/app/EventHome.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  Calendar,
+  MapPin,
+  Share2,
+  Copy,
+  Check,
+  Users,
+  Info,
+  MessageCircle,
+  Clock,
+} from "lucide-react";
 
+// --- Types ---
 type EventRow = {
   id: string;
   created_at?: string;
-
   owner_email: string | null;
-
   groom_name?: string | null;
   bride_name?: string | null;
   ceremony_date: string | null;
-
   venue_name: string | null;
   venue_address: string | null;
 };
@@ -36,136 +46,107 @@ type InviteResult = {
 
 const ADMIN_EMAIL = "goraeuniverse@gmail.com";
 
-// "WEDDING MESSAGES" 같은 기본 템플릿 타이틀은 사용자 타이틀로 취급하지 않음
+// --- Helpers ---
 const isMeaningfulTitle = (title?: string | null) => {
   const t = (title || "").trim();
-  if (!t) return false;
-  if (t.toUpperCase() === "WEDDING MESSAGES") return false;
+  if (!t || t.toUpperCase() === "WEDDING MESSAGES") return false;
   return true;
 };
 
-const daysUntil = (isoDate?: string | null) => {
+// D-Day 계산 및 스타일 헬퍼
+const getDDayInfo = (isoDate?: string | null) => {
   if (!isoDate) return null;
-  // "YYYY-MM-DD" 기준
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.trim());
   if (!m) return null;
 
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  const d = Number(m[3]);
+  const target = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const diffDays = Math.round((target - today) / (1000 * 60 * 60 * 24));
 
-  // 로컬 타임존의 "자정"으로 통일 (D-day 흔들림 방지)
-  const today = new Date();
-  const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-  const targetMid = new Date(y, mo - 1, d).getTime();
-
-  const diffDays = Math.round((targetMid - todayMid) / (1000 * 60 * 60 * 24));
-  if (Number.isNaN(diffDays)) return null;
-
-  if (diffDays > 0) return `D-${diffDays}`;
-  if (diffDays === 0) return "D-DAY";
-  return `D+${Math.abs(diffDays)}`;
+  if (diffDays > 0) return { label: `D-${diffDays}`, color: "bg-rose-500", animate: true };
+  if (diffDays === 0) return { label: "D-DAY", color: "bg-rose-600", animate: true };
+  return { label: `D+${Math.abs(diffDays)}`, color: "bg-slate-400", animate: false };
 };
 
 export default function EventHome() {
   const [email, setEmail] = useState<string>("");
   const isAdmin = useMemo(() => email === ADMIN_EMAIL, [email]);
 
-  // 관리자 UX
-  const [scope, setScope] = useState<"all" | "mine">("all");
+  const [scope, setScope] = useState<"all" | "mine">("mine");
   const [q, setQ] = useState("");
   const [events, setEvents] = useState<EventRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string>("");
 
-  // event_settings.title 매핑
-  const [settingsByEventId, setSettingsByEventId] = useState<Record<string, EventSettingsRow>>(
-    {}
-  );
+  // settings mapping
+  const [settingsByEventId, setSettingsByEventId] = useState<Record<string, EventSettingsRow>>({});
 
-  // 초대 생성 결과/로딩 상태
+  // invite UI state
+  const [expandedInviteId, setExpandedInviteId] = useState<string | null>(null);
   const [inviteByEventId, setInviteByEventId] = useState<Record<string, InviteResult>>({});
-  const [inviteLoadingByEventId, setInviteLoadingByEventId] = useState<Record<string, boolean>>(
-    {}
-  );
-  const [inviteMsgByEventId, setInviteMsgByEventId] = useState<Record<string, string>>({});
+  const [inviteLoadingByEventId, setInviteLoadingByEventId] = useState<Record<string, boolean>>({});
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const effectiveScope = isAdmin ? scope : "mine";
 
-  const safeCopy = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.position = "fixed";
-        ta.style.left = "-9999px";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-        return true;
-      } catch {
-        return false;
-      }
-    }
-  };
-
+  // display title (settings.title 우선, 기본값 WEDDING MESSAGES는 무시)
   const getDisplayTitle = (ev: EventRow) => {
     const sTitle = settingsByEventId[ev.id]?.title;
     if (isMeaningfulTitle(sTitle)) return sTitle!.trim();
 
-    const date = ev.ceremony_date?.trim() || "";
-    const groom = (ev.groom_name || "").trim();
-    const bride = (ev.bride_name || "").trim();
-
-    const names =
-      groom && bride ? `${groom} · ${bride}` : groom ? groom : bride ? bride : "";
-
-    if (date && names) return `${date} ${names} 결혼식`;
-    if (date) return `${date} 결혼식`;
+    const names = [ev.groom_name, ev.bride_name].filter(Boolean).join(" · ");
     if (names) return `${names} 결혼식`;
-
     return "예식 설정 필요";
   };
 
-  const getDisplaySubtitle = (ev: EventRow) => {
-    const parts: string[] = [];
-    if (ev.venue_name) parts.push(ev.venue_name);
-    if (ev.venue_address) parts.push(ev.venue_address);
-    return parts.join(" · ");
+  const handleCopy = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2000);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const fetchEventSettings = async (eventIds: string[]) => {
-    if (eventIds.length === 0) {
-      setSettingsByEventId({});
-      return;
+  const shareToKakao = (ev: EventRow, invite: InviteResult) => {
+    const inviteLink = `${window.location.origin}/invite/${invite.token}`;
+
+    // ✅ TS 안전 처리
+    const Kakao = (window as any)?.Kakao;
+
+    // Kakao SDK가 로드/초기화되어 있으면 Share 사용
+    if (Kakao && typeof Kakao.isInitialized === "function" && Kakao.isInitialized()) {
+      try {
+        Kakao.Share.sendDefault({
+          objectType: "feed",
+          content: {
+            title: "예식 공동관리 초대",
+            description: `${getDisplayTitle(ev)}에 초대받으셨습니다. 예식 설정과 리포트를 함께 확인해보세요.`,
+            // ✅ 실제 이미지 URL이 있으면 넣고, 없으면 제거(카카오 정책/동작 이슈 방지)
+            // imageUrl: "https://<YOUR_DOMAIN>/kakao-share.png",
+            link: { mobileWebUrl: inviteLink, webUrl: inviteLink },
+          },
+          buttons: [
+            {
+              title: "초대 수락하기",
+              link: { mobileWebUrl: inviteLink, webUrl: inviteLink },
+            },
+          ],
+        });
+        return;
+      } catch (e) {
+        console.error(e);
+      }
     }
 
-    const { data, error } = await supabase
-      .from("event_settings")
-      .select("event_id, title")
-      .in("event_id", eventIds);
-
-    if (error) {
-      console.warn("[event_settings fetch]", error.message);
-      setSettingsByEventId({});
-      return;
-    }
-
-    const map: Record<string, EventSettingsRow> = {};
-    (data || []).forEach((row: any) => {
-      if (row?.event_id) map[row.event_id] = row;
-    });
-    setSettingsByEventId(map);
+    // SDK 미로드/미초기화/실패 시: 링크 복사로 fallback
+    handleCopy(inviteLink, `${ev.id}-kakao`);
+    alert("카카오톡 공유가 준비되지 않아 초대 링크를 복사했습니다. 카톡으로 붙여넣어 보내주세요.");
   };
 
   const fetchEvents = async () => {
     setLoading(true);
-    setErrorMsg("");
-
     try {
       const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
       if (sessionErr) throw sessionErr;
@@ -175,41 +156,54 @@ export default function EventHome() {
 
       let query = supabase
         .from("events")
-        .select(
-          "id, created_at, owner_email, ceremony_date, groom_name, bride_name, venue_name, venue_address"
-        )
-        .order("created_at", { ascending: false })
-        .limit(50);
+        .select("id, created_at, owner_email, groom_name, bride_name, ceremony_date, venue_name, venue_address")
+        .order("created_at", { ascending: false });
 
-      if (effectiveScope === "mine") {
-        query = query.eq("owner_email", userEmail);
-      }
+      if (effectiveScope === "mine") query = query.eq("owner_email", userEmail);
+      if (isAdmin && q.trim()) query = query.ilike("owner_email", `%${q.trim()}%`);
 
-      if (isAdmin && q.trim()) {
-        query = query.ilike("owner_email", `%${q.trim()}%`);
-      }
-
-      const { data, error } = await query;
+      const { data, error } = await query.limit(50);
       if (error) throw error;
 
       const rows = (data || []) as EventRow[];
       setEvents(rows);
 
-      await fetchEventSettings(rows.map((r) => r.id));
-    } catch (e: any) {
+      const ids = rows.map((r) => r.id);
+      if (ids.length > 0) {
+        const { data: sData, error: sErr } = await supabase
+          .from("event_settings")
+          .select("event_id, title")
+          .in("event_id", ids);
+
+        if (sErr) throw sErr;
+
+        const sMap: Record<string, EventSettingsRow> = {};
+        (sData || []).forEach((row) => {
+          sMap[row.event_id] = row as EventSettingsRow;
+        });
+        setSettingsByEventId(sMap);
+      } else {
+        setSettingsByEventId({});
+      }
+    } catch (e) {
       console.error(e);
-      setErrorMsg(e?.message || "이벤트 정보를 불러올 수 없습니다.");
-      setEvents([]);
-      setSettingsByEventId({});
     } finally {
       setLoading(false);
     }
   };
 
-  const createInvite = async (eventId: string) => {
-    setInviteMsgByEventId((p) => ({ ...p, [eventId]: "" }));
-    setInviteLoadingByEventId((p) => ({ ...p, [eventId]: true }));
+  const handleInviteToggle = async (eventId: string) => {
+    if (expandedInviteId === eventId) {
+      setExpandedInviteId(null);
+      return;
+    }
 
+    setExpandedInviteId(eventId);
+
+    // 이미 생성된 초대가 있으면 그대로 열기만
+    if (inviteByEventId[eventId]) return;
+
+    setInviteLoadingByEventId((p) => ({ ...p, [eventId]: true }));
     try {
       const { data, error } = await supabase.rpc("create_event_invite", {
         p_event_id: eventId,
@@ -217,20 +211,14 @@ export default function EventHome() {
         p_max_uses: 1,
         p_expires_in_days: 7,
       });
-
       if (error) throw error;
 
-      const row = Array.isArray(data) ? data[0] : data;
-      if (!row?.token || !row?.code) throw new Error("초대 생성 결과가 올바르지 않습니다.");
-
-      setInviteByEventId((p) => ({ ...p, [eventId]: row as InviteResult }));
-      setInviteMsgByEventId((p) => ({ ...p, [eventId]: "초대가 생성되었습니다." }));
-    } catch (e: any) {
+      const row = (Array.isArray(data) ? data[0] : data) as InviteResult | undefined;
+      if (row?.token && row?.code) {
+        setInviteByEventId((p) => ({ ...p, [eventId]: row }));
+      }
+    } catch (e) {
       console.error(e);
-      setInviteMsgByEventId((p) => ({
-        ...p,
-        [eventId]: e?.message || "초대 생성에 실패했습니다.",
-      }));
     } finally {
       setInviteLoadingByEventId((p) => ({ ...p, [eventId]: false }));
     }
@@ -242,247 +230,262 @@ export default function EventHome() {
   }, [effectiveScope]);
 
   return (
-    <section className="min-h-screen bg-white">
-      <div className="mx-auto max-w-5xl px-4 py-10">
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-ink/90">내 이벤트</h1>
-            <p className="mt-1 text-sm text-ink/60">
-              {loading ? "불러오는 중..." : isAdmin ? "운영자 계정" : "계정"}
-              {email ? ` · 로그인: ${email}` : ""}
+    <section className="relative min-h-screen overflow-hidden bg-background">
+      {/* Hero Section 스타일 배경 연동 */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(120,119,198,0.12),transparent_55%),radial-gradient(circle_at_80%_20%,rgba(244,114,182,0.12),transparent_55%),radial-gradient(circle_at_50%_80%,rgba(253,224,71,0.08),transparent_60%)]" />
+
+      <div className="relative mx-auto max-w-4xl px-6 py-16 lg:py-20">
+        <header className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">내 이벤트</h1>
+            <p className="mt-2 text-muted-foreground">
+              {isAdmin ? "운영자 모드" : "소중한 예식 데이터를 안전하게 관리하세요."}
             </p>
-          </div>
+          </motion.div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={fetchEvents}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            새로고침
+          </Button>
+        </header>
 
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={fetchEvents} disabled={loading}>
-              {loading ? "새로고침 중..." : "새로고침"}
-            </Button>
-          </div>
-        </div>
-
-        {/* ✅ 관리자 전용 컨트롤 */}
         {isAdmin && (
-          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant={scope === "all" ? "default" : "outline"}
+          <div className="mb-8 flex flex-col gap-3 rounded-3xl bg-white/40 p-2 shadow-sm border border-white/60 backdrop-blur-sm sm:flex-row">
+            <div className="flex bg-slate-200/50 p-1 rounded-full">
+              <button
                 onClick={() => setScope("all")}
+                className={cn(
+                  "px-5 py-1.5 text-sm font-semibold rounded-full transition",
+                  scope === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                )}
               >
-                전체 이벤트
-              </Button>
-              <Button
-                type="button"
-                variant={scope === "mine" ? "default" : "outline"}
+                전체
+              </button>
+              <button
                 onClick={() => setScope("mine")}
+                className={cn(
+                  "px-5 py-1.5 text-sm font-semibold rounded-full transition",
+                  scope === "mine" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                )}
               >
-                내 이벤트만
-              </Button>
+                내것
+              </button>
             </div>
-
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") fetchEvents();
-              }}
-              placeholder="owner_email 검색 (Enter)"
-              className="h-10 w-full sm:w-[320px] rounded-xl border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              onKeyDown={(e) => e.key === "Enter" && fetchEvents()}
+              placeholder="사용자 이메일 검색..."
+              className="flex-1 rounded-full border-none bg-transparent px-4 text-sm focus:ring-0"
             />
           </div>
         )}
 
-        {/* 에러 */}
-        {errorMsg && (
-          <Card className="mb-6 border-slate-200">
-            <CardContent className="p-5">
-              <p className="text-sm text-ink/80 font-medium">이벤트 정보를 불러올 수 없습니다.</p>
-              <p className="mt-1 text-sm text-ink/60">{errorMsg}</p>
-              <div className="mt-4 flex gap-2">
-                <Button onClick={fetchEvents}>새로고침</Button>
-                <Link to="/">
-                  <Button variant="outline">랜딩으로</Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* 리스트 */}
-        {events.length === 0 && !loading && !errorMsg ? (
-          <Card className="border-slate-200">
-            <CardContent className="p-6">
-              <p className="text-sm text-ink/80 font-medium">아직 준비 중입니다</p>
-              <p className="mt-1 text-sm text-ink/60">
-                {isAdmin
-                  ? "현재 조건에서 조회되는 이벤트가 없습니다."
-                  : "예약하지 않았거나, 아직 예약금이 확인되지 않았습니다."}
-              </p>
-              <p className="mt-3 text-xs text-ink/50">
-                * 이벤트 생성/연결은 예약금 입금 확인 후 자동으로 진행됩니다.
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-4">
-            {events.map((ev) => {
-              const baseTitle = getDisplayTitle(ev);
-              const dd = daysUntil(ev.ceremony_date);
-              const title = dd ? `${baseTitle} · ${dd}` : baseTitle;
-
-              const subtitle = getDisplaySubtitle(ev);
-
-              // ✅ 초대하기 노출 조건: 관리자 또는 owner
-              const canInvite =
-                isAdmin || (email && ev.owner_email && ev.owner_email === email);
-
+        <div className="space-y-6">
+          {loading ? (
+            <div className="py-20 text-center animate-pulse text-muted-foreground">정보를 불러오는 중...</div>
+          ) : events.length === 0 ? (
+            <div className="py-20 text-center text-muted-foreground">표시할 이벤트가 없습니다.</div>
+          ) : (
+            events.map((ev) => {
+              const dDay = getDDayInfo(ev.ceremony_date);
+              const canInvite = isAdmin || (email && ev.owner_email === email);
+              const isExpanded = expandedInviteId === ev.id;
               const invite = inviteByEventId[ev.id];
-              const inviteLoading = !!inviteLoadingByEventId[ev.id];
-              const inviteMsg = inviteMsgByEventId[ev.id] || "";
-
-              const inviteLink = invite
-                ? `${window.location.origin}/invite/${invite.token}`
-                : "";
 
               return (
-                <Card key={ev.id} className="border-slate-200">
-                  <CardContent className="p-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      {/* 좌측 */}
-                      <div className="min-w-0">
-                        <div className="text-base font-semibold text-ink/90 truncate">
-                          {title}
-                        </div>
+                <motion.div layout key={ev.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                  <Card className="group overflow-hidden border-border/40 bg-white/70 shadow-2xl shadow-slate-200/40 backdrop-blur-xl rounded-[2.5rem] transition-all hover:border-primary/20">
+                    <CardContent className="p-0">
+                      <div className="p-8 sm:p-10">
+                        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="space-y-4">
+                            <div className="flex items-center gap-3">
+                              {dDay && (
+                                <motion.span
+                                  animate={dDay.animate ? { scale: [1, 1.05, 1] } : {}}
+                                  transition={{ duration: 2, repeat: Infinity }}
+                                  className={cn(
+                                    "rounded-full px-4 py-1 text-[11px] font-black tracking-widest text-white uppercase shadow-lg shadow-rose-200",
+                                    dDay.color
+                                  )}
+                                >
+                                  {dDay.label}
+                                </motion.span>
+                              )}
+                              <h2 className="text-2xl font-bold tracking-tight text-slate-900">{getDisplayTitle(ev)}</h2>
+                            </div>
 
-                        {subtitle ? (
-                          <div className="mt-1 text-sm text-ink/60">{subtitle}</div>
-                        ) : (
-                          <div className="mt-1 text-sm text-ink/50">장소 정보 없음</div>
-                        )}
+                            <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-500 font-medium">
+                              <span className="flex items-center gap-1.5">
+                                <Calendar className="h-4 w-4 opacity-50" />
+                                {ev.ceremony_date || "날짜 미정"}
+                              </span>
+                              <span className="flex items-center gap-1.5">
+                                <MapPin className="h-4 w-4 opacity-50" />
+                                {ev.venue_name || "장소 미정"}
+                              </span>
+                            </div>
 
-                        {isAdmin && ev.owner_email && (
-                          <div className="mt-2 text-xs text-ink/50">
-                            owner: <span className="font-mono">{ev.owner_email}</span>
+                            {ev.venue_address && (
+                              <div className="text-xs text-slate-400">{ev.venue_address}</div>
+                            )}
                           </div>
-                        )}
+
+                          <div className="flex flex-wrap gap-2">
+                            <Link to={`/app/event/${ev.id}/report`}>
+                              <Button className="rounded-full bg-slate-900 font-bold hover:bg-slate-800">
+                                웨딩 리포트
+                              </Button>
+                            </Link>
+                            <Link to={`/app/event/${ev.id}/settings`}>
+                              <Button variant="outline" className="rounded-full border-slate-200">
+                                설정
+                              </Button>
+                            </Link>
+
+                            {canInvite && (
+                              <Button
+                                onClick={() => handleInviteToggle(ev.id)}
+                                variant="secondary"
+                                className={cn(
+                                  "rounded-full font-bold transition-all",
+                                  isExpanded ? "bg-primary text-white" : "bg-slate-100 text-slate-900"
+                                )}
+                              >
+                                <Share2 className="mr-2 h-4 w-4" /> 초대하기
+                              </Button>
+                            )}
+                          </div>
+                        </div>
                       </div>
 
-                      {/* 우측 액션 */}
-                      <div className="flex flex-wrap gap-2 justify-end">
-                        <Link to={`/app/event/${ev.id}/report`}>
-                          <Button className="rounded-xl">리포트 보기</Button>
-                        </Link>
-                        <Link to={`/app/event/${ev.id}/settings`}>
-                          <Button variant="outline" className="rounded-xl">
-                            예식 설정
-                          </Button>
-                        </Link>
-                        <Link to={`/app/event/${ev.id}/replay`}>
-                          <Button variant="outline" className={cn("rounded-xl")}>
-                            다시보기
-                          </Button>
-                        </Link>
-
-                        {/* ✅ 초대하기: 관리자/owner만 */}
-                        {canInvite && (
-                          <Button
-                            variant="outline"
-                            className="rounded-xl"
-                            onClick={() => createInvite(ev.id)}
-                            disabled={inviteLoading}
+                      {/* Invite Section */}
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ height: 0 }}
+                            animate={{ height: "auto" }}
+                            exit={{ height: 0 }}
+                            className="border-t border-slate-100 bg-slate-50/50 overflow-hidden"
                           >
-                            {inviteLoading ? "초대 생성 중…" : "초대하기"}
-                          </Button>
+                            <div className="p-8 sm:p-10">
+                              <div className="mb-8">
+                                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                  <Users className="h-5 w-5 text-primary" />
+                                  가족 및 혼주 초대
+                                </h3>
+                                <p className="mt-2 text-sm leading-relaxed text-slate-500 font-medium">
+                                  신랑·신부·혼주를 초대하면 예식 설정과 웨딩 리포트를 함께 확인할 수 있어요.
+                                  <span className="flex items-center gap-1.5 mt-2 text-[11px] text-rose-500/80">
+                                    <Info className="h-3.5 w-3.5" />
+                                    축의금 상세 내역은 본인인증 후 본인 계좌의 내역만 조회할 수 있어요.
+                                  </span>
+                                </p>
+                              </div>
+
+                              {inviteLoadingByEventId[ev.id] ? (
+                                <div className="py-10 text-center text-slate-400 animate-pulse">
+                                  초대 정보를 준비하고 있습니다...
+                                </div>
+                              ) : invite ? (
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                  {/* Kakao share card */}
+                                  <div className="rounded-[2rem] bg-white border border-slate-200 p-6 shadow-sm transition-all hover:shadow-md">
+                                    <div className="flex items-center justify-between mb-4">
+                                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                                        스마트 공유
+                                      </span>
+                                      <div className="rounded-full bg-yellow-100 p-1.5">
+                                        <MessageCircle className="h-4 w-4 text-yellow-600 fill-yellow-600" />
+                                      </div>
+                                    </div>
+                                    <p className="text-sm font-bold text-slate-800 mb-6">
+                                      가장 쉽고 빠른 방법으로
+                                      <br />
+                                      카카오톡으로 초대해보세요.
+                                    </p>
+                                    <Button
+                                      onClick={() => shareToKakao(ev, invite)}
+                                      className="w-full rounded-2xl bg-[#FEE500] text-[#191919] hover:bg-[#FADA0A] font-bold border-none h-12"
+                                    >
+                                      카카오톡으로 초대 보내기
+                                    </Button>
+                                  </div>
+
+                                  {/* Copy card */}
+                                  <div className="rounded-[2rem] bg-white border border-slate-200 p-6 shadow-sm transition-all hover:shadow-md">
+                                    <div className="flex items-center justify-between mb-4">
+                                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                                        초대 코드
+                                      </span>
+                                      <Clock className="h-4 w-4 text-slate-300" />
+                                    </div>
+
+                                    <div className="mb-6 flex items-baseline gap-2">
+                                      <span className="text-4xl font-black tracking-tighter text-slate-900">
+                                        {invite.code}
+                                      </span>
+                                      <span className="text-xs font-bold text-slate-400">7일간 유효</span>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                      <Button
+                                        variant="outline"
+                                        onClick={() => handleCopy(invite.code, `${ev.id}-code`)}
+                                        className="flex-1 rounded-2xl h-12 font-bold"
+                                      >
+                                        {copiedKey === `${ev.id}-code` ? (
+                                          <Check className="mr-2 h-4 w-4 text-green-500" />
+                                        ) : (
+                                          <Copy className="mr-2 h-4 w-4" />
+                                        )}
+                                        코드 복사
+                                      </Button>
+
+                                      <Button
+                                        variant="outline"
+                                        onClick={() =>
+                                          handleCopy(`${window.location.origin}/invite/${invite.token}`, `${ev.id}-link`)
+                                        }
+                                        className="flex-1 rounded-2xl h-12 font-bold"
+                                      >
+                                        {copiedKey === `${ev.id}-link` ? (
+                                          <Check className="mr-2 h-4 w-4 text-green-500" />
+                                        ) : (
+                                          <Share2 className="mr-2 h-4 w-4" />
+                                        )}
+                                        링크 복사
+                                      </Button>
+                                    </div>
+
+                                    <div className="mt-3 text-[11px] text-slate-400">
+                                      * 코드는 전화/문자로 전달할 때 편리해요. 상대는 /join 에서 입력해요.
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="py-10 text-center text-slate-400">
+                                  초대 정보를 만들 수 없습니다. 잠시 후 다시 시도해주세요.
+                                </div>
+                              )}
+                            </div>
+                          </motion.div>
                         )}
-                      </div>
-                    </div>
-
-                    {/* ✅ 초대 안내 + 공유 (관리자/owner만) */}
-                    {canInvite && (
-                      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium text-ink/80">초대 공유</div>
-                            <div className="mt-1 text-xs text-ink/55 leading-relaxed">
-                              신랑·신부·혼주를 이 이벤트에 초대하면, <b>예식 설정</b>과 <b>웨딩 리포트</b>를 함께
-                              확인할 수 있어요.
-                              <br />
-                              단, <b>축의금 내역은 본인인증 후 본인 계좌의 내역만</b> 조회할 수 있어요.
-                            </div>
-                          </div>
-
-                          {invite?.expires_at && (
-                            <div className="text-xs text-ink/50">
-                              만료: <span className="font-mono">{invite.expires_at}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {inviteMsg && (
-                          <div className={cn("mt-2 text-sm", invite ? "text-ink/60" : "text-red-600")}>
-                            {inviteMsg}
-                          </div>
-                        )}
-
-                        {invite && (
-                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                            <div className="rounded-xl border border-slate-200 p-3">
-                              <div className="text-xs text-ink/50">링크(토큰)</div>
-                              <div className="mt-1 text-sm font-mono break-all text-ink/80">
-                                {inviteLink}
-                              </div>
-                              <div className="mt-2">
-                                <Button
-                                  variant="outline"
-                                  className="rounded-xl w-full"
-                                  onClick={async () => {
-                                    const ok = await safeCopy(inviteLink);
-                                    setInviteMsgByEventId((p) => ({
-                                      ...p,
-                                      [ev.id]: ok ? "링크가 복사되었습니다." : "복사에 실패했습니다.",
-                                    }));
-                                  }}
-                                >
-                                  링크 복사
-                                </Button>
-                              </div>
-                            </div>
-
-                            <div className="rounded-xl border border-slate-200 p-3">
-                              <div className="text-xs text-ink/50">코드(6자리)</div>
-                              <div className="mt-1 text-2xl font-mono tracking-widest text-ink/90">
-                                {invite.code}
-                              </div>
-                              <div className="mt-2">
-                                <Button
-                                  variant="outline"
-                                  className="rounded-xl w-full"
-                                  onClick={async () => {
-                                    const ok = await safeCopy(invite.code);
-                                    setInviteMsgByEventId((p) => ({
-                                      ...p,
-                                      [ev.id]: ok ? "코드가 복사되었습니다." : "복사에 실패했습니다.",
-                                    }));
-                                  }}
-                                >
-                                  코드 복사
-                                </Button>
-                              </div>
-                              <div className="mt-2 text-xs text-ink/50">
-                                하객은 <span className="font-mono">/join</span>에서 코드로 참여
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                      </AnimatePresence>
+                    </CardContent>
+                  </Card>
+                </motion.div>
               );
-            })}
-          </div>
-        )}
+            })
+          )}
+        </div>
       </div>
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-background to-transparent" />
     </section>
   );
 }
