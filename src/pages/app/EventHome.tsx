@@ -36,11 +36,42 @@ type InviteResult = {
 
 const ADMIN_EMAIL = "goraeuniverse@gmail.com";
 
+// "WEDDING MESSAGES" 같은 기본 템플릿 타이틀은 사용자 타이틀로 취급하지 않음
+const isMeaningfulTitle = (title?: string | null) => {
+  const t = (title || "").trim();
+  if (!t) return false;
+  if (t.toUpperCase() === "WEDDING MESSAGES") return false;
+  return true;
+};
+
+const daysUntil = (isoDate?: string | null) => {
+  if (!isoDate) return null;
+  // "YYYY-MM-DD" 기준
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.trim());
+  if (!m) return null;
+
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+
+  // 로컬 타임존의 "자정"으로 통일 (D-day 흔들림 방지)
+  const today = new Date();
+  const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const targetMid = new Date(y, mo - 1, d).getTime();
+
+  const diffDays = Math.round((targetMid - todayMid) / (1000 * 60 * 60 * 24));
+  if (Number.isNaN(diffDays)) return null;
+
+  if (diffDays > 0) return `D-${diffDays}`;
+  if (diffDays === 0) return "D-DAY";
+  return `D+${Math.abs(diffDays)}`;
+};
+
 export default function EventHome() {
   const [email, setEmail] = useState<string>("");
   const isAdmin = useMemo(() => email === ADMIN_EMAIL, [email]);
 
-  // 관리자 UX: 전체/내것 토글 + 검색
+  // 관리자 UX
   const [scope, setScope] = useState<"all" | "mine">("all");
   const [q, setQ] = useState("");
   const [events, setEvents] = useState<EventRow[]>([]);
@@ -83,8 +114,8 @@ export default function EventHome() {
   };
 
   const getDisplayTitle = (ev: EventRow) => {
-    const sTitle = settingsByEventId[ev.id]?.title?.trim();
-    if (sTitle) return sTitle;
+    const sTitle = settingsByEventId[ev.id]?.title;
+    if (isMeaningfulTitle(sTitle)) return sTitle!.trim();
 
     const date = ev.ceremony_date?.trim() || "";
     const groom = (ev.groom_name || "").trim();
@@ -142,7 +173,6 @@ export default function EventHome() {
       const userEmail = sessionData.session?.user?.email ?? "";
       setEmail(userEmail);
 
-      // ✅ 핵심: 관리자면 owner_email 필터를 걸지 않는다.
       let query = supabase
         .from("events")
         .select(
@@ -165,7 +195,6 @@ export default function EventHome() {
       const rows = (data || []) as EventRow[];
       setEvents(rows);
 
-      // 제목 표시용 event_settings.title 가져오기
       await fetchEventSettings(rows.map((r) => r.id));
     } catch (e: any) {
       console.error(e);
@@ -297,25 +326,33 @@ export default function EventHome() {
         ) : (
           <div className="space-y-4">
             {events.map((ev) => {
-              const title = getDisplayTitle(ev);
+              const baseTitle = getDisplayTitle(ev);
+              const dd = daysUntil(ev.ceremony_date);
+              const title = dd ? `${baseTitle} · ${dd}` : baseTitle;
+
               const subtitle = getDisplaySubtitle(ev);
 
-              // ✅ 초대 생성 버튼 노출 조건: 관리자 또는 owner
-              const canCreateInvite = isAdmin || (email && ev.owner_email && ev.owner_email === email);
+              // ✅ 초대하기 노출 조건: 관리자 또는 owner
+              const canInvite =
+                isAdmin || (email && ev.owner_email && ev.owner_email === email);
 
               const invite = inviteByEventId[ev.id];
               const inviteLoading = !!inviteLoadingByEventId[ev.id];
               const inviteMsg = inviteMsgByEventId[ev.id] || "";
 
-              const inviteLink = invite ? `${window.location.origin}/invite/${invite.token}` : "";
+              const inviteLink = invite
+                ? `${window.location.origin}/invite/${invite.token}`
+                : "";
 
               return (
                 <Card key={ev.id} className="border-slate-200">
                   <CardContent className="p-5">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      {/* 좌측: 사용자용 타이틀/서브 */}
+                      {/* 좌측 */}
                       <div className="min-w-0">
-                        <div className="text-base font-semibold text-ink/90 truncate">{title}</div>
+                        <div className="text-base font-semibold text-ink/90 truncate">
+                          {title}
+                        </div>
 
                         {subtitle ? (
                           <div className="mt-1 text-sm text-ink/60">{subtitle}</div>
@@ -330,7 +367,7 @@ export default function EventHome() {
                         )}
                       </div>
 
-                      {/* 우측: 액션 */}
+                      {/* 우측 액션 */}
                       <div className="flex flex-wrap gap-2 justify-end">
                         <Link to={`/app/event/${ev.id}/report`}>
                           <Button className="rounded-xl">리포트 보기</Button>
@@ -346,25 +383,34 @@ export default function EventHome() {
                           </Button>
                         </Link>
 
-                        {/* ✅ 초대 생성: 관리자/owner만 노출 */}
-                        {canCreateInvite && (
+                        {/* ✅ 초대하기: 관리자/owner만 */}
+                        {canInvite && (
                           <Button
                             variant="outline"
                             className="rounded-xl"
                             onClick={() => createInvite(ev.id)}
                             disabled={inviteLoading}
                           >
-                            {inviteLoading ? "초대 생성 중…" : "초대 만들기"}
+                            {inviteLoading ? "초대 생성 중…" : "초대하기"}
                           </Button>
                         )}
                       </div>
                     </div>
 
-                    {/* ✅ 초대 결과 표시: 관리자/owner만 노출 */}
-                    {canCreateInvite && (invite || inviteMsg) && (
+                    {/* ✅ 초대 안내 + 공유 (관리자/owner만) */}
+                    {canInvite && (
                       <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="text-sm font-medium text-ink/80">초대 공유</div>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-ink/80">초대 공유</div>
+                            <div className="mt-1 text-xs text-ink/55 leading-relaxed">
+                              신랑·신부·혼주를 이 이벤트에 초대하면, <b>예식 설정</b>과 <b>웨딩 리포트</b>를 함께
+                              확인할 수 있어요.
+                              <br />
+                              단, <b>축의금 내역은 본인인증 후 본인 계좌의 내역만</b> 조회할 수 있어요.
+                            </div>
+                          </div>
+
                           {invite?.expires_at && (
                             <div className="text-xs text-ink/50">
                               만료: <span className="font-mono">{invite.expires_at}</span>
