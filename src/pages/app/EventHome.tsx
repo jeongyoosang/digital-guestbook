@@ -230,10 +230,8 @@ export default function EventHome() {
   }, [effectiveScope]);
 
   return (
-    <section className="relative min-h-screen overflow-hidden bg-background">
+    <section className="relative min-h-screen">
       {/* Hero Section 스타일 배경 연동 */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(120,119,198,0.12),transparent_55%),radial-gradient(circle_at_80%_20%,rgba(244,114,182,0.12),transparent_55%),radial-gradient(circle_at_50%_80%,rgba(253,224,71,0.08),transparent_60%)]" />
-
       <div className="relative mx-auto max-w-4xl px-6 py-16 lg:py-20">
         <header className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -298,7 +296,7 @@ export default function EventHome() {
 
               return (
                 <motion.div layout key={ev.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-                  <Card className="group overflow-hidden border-rose-200/70 ring-1 ring-rose-200/30 bg-white/70 shadow-2xl shadow-slate-200/40 backdrop-blur-xl rounded-[2.5rem] transition-all hover:border-primary/20">
+                  <Card className="group overflow-hidden border border-rose-200/70 ring-1 ring-rose-200/40 bg-white/70 shadow-2xl shadow-rose-200/30 backdrop-blur-xl rounded-[2.5rem] transition-all hover:border-rose-300/80">
                     <CardContent className="p-0">
                       <div className="p-8 sm:p-10">
                         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
@@ -337,7 +335,7 @@ export default function EventHome() {
 
                           <div className="flex flex-wrap gap-2">
                             <Link to={`/app/event/${ev.id}/report`}>
-                              <Button className="rounded-full bg-slate-900 text-white font-bold hover:bg-slate-800">
+                              <Button className="rounded-full bg-indigo-600 text-white font-bold hover:bg-indigo-700">
                                 웨딩 리포트
                               </Button>
                             </Link>
