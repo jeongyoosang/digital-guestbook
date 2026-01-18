@@ -6,17 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  Calendar,
-  MapPin,
-  Share2,
-  Copy,
-  Check,
-  Users,
-  Info,
-  MessageCircle,
-  Clock,
-} from "lucide-react";
+import { Calendar, MapPin, Share2, Copy, Check, Users, Info, Clock } from "lucide-react";
 
 // --- Types ---
 type EventRow = {
@@ -25,7 +15,7 @@ type EventRow = {
   owner_email: string | null;
   groom_name?: string | null;
   bride_name?: string | null;
-  ceremony_date: string | null;
+  ceremony_date: string | null; // (events 테이블 값, fallback)
   venue_name: string | null;
   venue_address: string | null;
 };
@@ -33,6 +23,7 @@ type EventRow = {
 type EventSettingsRow = {
   event_id: string;
   title: string | null;
+  ceremony_date: string | null; // ✅ 1) 날짜는 event_settings 기준 우선
 };
 
 type InviteResult = {
@@ -51,6 +42,12 @@ const isMeaningfulTitle = (title?: string | null) => {
   const t = (title || "").trim();
   if (!t || t.toUpperCase() === "WEDDING MESSAGES") return false;
   return true;
+};
+
+const safeLocalNameFromEmail = (email?: string | null) => {
+  if (!email) return "";
+  const at = email.indexOf("@");
+  return at > 0 ? email.slice(0, at) : email;
 };
 
 // D-Day 계산 및 스타일 헬퍼
@@ -89,6 +86,12 @@ export default function EventHome() {
 
   const effectiveScope = isAdmin ? scope : "mine";
 
+  // ✅ 날짜는 event_settings 우선
+  const getEventDate = (ev: EventRow) => {
+    const sDate = settingsByEventId[ev.id]?.ceremony_date;
+    return sDate || ev.ceremony_date || null;
+  };
+
   // display title (settings.title 우선, 기본값 WEDDING MESSAGES는 무시)
   const getDisplayTitle = (ev: EventRow) => {
     const sTitle = settingsByEventId[ev.id]?.title;
@@ -99,6 +102,15 @@ export default function EventHome() {
     return "예식 설정 필요";
   };
 
+  // ✅ 초대 텍스트 타이틀: (1) 신랑·신부 이름 (2) 예약자 대체: owner_email 로컬파트
+  const getInviteTitleForText = (ev: EventRow) => {
+    const names = [ev.groom_name, ev.bride_name].filter(Boolean).join(" · ");
+    if (names) return `${names} 결혼식 디지털방명록 초대장`;
+    const ownerLike = safeLocalNameFromEmail(ev.owner_email);
+    if (ownerLike) return `${ownerLike}님의 디지털방명록 초대장`;
+    return `디지털방명록 초대장`;
+  };
+
   const handleCopy = async (text: string, key: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -106,42 +118,27 @@ export default function EventHome() {
       setTimeout(() => setCopiedKey(null), 2000);
     } catch (e) {
       console.error(e);
+      alert("복사에 실패했습니다. 브라우저 권한을 확인해주세요.");
     }
   };
 
-  const shareToKakao = (ev: EventRow, invite: InviteResult) => {
+  // ✅ 4) / 4-1) 안내 텍스트 + 링크 + 코드까지 “한 번에 복사”
+  const handleCopyInvitePackage = async (ev: EventRow, invite: InviteResult) => {
     const inviteLink = `${window.location.origin}/invite/${invite.token}`;
+    const date = getEventDate(ev);
+    const dateLine = date ? `${date}` : `날짜 미정`;
+    const titleLine = getInviteTitleForText(ev);
 
-    // ✅ TS 안전 처리
-    const Kakao = (window as any)?.Kakao;
+    const text = [
+      `${dateLine} · ${titleLine}`,
+      ``,
+      `초대 링크: ${inviteLink}`,
+      `초대 코드: ${invite.code}`,
+      ``,
+      `참여 방법: 링크로 들어가거나, /join 에서 초대코드를 입력하세요.`,
+    ].join("\n");
 
-    // Kakao SDK가 로드/초기화되어 있으면 Share 사용
-    if (Kakao && typeof Kakao.isInitialized === "function" && Kakao.isInitialized()) {
-      try {
-        Kakao.Share.sendDefault({
-          objectType: "feed",
-          content: {
-            title: "예식 공동관리 초대",
-            description: `${getDisplayTitle(ev)}에 초대받으셨습니다. 예식 설정과 리포트를 함께 확인해보세요.`,
-            // imageUrl: "https://<YOUR_DOMAIN>/kakao-share.png",
-            link: { mobileWebUrl: inviteLink, webUrl: inviteLink },
-          },
-          buttons: [
-            {
-              title: "초대 수락하기",
-              link: { mobileWebUrl: inviteLink, webUrl: inviteLink },
-            },
-          ],
-        });
-        return;
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
-    // SDK 미로드/미초기화/실패 시: 링크 복사로 fallback
-    handleCopy(inviteLink, `${ev.id}-kakao`);
-    alert("카카오톡 공유가 준비되지 않아 초대 링크를 복사했습니다. 카톡으로 붙여넣어 보내주세요.");
+    await handleCopy(text, `${ev.id}-invitepack`);
   };
 
   const fetchEvents = async () => {
@@ -169,9 +166,10 @@ export default function EventHome() {
 
       const ids = rows.map((r) => r.id);
       if (ids.length > 0) {
+        // ✅ title + ceremony_date 같이 가져오기 (1번 해결)
         const { data: sData, error: sErr } = await supabase
           .from("event_settings")
-          .select("event_id, title")
+          .select("event_id, title, ceremony_date")
           .in("event_id", ids);
 
         if (sErr) throw sErr;
@@ -199,11 +197,12 @@ export default function EventHome() {
 
     setExpandedInviteId(eventId);
 
-    // 이미 생성된 초대가 있으면 그대로 열기만
+    // 이미 받아온 초대가 있으면 그대로 열기만
     if (inviteByEventId[eventId]) return;
 
     setInviteLoadingByEventId((p) => ({ ...p, [eventId]: true }));
     try {
+      // ✅ ensure 동작으로 바뀜: 있으면 반환, 없으면 생성
       const { data, error } = await supabase.rpc("create_event_invite", {
         p_event_id: eventId,
         p_role: "member",
@@ -229,7 +228,6 @@ export default function EventHome() {
   }, [effectiveScope]);
 
   return (
-    // ✅ AppLayout에서 전체 배경을 깔고 있으므로, 여기서는 투명으로 “얹기”
     <section className="relative min-h-[calc(100vh-72px)] bg-transparent">
       <div className="relative mx-auto max-w-4xl px-6 py-16 lg:py-20">
         <header className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -238,16 +236,17 @@ export default function EventHome() {
             <p className="mt-2 text-muted-foreground">
               {isAdmin ? "운영자 모드" : "소중한 예식 데이터를 안전하게 관리하세요."}
             </p>
+
+            {/* ✅ 6) 로그인 이메일 노출 */}
+            {email && (
+              <div className="mt-2 text-xs text-slate-400">
+                로그인: <span className="font-medium text-slate-500">{email}</span>
+              </div>
+            )}
           </div>
 
-          {/* ✅ 모바일: 오른쪽 정렬 / 데스크탑: 기존처럼 오른쪽 */}
           <div className="flex justify-end sm:justify-start">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={fetchEvents}
-              className="text-muted-foreground hover:text-foreground"
-            >
+            <Button variant="ghost" size="sm" onClick={fetchEvents} className="text-muted-foreground hover:text-foreground">
               새로고침
             </Button>
           </div>
@@ -292,7 +291,9 @@ export default function EventHome() {
             <div className="py-20 text-center text-muted-foreground">표시할 이벤트가 없습니다.</div>
           ) : (
             events.map((ev) => {
-              const dDay = getDDayInfo(ev.ceremony_date);
+              const eventDate = getEventDate(ev);
+              const dDay = getDDayInfo(eventDate);
+
               const canInvite = isAdmin || (email && ev.owner_email === email);
               const isExpanded = expandedInviteId === ev.id;
               const invite = inviteByEventId[ev.id];
@@ -323,7 +324,7 @@ export default function EventHome() {
                             <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-500 font-medium">
                               <span className="flex items-center gap-1.5">
                                 <Calendar className="h-4 w-4 opacity-50" />
-                                {ev.ceremony_date || "날짜 미정"}
+                                {eventDate || "날짜 미정"}
                               </span>
                               <span className="flex items-center gap-1.5">
                                 <MapPin className="h-4 w-4 opacity-50" />
@@ -334,15 +335,14 @@ export default function EventHome() {
                             {ev.venue_address && <div className="text-xs text-slate-400">{ev.venue_address}</div>}
                           </div>
 
+                          {/* ✅ 8) 버튼 순서: 설정 → 초대 → 리포트 */}
                           <div className="flex flex-wrap gap-2">
-                            <Link to={`/app/event/${ev.id}/report`}>
-                              {/* ✅ 블랙 대신 “인디고” 유지 (가독성+고급톤) */}
-                              <Button className="rounded-full bg-indigo-600 text-white font-bold hover:bg-indigo-700">
-                                웨딩 리포트
-                              </Button>
-                            </Link>
                             <Link to={`/app/event/${ev.id}/settings`}>
-                              <Button variant="outline" className="rounded-full border-slate-200 bg-white/60 hover:bg-white/70">
+                              {/* ✅ 7) hover 가시성 개선 (흰 글씨 문제 방지) */}
+                              <Button
+                                variant="outline"
+                                className="rounded-full border-rose-200 bg-white/60 hover:bg-rose-50 hover:border-rose-300 hover:text-slate-900"
+                              >
                                 상세 설정
                               </Button>
                             </Link>
@@ -353,12 +353,18 @@ export default function EventHome() {
                                 variant="secondary"
                                 className={cn(
                                   "rounded-full font-bold transition-all",
-                                  isExpanded ? "bg-primary text-white" : "bg-slate-100 text-slate-900"
+                                  isExpanded ? "bg-rose-500 text-white hover:bg-rose-600" : "bg-slate-100 text-slate-900"
                                 )}
                               >
                                 <Share2 className="mr-2 h-4 w-4" /> 초대하기
                               </Button>
                             )}
+
+                            <Link to={`/app/event/${ev.id}/report`}>
+                              <Button className="rounded-full bg-indigo-600 text-white font-bold hover:bg-indigo-700">
+                                웨딩 리포트
+                              </Button>
+                            </Link>
                           </div>
                         </div>
                       </div>
@@ -375,7 +381,7 @@ export default function EventHome() {
                             <div className="p-8 sm:p-10">
                               <div className="mb-8">
                                 <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                                  <Users className="h-5 w-5 text-primary" />
+                                  <Users className="h-5 w-5 text-rose-500" />
                                   가족 및 혼주 초대
                                 </h3>
                                 <p className="mt-2 text-sm leading-relaxed text-slate-500 font-medium">
@@ -393,77 +399,101 @@ export default function EventHome() {
                                 </div>
                               ) : invite ? (
                                 <div className="grid gap-4 sm:grid-cols-2">
-                                  {/* Kakao share card */}
+                                  {/* ✅ 3) 카카오 공유 카드 제거 / ✅ 4-1) 초대 텍스트+링크+코드 한번에 복사 */}
                                   <div className="rounded-[2rem] bg-white border border-slate-200 p-6 shadow-sm transition-all hover:shadow-md">
                                     <div className="flex items-center justify-between mb-4">
                                       <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                                        스마트 공유
-                                      </span>
-                                      <div className="rounded-full bg-yellow-100 p-1.5">
-                                        <MessageCircle className="h-4 w-4 text-yellow-600 fill-yellow-600" />
-                                      </div>
-                                    </div>
-                                    <p className="text-sm font-bold text-slate-800 mb-6">
-                                      가장 쉽고 빠른 방법으로
-                                      <br />
-                                      카카오톡으로 초대해보세요.
-                                    </p>
-                                    <Button
-                                      onClick={() => shareToKakao(ev, invite)}
-                                      className="w-full rounded-2xl bg-[#FEE500] text-[#191919] hover:bg-[#FADA0A] font-bold border-none h-12"
-                                    >
-                                      카카오톡으로 초대 보내기
-                                    </Button>
-                                  </div>
-
-                                  {/* Copy card */}
-                                  <div className="rounded-[2rem] bg-white border border-slate-200 p-6 shadow-sm transition-all hover:shadow-md">
-                                    <div className="flex items-center justify-between mb-4">
-                                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                                        초대 코드
+                                        초대하기
                                       </span>
                                       <Clock className="h-4 w-4 text-slate-300" />
                                     </div>
 
-                                    <div className="mb-6 flex items-baseline gap-2">
-                                      <span className="text-4xl font-black tracking-tighter text-slate-900">
-                                        {invite.code}
+                                    <p className="text-sm font-bold text-slate-800 mb-4 leading-relaxed">
+                                      아래 버튼을 누르면
+                                      <br />
+                                      <span className="text-rose-500">안내문 + 링크 + 코드</span>가 한 번에 복사돼요.
+                                    </p>
+
+                                    <Button
+                                      onClick={() => handleCopyInvitePackage(ev, invite)}
+                                      className="w-full rounded-2xl h-12 font-bold bg-rose-500 text-white hover:bg-rose-600"
+                                    >
+                                      {copiedKey === `${ev.id}-invitepack` ? (
+                                        <>
+                                          <Check className="mr-2 h-4 w-4" /> 복사 완료
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Copy className="mr-2 h-4 w-4" /> 초대 텍스트 복사
+                                        </>
+                                      )}
+                                    </Button>
+
+                                    <div className="mt-4 rounded-xl bg-slate-50 border border-slate-100 p-4">
+                                      <div className="text-[11px] font-semibold text-slate-500 mb-2">현재 초대 코드</div>
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="text-3xl font-black tracking-tighter text-slate-900">
+                                          {invite.code}
+                                        </div>
+                                        <Button
+                                          variant="outline"
+                                          onClick={() => handleCopy(invite.code, `${ev.id}-codeonly`)}
+                                          className="rounded-xl font-bold bg-white/60 hover:bg-white/70"
+                                        >
+                                          {copiedKey === `${ev.id}-codeonly` ? (
+                                            <Check className="mr-2 h-4 w-4 text-green-500" />
+                                          ) : (
+                                            <Copy className="mr-2 h-4 w-4" />
+                                          )}
+                                          코드만 복사
+                                        </Button>
+                                      </div>
+                                      <div className="mt-2 text-[11px] text-slate-400">
+                                        유효기간: 7일 (1회 사용)
+                                      </div>
+                                    </div>
+
+                                    {/* ✅ 5) 애매한 문구 제거 → 명확한 1줄 */}
+                                    <div className="mt-3 text-[11px] text-slate-400">
+                                      상대가 링크를 못 열면 <span className="font-semibold">/join</span>에서 코드로 참여할 수 있어요.
+                                    </div>
+                                  </div>
+
+                                  {/* 보조 카드: 링크만 필요하면 */}
+                                  <div className="rounded-[2rem] bg-white border border-slate-200 p-6 shadow-sm transition-all hover:shadow-md">
+                                    <div className="flex items-center justify-between mb-4">
+                                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                                        링크
                                       </span>
-                                      <span className="text-xs font-bold text-slate-400">7일간 유효</span>
+                                      <Share2 className="h-4 w-4 text-slate-300" />
                                     </div>
 
-                                    <div className="flex gap-2">
-                                      <Button
-                                        variant="outline"
-                                        onClick={() => handleCopy(invite.code, `${ev.id}-code`)}
-                                        className="flex-1 rounded-2xl h-12 font-bold bg-white/60 hover:bg-white/70"
-                                      >
-                                        {copiedKey === `${ev.id}-code` ? (
-                                          <Check className="mr-2 h-4 w-4 text-green-500" />
-                                        ) : (
-                                          <Copy className="mr-2 h-4 w-4" />
-                                        )}
-                                        코드 복사
-                                      </Button>
+                                    <p className="text-sm font-bold text-slate-800 mb-6">
+                                      링크만 따로 필요하면
+                                      <br />
+                                      아래 버튼으로 복사하세요.
+                                    </p>
 
-                                      <Button
-                                        variant="outline"
-                                        onClick={() =>
-                                          handleCopy(`${window.location.origin}/invite/${invite.token}`, `${ev.id}-link`)
-                                        }
-                                        className="flex-1 rounded-2xl h-12 font-bold bg-white/60 hover:bg-white/70"
-                                      >
-                                        {copiedKey === `${ev.id}-link` ? (
-                                          <Check className="mr-2 h-4 w-4 text-green-500" />
-                                        ) : (
-                                          <Share2 className="mr-2 h-4 w-4" />
-                                        )}
-                                        링크 복사
-                                      </Button>
-                                    </div>
+                                    <Button
+                                      variant="outline"
+                                      onClick={() =>
+                                        handleCopy(`${window.location.origin}/invite/${invite.token}`, `${ev.id}-linkonly`)
+                                      }
+                                      className="w-full rounded-2xl h-12 font-bold bg-white/60 hover:bg-white/70"
+                                    >
+                                      {copiedKey === `${ev.id}-linkonly` ? (
+                                        <>
+                                          <Check className="mr-2 h-4 w-4 text-green-500" /> 복사 완료
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Copy className="mr-2 h-4 w-4" /> 링크 복사
+                                        </>
+                                      )}
+                                    </Button>
 
                                     <div className="mt-3 text-[11px] text-slate-400">
-                                      * 코드는 전화/문자로 전달할 때 편리해요. 상대는 /join 에서 입력해요.
+                                      링크로 들어오면 자동 참여가 진행돼요.
                                     </div>
                                   </div>
                                 </div>
@@ -485,7 +515,6 @@ export default function EventHome() {
         </div>
       </div>
 
-      {/* ✅ from-background 때문에 AppLayout 배경이 “흰색”으로 덮이는 느낌이 날 수 있어서, 투명 기반으로 교체 */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-transparent to-transparent" />
     </section>
   );

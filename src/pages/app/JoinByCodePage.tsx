@@ -19,7 +19,6 @@ export default function JoinByCodePage() {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData.session) {
-        // ✅ 너희 프로젝트 표준: next 파라미터
         navigate(`/login?next=${encodeURIComponent("/join")}`);
         return;
       }
@@ -38,9 +37,8 @@ export default function JoinByCodePage() {
       const row = Array.isArray(data) ? data[0] : data;
       const eventId = row?.event_id;
 
-      if (!eventId) throw new Error("event_id가 없습니다.");
+      if (!eventId) throw new Error("이벤트를 찾을 수 없습니다.");
 
-      // 기본은 report (원하면 role 보고 settings로 분기 가능)
       navigate(`/app/event/${eventId}/report`);
     } catch (e: any) {
       console.error(e);
@@ -56,7 +54,7 @@ export default function JoinByCodePage() {
         <Card className="bg-white/90 border-leafLight/60">
           <CardContent className="p-6 space-y-4">
             <div className="text-lg font-semibold text-ink/90">초대 코드로 참여</div>
-            <div className="text-sm text-ink/60">카톡으로 받은 6자리 코드를 입력하세요.</div>
+            <div className="text-sm text-ink/60">6자리 코드를 입력하세요.</div>
 
             <input
               value={code}

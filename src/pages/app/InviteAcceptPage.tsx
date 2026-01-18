@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 export default function InviteAcceptPage() {
-  const { token } = useParams<{ token: string }>(); // param name is just for readability
+  const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -26,7 +26,7 @@ export default function InviteAcceptPage() {
 
     try {
       if (!normalizedToken) {
-        setMsg("초대 링크 토큰이 없습니다.");
+        setMsg("초대 링크가 유효하지 않습니다.");
         return;
       }
 
@@ -44,11 +44,8 @@ export default function InviteAcceptPage() {
       const row = Array.isArray(data) ? data[0] : data;
       const eventId = row?.event_id;
 
-      if (!eventId) {
-        throw new Error("이벤트 정보를 찾을 수 없습니다.");
-      }
+      if (!eventId) throw new Error("이벤트 정보를 찾을 수 없습니다.");
 
-      // 기본은 report
       navigate(`/app/event/${eventId}/report`);
     } catch (e: any) {
       console.error(e);
@@ -71,9 +68,6 @@ export default function InviteAcceptPage() {
             <div>
               <div className="text-lg font-semibold text-ink/90">초대 참여</div>
               <div className="mt-1 text-sm text-ink/60">링크로 자동 참여를 진행합니다.</div>
-              <div className="mt-3 text-xs text-ink/50">
-                token: <span className="font-mono">{normalizedToken || "-"}</span>
-              </div>
             </div>
 
             {loading ? (
