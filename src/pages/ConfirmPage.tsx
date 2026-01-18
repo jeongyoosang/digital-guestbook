@@ -131,7 +131,7 @@ export default function ConfirmPage() {
   const [mobileInvitationLink, setMobileInvitationLink] = useState("");
 
   // 배경 모드 & 업로드된 사진 URL 들
-  const [backgroundMode, setBackgroundMode] = useState<"template" | "photo">("template");
+  const [backgroundMode, setBackgroundMode] = useState<"template" | "photo">("photo");
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
 
@@ -263,7 +263,7 @@ export default function ConfirmPage() {
         setDisplaySubtitle(DEFAULT_SUBTITLE);
         setLowerMessage(DEFAULT_LOWER_MESSAGE);
         setDisplayStyle("basic");
-        setBackgroundMode("template");
+        setBackgroundMode("photo");
         setPhotoUrls([]);
         setMobileInvitationLink("");
       }
@@ -614,8 +614,8 @@ export default function ConfirmPage() {
 
       <form onSubmit={handleSave} className="space-y-6">
         {/* 모바일 청첩장 */}
-        <section className="border rounded-xl p-4 space-y-2 bg-gray-50">
-          <h2 className="text-sm md:text-lg font-semibold">모바일 청첩장 (필수)</h2>
+        <section className="bg-white border border-gray-200 rounded-2xl p-4 space-y-4 transition-shadow hover:border-gray-300 hover:shadow-sm">
+          <h2 className="text-sm md:text-lg font-semibold">모바일 청첩장</h2>
           <p className="text-[11px] text-gray-500">
             모바일 청첩장 링크는 필수입니다. (예금주/사진 등을 최종 더블체크하기 위한 용도)
           </p>
@@ -644,7 +644,7 @@ export default function ConfirmPage() {
         </section>
 
         {/* 기본 정보 */}
-        <section className="border rounded-xl p-4 space-y-3 bg-gray-50">
+        <section className="bg-white border border-gray-200 rounded-2xl p-4 space-y-4 transition-shadow hover:border-gray-300 hover:shadow-sm">
           <h2 className="text-sm md:text-lg font-semibold">기본 정보</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -700,7 +700,7 @@ export default function ConfirmPage() {
         </section>
 
         {/* 예식 시간 */}
-        <section className="border rounded-xl p-4 space-y-4">
+        <section className="bg-white border border-gray-200 rounded-2xl p-4 space-y-4 transition-shadow hover:border-gray-300 hover:shadow-sm">
           <h2 className="text-sm md:text-lg font-semibold">예식 시간</h2>
           <p className="text-[11px] text-gray-500">
             예식 시작 <span className="font-semibold">1시간 전</span>부터 종료{" "}
@@ -797,7 +797,7 @@ export default function ConfirmPage() {
         </section>
 
         {/* 디스플레이 */}
-        <section className="border rounded-xl p-4 space-y-4">
+        <section className="bg-white border border-gray-200 rounded-2xl p-4 space-y-4 transition-shadow hover:border-gray-300 hover:shadow-sm">
           <h2 className="text-sm md:text-lg font-semibold">디스플레이 디자인 & 사진</h2>
 
           {/* 배경 방식 (공통) */}
@@ -957,7 +957,7 @@ export default function ConfirmPage() {
 
 
         {/* 축의금 계좌 */}
-        <section className="border rounded-xl p-4 space-y-4">
+        <section className="bg-white border border-gray-200 rounded-2xl p-4 space-y-4 transition-shadow hover:border-gray-300 hover:shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-sm md:text-lg font-semibold">축의금 계좌 설정</h2>
             <button
