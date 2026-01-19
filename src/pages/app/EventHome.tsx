@@ -99,7 +99,7 @@ export default function EventHome() {
 
     const names = [ev.groom_name, ev.bride_name].filter(Boolean).join(" · ");
     if (names) return `${names} 결혼식`;
-    return "예식 설정 필요";
+    return "상세 설정 필요";
   };
 
   // ✅ 초대 텍스트 타이틀: (1) 신랑·신부 이름 (2) 예약자 대체: owner_email 로컬파트

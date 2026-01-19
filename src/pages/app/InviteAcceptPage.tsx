@@ -42,7 +42,7 @@ export default function InviteAcceptPage() {
       if (error) throw error;
 
       const row = Array.isArray(data) ? data[0] : data;
-      const eventId = row?.event_id;
+      const eventId = row?.out_event_id;
 
       if (!eventId) throw new Error("이벤트 정보를 찾을 수 없습니다.");
 
