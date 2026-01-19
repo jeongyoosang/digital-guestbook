@@ -33,8 +33,9 @@ type LinkInviteRow = {
 };
 
 type CodeInviteRow = {
-  code: string;
+  invite_code: string;
 };
+
 
 
 type InviteBundle = {
@@ -238,7 +239,7 @@ export default function EventHome() {
       ? codeData[0]
       : codeData) as CodeInviteRow | undefined;
 
-    const code = codeRow?.code?.trim();
+    const code = codeRow?.invite_code?.trim();
     if (!code) {
       throw new Error("초대 코드 생성에 실패했습니다.");
     }
