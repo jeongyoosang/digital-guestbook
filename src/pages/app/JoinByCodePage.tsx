@@ -8,21 +8,16 @@ const toKoreanInviteError = (err: any) => {
   const m = String(err?.message || "");
 
   if (m.includes("not authenticated")) return "로그인이 필요합니다. 로그인 후 다시 시도해주세요.";
-  if (m.includes("invalid invite")) return "초대 코드가 유효하지 않습니다. 다시 확인해주세요.";
-  if (m.includes("invite expired")) return "초대 코드가 만료되었습니다. 새로운 코드를 받아주세요.";
-  if (m.includes("invite already used up"))
-    return "이미 사용된 초대 코드입니다. 이미 참여했다면 ‘내 이벤트’에서 확인해주세요.";
-  if (m.includes("provide exactly one")) return "초대 코드 처리 중 오류가 발생했습니다.";
-  if (m.includes("no permission")) return "초대 권한이 없습니다.";
-  if (m.includes("ambiguous"))
-    return "서버 응답 처리 중 오류가 발생했습니다. 새로고침 후 다시 시도해주세요.";
+  if (m.includes("invalid invite")) return "초대 코드가 유효하지 않습니다.";
+  if (m.includes("expired")) return "초대 코드가 만료되었습니다.";
+  if (m.includes("already used")) return "이미 사용된 초대 코드입니다.";
+  if (m.includes("permission")) return "초대 권한이 없습니다.";
 
   return "참여에 실패했습니다. 잠시 후 다시 시도해주세요.";
 };
 
 export default function JoinByCodePage() {
   const navigate = useNavigate();
-
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -32,18 +27,21 @@ export default function JoinByCodePage() {
     setLoading(true);
 
     try {
+      // 1️⃣ 로그인 체크
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData.session) {
         navigate(`/login?next=${encodeURIComponent("/join")}`);
         return;
       }
 
-      const cleaned = code.trim();
+      // 2️⃣ 코드 검증
+      const cleaned = code.trim().toUpperCase();
       if (cleaned.length < 4) {
         setMsg("초대 코드를 입력해주세요.");
         return;
       }
 
+      // 3️⃣ 코드 확정 (핵심)
       const { data, error } = await supabase.rpc("redeem_event_invite", {
         p_code: cleaned,
       });
@@ -54,7 +52,8 @@ export default function JoinByCodePage() {
 
       if (!eventId) throw new Error("이벤트를 찾을 수 없습니다.");
 
-    navigate(`/app`, { replace: true });
+      // 4️⃣ 성공 → 내 이벤트로
+      navigate("/app", { replace: true });
     } catch (e: any) {
       console.error(e);
       setMsg(toKoreanInviteError(e));
@@ -69,14 +68,14 @@ export default function JoinByCodePage() {
         <Card className="bg-white/90 border-leafLight/60">
           <CardContent className="p-6 space-y-4">
             <div className="text-lg font-semibold text-ink/90">초대 코드로 참여</div>
-            <div className="text-sm text-ink/60">6자리 코드를 입력하세요.</div>
+            <div className="text-sm text-ink/60">초대장에서 받은 코드를 입력하세요.</div>
 
             <input
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              placeholder="예: 483921"
+              placeholder="예: E5FA67"
               className="w-full h-11 rounded-xl border border-leafLight/60 bg-white px-3 text-sm"
-              inputMode="numeric"
+              autoCapitalize="characters"
             />
 
             {msg && <div className="text-sm text-red-600">{msg}</div>}
