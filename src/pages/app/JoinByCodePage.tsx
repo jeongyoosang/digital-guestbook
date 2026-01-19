@@ -42,7 +42,7 @@ export default function JoinByCodePage() {
       }
 
       // 3️⃣ 코드 확정 (핵심)
-      const { data, error } = await supabase.rpc("redeem_event_invite_by_code", { p_code: cleaned });
+    const { data, error } = await supabase.rpc("redeem_event_invite_by_code", { p_code: cleaned });
       if (error) throw error;
 
       const row = Array.isArray(data) ? data[0] : data;
