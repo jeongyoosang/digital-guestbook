@@ -226,11 +226,10 @@ export default function EventHome() {
 
     // 2) 코드 (1회용)
     const { data: codeData, error: codeErr } = await supabase.rpc("create_event_code_invite", {
-      p_event_id: eventId,
-      p_role: "member",
-      p_max_uses: 1,
-      p_expires_in_days: 7,
-    });
+        p_event_id: eventId,
+        p_role: "member",
+      });
+
     if (codeErr) throw codeErr;
 
     const codeRow = (Array.isArray(codeData) ? codeData[0] : codeData) as CodeInviteRow | undefined;

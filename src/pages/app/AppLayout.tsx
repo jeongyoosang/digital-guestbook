@@ -26,43 +26,42 @@ export default function AppLayout() {
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-white/20" />
 
       <header className="sticky top-0 z-20 border-b border-rose-100/60 bg-[#FFF7FB]/85 backdrop-blur-xl">
-          <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
-            {/* 로고 / 홈 */}
-            <button
-              type="button"
-              className="font-bold tracking-tight text-sm md:text-base text-ink/90 hover:opacity-80"
-              onClick={() => {
-                // app 내부에서 항상 이벤트 홈으로
-                navigate("/app", { replace: true });
-              }}
-            >
-              DIGITAL GUESTBOOK
-            </button>
+        <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
+          {/* 로고 / 랜딩으로 */}
+          <button
+            type="button"
+            className="font-bold tracking-tight text-sm md:text-base text-ink/90 hover:opacity-80"
+            onClick={() => {
+              // ✅ 로그아웃 없이 랜딩으로 이동 (세션 유지 → 다시 /app 오면 자동 로그인)
+              window.location.assign("/");
+            }}
+          >
+            DIGITAL GUESTBOOK
+          </button>
 
-            {/* 로그아웃 */}
-            <button
-              type="button"
-              className="
-                text-sm rounded-xl border border-rose-200/70
-                bg-white/55 px-3 py-1.5
-                hover:bg-white/70
-                text-ink/80
-              "
-              onClick={async () => {
-                try {
-                  // ✅ 세션 확실히 제거
-                  const { error } = await supabase.auth.signOut({ scope: "local" });
-                  if (error) console.error("logout error", error);
-                } finally {
-                  // ✅ history / cache 꼬임 방지용 강제 이동
-                  window.location.replace("/login");
-                }
-              }}
-            >
-              로그아웃
-            </button>
-          </div>
-        </header>
+          {/* 로그아웃 */}
+          <button
+            type="button"
+            className="
+              text-sm rounded-xl border border-rose-200/70
+              bg-white/55 px-3 py-1.5
+              hover:bg-white/70
+              text-ink/80
+            "
+            onClick={async () => {
+              try {
+                await supabase.auth.signOut(); // ✅ 전역 로그아웃
+              } finally {
+                // ✅ 로그인 화면으로 이동
+                window.location.assign("/login");
+              }
+            }}
+          >
+            로그아웃
+          </button>
+        </div>
+      </header>
+
 
 
       {/* Content */}
