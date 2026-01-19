@@ -65,7 +65,7 @@ export default function InviteAcceptPage() {
 
       if (!eventId) throw new Error("이벤트 정보를 찾을 수 없습니다.");
 
-      navigate(`/app/event/${eventId}/report`);
+    navigate(`/app`, { replace: true });
     } catch (e: any) {
       console.error(e);
       setMsg(toKoreanInviteError(e));

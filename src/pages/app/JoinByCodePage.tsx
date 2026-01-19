@@ -50,11 +50,11 @@ export default function JoinByCodePage() {
       if (error) throw error;
 
       const row = Array.isArray(data) ? data[0] : data;
-      const eventId = row?.out_event_id;
+      const eventId = row?.event_id;
 
       if (!eventId) throw new Error("이벤트를 찾을 수 없습니다.");
 
-      navigate(`/app/event/${eventId}/report`);
+    navigate(`/app`, { replace: true });
     } catch (e: any) {
       console.error(e);
       setMsg(toKoreanInviteError(e));
