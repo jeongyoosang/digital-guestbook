@@ -6,7 +6,17 @@ import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Calendar, MapPin, Share2, Copy, Check, Users, Info, Clock, RefreshCcw } from "lucide-react";
+import {
+  Calendar,
+  MapPin,
+  Share2,
+  Copy,
+  Check,
+  Users,
+  Info,
+  Clock,
+  RefreshCcw,
+} from "lucide-react";
 
 // --- Types ---
 type EventRow = {
@@ -135,6 +145,7 @@ export default function EventHome() {
     }
   };
 
+  // ✅ 문구 수정: “링크=사이트 진입/로그인 유도”, “최종 참여는 코드 입력”
   const buildInviteText = (ev: EventRow, invite: InviteBundle) => {
     const dateLine = formatDateLine(getEventDate(ev));
     const titleLine = getInviteTitleForText(ev);
@@ -143,88 +154,111 @@ export default function EventHome() {
       `💌 [Digital Guestbook]`,
       `${dateLine} · ${titleLine}`,
       ``,
+      `1) 아래 링크로 접속`,
+      `2) 이메일 인증으로 로그인`,
+      `3) /join 에서 초대 코드 입력 후 참여 완료`,
+      ``,
       `🔗 초대 링크: ${invite.linkUrl}`,
       `🔢 초대 코드: ${invite.code}`,
-      ``,
-      `✅ 참여 방법`,
-      `1) 링크로 들어오면 자동 참여`,
-      `2) 링크가 안 열리면 /join 에서 코드 입력`,
       ``,
       `⏳ 코드 유효기간: ${invite.expiresLabel}`,
     ].join("\n");
   };
 
- const fetchEvents = async () => {
-  setLoading(true);
-  try {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData.session?.user;
-    if (!user) return;
+  // ✅✅✅ 핵심 수정: owner_email OR event_members(user_id) 둘 다로 조회
+  const fetchEvents = async () => {
+    setLoading(true);
+    try {
+      const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+      if (sessionErr) throw sessionErr;
 
-    setEmail(user.email ?? "");
-
-    // 🔥 핵심: event_members 기준
-    const { data, error } = await supabase
-      .from("event_members")
-      .select(`
-        event_id,
-        events (
-          id,
-          created_at,
-          owner_email,
-          groom_name,
-          bride_name,
-          ceremony_date,
-          venue_name,
-          venue_address
-        )
-      `)
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-
-    const rows =
-      data?.map((r: any) => r.events).filter(Boolean) ?? [];
-
-    setEvents(rows);
-
-    // settings
-    const ids = rows.map((r) => r.id);
-    if (ids.length > 0) {
-      const { data: sData } = await supabase
-        .from("event_settings")
-        .select("event_id, title, ceremony_date")
-        .in("event_id", ids);
-
-      const map: any = {};
-      sData?.forEach((r: any) => (map[r.event_id] = r));
-      setSettingsByEventId(map);
-    }
-  } catch (e) {
-    console.error(e);
-  } finally {
-    setLoading(false);
-  }
-};
-
-
-    const ensureInviteBundle = async (eventId: string): Promise<InviteBundle> => {
-    // 1️⃣ 링크 초대 (다회용)
-    const { data: linkData, error: linkErr } = await supabase.rpc(
-      "event_link_invite",
-      {
-        p_event_id: eventId,
-        p_role: "member",
+      const user = sessionData.session?.user;
+      if (!user) {
+        setEvents([]);
+        setSettingsByEventId({});
+        return;
       }
-    );
+
+      const userEmail = user.email ?? "";
+      setEmail(userEmail);
+
+      // 1) 내 uid 기준으로 event_members에서 event_id 목록 가져오기
+      let memberEventIds: string[] = [];
+      {
+        const { data: mData, error: mErr } = await supabase
+          .from("event_members")
+          .select("event_id")
+          .eq("user_id", user.id);
+
+        // RLS 때문에 안 보일 수 있으면 그냥 memberEventIds 비워두고 owner_email로라도 가져오면 됨
+        if (!mErr) {
+          memberEventIds = (mData || []).map((r: any) => r.event_id);
+        }
+      }
+
+      // 2) events 조회: (owner_email == 내 이메일) OR (id in memberEventIds)
+      let query = supabase
+        .from("events")
+        .select("id, created_at, owner_email, groom_name, bride_name, ceremony_date, venue_name, venue_address")
+        .order("created_at", { ascending: false });
+
+      // admin scope
+      if (isAdmin && effectiveScope === "all") {
+        if (q.trim()) query = query.ilike("owner_email", `%${q.trim()}%`);
+      } else {
+        // 일반 유저(또는 admin mine)
+        if (memberEventIds.length > 0) {
+          // supabase OR 문법: owner_email.eq.xxx,id.in.(a,b,c)
+          query = query.or(`owner_email.eq.${userEmail},id.in.(${memberEventIds.join(",")})`);
+        } else {
+          query = query.eq("owner_email", userEmail);
+        }
+      }
+
+      const { data, error } = await query.limit(50);
+      if (error) throw error;
+
+      const rows = (data || []) as EventRow[];
+      setEvents(rows);
+
+      // 3) settings mapping
+      const ids = rows.map((r) => r.id);
+      if (ids.length > 0) {
+        const { data: sData, error: sErr } = await supabase
+          .from("event_settings")
+          .select("event_id, title, ceremony_date")
+          .in("event_id", ids);
+
+        if (sErr) throw sErr;
+
+        const sMap: Record<string, EventSettingsRow> = {};
+        (sData || []).forEach((row: any) => {
+          sMap[row.event_id] = row as EventSettingsRow;
+        });
+        setSettingsByEventId(sMap);
+      } else {
+        setSettingsByEventId({});
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const ensureInviteBundle = async (eventId: string): Promise<InviteBundle> => {
+    // 1️⃣ 링크 초대 (다회용)
+    const { data: linkData, error: linkErr } = await supabase.rpc("event_link_invite", {
+      p_event_id: eventId,
+      p_role: "member",
+    });
     if (linkErr) throw linkErr;
 
     const linkRow = (Array.isArray(linkData) ? linkData[0] : linkData) as LinkInviteRow | undefined;
     const linkToken = (linkRow?.out_token || "").trim();
     if (!linkToken) throw new Error("초대 링크 생성에 실패했습니다.");
 
-  // 2️⃣ 코드 초대 (1회용) ✅ FIX: 파라미터 2개만
+    // 2️⃣ 코드 초대 (1회용)
     const { data: codeData, error: codeErr } = await supabase.rpc("create_event_code_invite", {
       p_event_id: eventId,
       p_role: "member",
@@ -235,7 +269,6 @@ export default function EventHome() {
     const code = (codeRow?.invite_code ?? codeRow?.code ?? "").trim();
     if (!code) throw new Error("초대 코드 생성에 실패했습니다.");
 
-
     const linkUrl = `${window.location.origin}/invite/${linkToken}`;
 
     return {
@@ -245,7 +278,6 @@ export default function EventHome() {
       expiresLabel: "7일 (코드 1회 사용)",
     };
   };
-
 
   const handleInviteToggle = async (eventId: string) => {
     if (expandedInviteId === eventId) {
@@ -280,9 +312,7 @@ export default function EventHome() {
         <header className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">내 이벤트</h1>
-            <p className="mt-2 text-muted-foreground">
-              {isAdmin ? "운영자 모드" : "소중한 예식 데이터를 안전하게 관리하세요."}
-            </p>
+            <p className="mt-2 text-muted-foreground">{isAdmin ? "운영자 모드" : "소중한 예식 데이터를 안전하게 관리하세요."}</p>
 
             {email && (
               <div className="mt-2 text-xs text-slate-400">
@@ -292,7 +322,12 @@ export default function EventHome() {
           </div>
 
           <div className="flex justify-end sm:justify-start">
-            <Button variant="ghost" size="sm" onClick={fetchEvents} className="text-muted-foreground hover:text-foreground">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={fetchEvents}
+              className="text-muted-foreground hover:text-foreground"
+            >
               <RefreshCcw className="mr-2 h-4 w-4" />
               새로고침
             </Button>
@@ -406,7 +441,9 @@ export default function EventHome() {
                             )}
 
                             <Link to={`/app/event/${ev.id}/report`}>
-                              <Button className="rounded-full bg-indigo-600 text-white font-bold hover:bg-indigo-700">웨딩 리포트</Button>
+                              <Button className="rounded-full bg-indigo-600 text-white font-bold hover:bg-indigo-700">
+                                웨딩 리포트
+                              </Button>
                             </Link>
                           </div>
                         </div>
@@ -485,7 +522,9 @@ export default function EventHome() {
                                       <Share2 className="h-4 w-4 text-slate-300" />
                                     </div>
 
-                                    <p className="text-sm font-bold text-slate-800 mb-4">🔗 링크만 따로 필요하면 아래에서 복사하세요.</p>
+                                    <p className="text-sm font-bold text-slate-800 mb-4">
+                                      🔗 링크는 “사이트 진입/로그인 유도” 용도예요.
+                                    </p>
 
                                     <Button
                                       variant="outline"
@@ -506,7 +545,9 @@ export default function EventHome() {
                                     <div className="mt-4 rounded-xl bg-slate-50 border border-slate-100 p-4">
                                       <div className="text-[11px] font-semibold text-slate-500 mb-2">초대 코드</div>
                                       <div className="flex items-center justify-between gap-3">
-                                        <div className="text-3xl font-black tracking-tighter text-slate-900">{invite.code}</div>
+                                        <div className="text-3xl font-black tracking-tighter text-slate-900">
+                                          {invite.code}
+                                        </div>
                                         <Button
                                           variant="outline"
                                           onClick={() => handleCopy(invite.code, `${ev.id}-codeonly`)}
@@ -520,9 +561,10 @@ export default function EventHome() {
                                           코드만 복사
                                         </Button>
                                       </div>
+
                                       <div className="mt-2 text-[11px] text-slate-400">유효기간: {invite.expiresLabel}</div>
                                       <div className="mt-2 text-[11px] text-slate-400">
-                                        링크 참여는 자동, 코드 참여는 <span className="font-semibold">/join</span>에서 입력
+                                        참여는 <span className="font-semibold">/join</span>에서 코드 입력으로 완료
                                       </div>
                                     </div>
                                   </div>
