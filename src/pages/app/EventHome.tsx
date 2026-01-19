@@ -27,16 +27,14 @@ type EventSettingsRow = {
 };
 
 type LinkInviteRow = {
-  token: string;
-  max_uses?: number | null;
-  expires_at?: string | null;
+  out_token: string;
+  out_max_uses?: number | null;
 };
 
 type CodeInviteRow = {
-  invite_code: string;
+  code?: string;
+  invite_code?: string;
 };
-
-
 
 type InviteBundle = {
   linkToken: string;
@@ -219,7 +217,7 @@ export default function EventHome() {
       ? linkData[0]
       : linkData) as LinkInviteRow | undefined;
 
-    const linkToken = linkRow?.token?.trim();
+    const linkToken = (linkRow?.out_token || "").trim();
     if (!linkToken) {
       throw new Error("초대 링크 생성에 실패했습니다.");
     }
@@ -239,7 +237,7 @@ export default function EventHome() {
       ? codeData[0]
       : codeData) as CodeInviteRow | undefined;
 
-    const code = codeRow?.invite_code?.trim();
+    const code = (codeRow?.invite_code ?? codeRow?.code ?? "").trim();
     if (!code) {
       throw new Error("초대 코드 생성에 실패했습니다.");
     }
