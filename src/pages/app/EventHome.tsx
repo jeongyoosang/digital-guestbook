@@ -241,20 +241,17 @@ export default function EventHome() {
     const linkToken = (linkRow?.out_token || "").trim();
     if (!linkToken) throw new Error("초대 링크 생성에 실패했습니다.");
 
-    // 2️⃣ 코드 초대 (1회용) ✅ FIX
-    const { data: codeData, error: codeErr } = await supabase.rpc(
-      "create_event_code_invite",
-      {
-        p_event_id: eventId,
-        p_role: "member",
-        p_invited_email: null, // 🔴 반드시 필요
-      }
-    );
+  // 2️⃣ 코드 초대 (1회용) ✅ FIX: 파라미터 2개만
+    const { data: codeData, error: codeErr } = await supabase.rpc("create_event_code_invite", {
+      p_event_id: eventId,
+      p_role: "member",
+    });
     if (codeErr) throw codeErr;
 
     const codeRow = (Array.isArray(codeData) ? codeData[0] : codeData) as CodeInviteRow | undefined;
     const code = (codeRow?.invite_code ?? codeRow?.code ?? "").trim();
     if (!code) throw new Error("초대 코드 생성에 실패했습니다.");
+
 
     const linkUrl = `${window.location.origin}/invite/${linkToken}`;
 
