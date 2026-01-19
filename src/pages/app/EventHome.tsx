@@ -202,65 +202,57 @@ export default function EventHome() {
       setLoading(false);
     }
   };
+  const ensureInviteBundle = async (eventId: string): Promise<InviteBundle> => {
+    // 1️⃣ 링크 초대 (다회용)
+    const { data: linkData, error: linkErr } = await supabase.rpc(
+      "event_link_invite",
+      {
+        p_event_id: eventId,
+        p_role: "member",
+      }
+    );
 
-  /**
-   * ✅ 핵심 변경:
-   * - 링크 초대(다회용): event_link_invite 호출 (p_event_id, p_role만)
-   * - 코드 초대(1회용): create_event_code_invite 호출 (p_event_id, p_role, p_max_uses=1, p_expires_in_days)
-   *
-   * 지금 네 DB 상태(스크린샷) 기준으로 ensure_event_link_invite는 p_event_id/p_role만 받는 형태라
-   * EventHome도 그에 맞춰 호출해야 404가 안 남.
-   */
-        const ensureInviteBundle = async (eventId: string): Promise<InviteBundle> => {
-        // 1️⃣ 링크 초대 (다회용)
-        const { data: linkData, error: linkErr } = await supabase.rpc(
-            "event_link_invite",
-            {
-              p_event_id: eventId,
-              p_role: "member",
-            }
-          );
+    if (linkErr) throw linkErr;
 
-          if (linkErr) throw linkErr;
+    const linkRow = (Array.isArray(linkData)
+      ? linkData[0]
+      : linkData) as LinkInviteRow | undefined;
 
-          const linkRow = (Array.isArray(linkData)
-            ? linkData[0]
-            : linkData) as LinkInviteRow | undefined;
+    const linkToken = linkRow?.token?.trim();
+    if (!linkToken) {
+      throw new Error("초대 링크 생성에 실패했습니다.");
+    }
 
-          const linkToken = (linkRow?.token || "").trim();
-          if (!linkToken) {
-            throw new Error("초대 링크 생성에 실패했습니다.");
-          }
+    // 2️⃣ 코드 초대 (⚠️ 파라미터 2개만!)
+    const { data: codeData, error: codeErr } = await supabase.rpc(
+      "create_event_code_invite",
+      {
+        p_event_id: eventId,
+        p_role: "member",
+      }
+    );
 
-          // 2️⃣ 코드 초대 (1회용)
-          const { data: codeData, error: codeErr } = await supabase.rpc(
-            "create_event_code_invite",
-            {
-              p_event_id: eventId,
-              p_role: "member",
-            }
-          );
+    if (codeErr) throw codeErr;
 
-          if (codeErr) throw codeErr;
+    const codeRow = (Array.isArray(codeData)
+      ? codeData[0]
+      : codeData) as CodeInviteRow | undefined;
 
-          const codeRow = (Array.isArray(codeData)
-            ? codeData[0]
-            : codeData) as CodeInviteRow | undefined;
+    const code = codeRow?.code?.trim();
+    if (!code) {
+      throw new Error("초대 코드 생성에 실패했습니다.");
+    }
 
-          const code = (codeRow?.code || "").trim();
-          if (!code) {
-            throw new Error("초대 코드 생성에 실패했습니다.");
-          }
+    const linkUrl = `${window.location.origin}/invite/${linkToken}`;
 
-          const linkUrl = `${window.location.origin}/invite/${linkToken}`;
+    return {
+      linkToken,
+      code,
+      linkUrl,
+      expiresLabel: "7일 (코드 1회 사용)",
+    };
+  };
 
-          return {
-            linkToken,
-            code,
-            linkUrl,
-            expiresLabel: "7일 (코드 1회 사용)",
-          };
-        };
 
 
   const handleInviteToggle = async (eventId: string) => {
