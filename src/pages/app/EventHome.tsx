@@ -226,23 +226,30 @@ export default function EventHome() {
     }
   };
 
-  const ensureInviteBundle = async (eventId: string): Promise<InviteBundle> => {
+    const ensureInviteBundle = async (eventId: string): Promise<InviteBundle> => {
     // 1️⃣ 링크 초대 (다회용)
-    const { data: linkData, error: linkErr } = await supabase.rpc("event_link_invite", {
-      p_event_id: eventId,
-      p_role: "member",
-    });
+    const { data: linkData, error: linkErr } = await supabase.rpc(
+      "event_link_invite",
+      {
+        p_event_id: eventId,
+        p_role: "member",
+      }
+    );
     if (linkErr) throw linkErr;
 
     const linkRow = (Array.isArray(linkData) ? linkData[0] : linkData) as LinkInviteRow | undefined;
     const linkToken = (linkRow?.out_token || "").trim();
     if (!linkToken) throw new Error("초대 링크 생성에 실패했습니다.");
 
-    // 2️⃣ 코드 초대 (1회용)
-    const { data: codeData, error: codeErr } = await supabase.rpc("create_event_code_invite", {
-      p_event_id: eventId,
-      p_role: "member",
-    });
+    // 2️⃣ 코드 초대 (1회용) ✅ FIX
+    const { data: codeData, error: codeErr } = await supabase.rpc(
+      "create_event_code_invite",
+      {
+        p_event_id: eventId,
+        p_role: "member",
+        p_invited_email: null, // 🔴 반드시 필요
+      }
+    );
     if (codeErr) throw codeErr;
 
     const codeRow = (Array.isArray(codeData) ? codeData[0] : codeData) as CodeInviteRow | undefined;
@@ -258,6 +265,7 @@ export default function EventHome() {
       expiresLabel: "7일 (코드 1회 사용)",
     };
   };
+
 
   const handleInviteToggle = async (eventId: string) => {
     if (expandedInviteId === eventId) {
