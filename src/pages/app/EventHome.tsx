@@ -6,17 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  Calendar,
-  MapPin,
-  Share2,
-  Copy,
-  Check,
-  Users,
-  Info,
-  Clock,
-  RefreshCcw,
-} from "lucide-react";
+import { Calendar, MapPin, Share2, Copy, Check, Users, Info, Clock, RefreshCcw } from "lucide-react";
 
 // --- Types ---
 type EventRow = {
@@ -36,6 +26,11 @@ type EventSettingsRow = {
   ceremony_date: string | null;
 };
 
+type MemberRow = {
+  event_id: string;
+  role: "owner" | "member";
+};
+
 type LinkInviteRow = {
   out_token: string;
   out_max_uses?: number | null;
@@ -43,14 +38,14 @@ type LinkInviteRow = {
 
 type CodeInviteRow = {
   code?: string;
-  invite_code?: string;
+  invite_code?: string; // 혹시 과거 호환용
 };
 
 type InviteBundle = {
   linkToken: string;
   code: string;
   linkUrl: string;
-  expiresLabel: string; // UI용
+  expiresLabel: string;
 };
 
 const ADMIN_EMAIL = "goraeuniverse@gmail.com";
@@ -68,7 +63,6 @@ const safeLocalNameFromEmail = (email?: string | null) => {
   return at > 0 ? email.slice(0, at) : email;
 };
 
-// D-Day 계산
 const getDDayInfo = (isoDate?: string | null) => {
   if (!isoDate) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.trim());
@@ -100,6 +94,9 @@ export default function EventHome() {
 
   // settings mapping
   const [settingsByEventId, setSettingsByEventId] = useState<Record<string, EventSettingsRow>>({});
+
+  // 내 멤버십 role mapping
+  const [myRoleByEventId, setMyRoleByEventId] = useState<Record<string, "owner" | "member">>({});
 
   // invite UI state
   const [expandedInviteId, setExpandedInviteId] = useState<string | null>(null);
@@ -145,7 +142,7 @@ export default function EventHome() {
     }
   };
 
-  // ✅ 문구 수정: “링크=사이트 진입/로그인 유도”, “최종 참여는 코드 입력”
+  // 🔐 보안 모델 반영: 링크는 '진입/로그인 유도', 참여 확정은 '코드 입력'
   const buildInviteText = (ev: EventRow, invite: InviteBundle) => {
     const dateLine = formatDateLine(getEventDate(ev));
     const titleLine = getInviteTitleForText(ev);
@@ -154,21 +151,21 @@ export default function EventHome() {
       `💌 [Digital Guestbook]`,
       `${dateLine} · ${titleLine}`,
       ``,
-      `1) 아래 링크로 접속`,
-      `2) 이메일 인증으로 로그인`,
-      `3) /join 에서 초대 코드 입력 후 참여 완료`,
+      `🔗 초대 링크(진입/로그인): ${invite.linkUrl}`,
+      `🔢 초대 코드(참여 확정): ${invite.code}`,
       ``,
-      `🔗 초대 링크: ${invite.linkUrl}`,
-      `🔢 초대 코드: ${invite.code}`,
+      `✅ 참여 방법`,
+      `1) 링크로 접속 (로그인 필요)`,
+      `2) /join 에서 초대 코드 입력 → 참여 완료`,
       ``,
       `⏳ 코드 유효기간: ${invite.expiresLabel}`,
     ].join("\n");
   };
 
-  // ✅✅✅ 핵심 수정: owner_email OR event_members(user_id) 둘 다로 조회
   const fetchEvents = async () => {
     setLoading(true);
     try {
+      // 0) 로그인 확인
       const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
       if (sessionErr) throw sessionErr;
 
@@ -176,52 +173,88 @@ export default function EventHome() {
       if (!user) {
         setEvents([]);
         setSettingsByEventId({});
+        setMyRoleByEventId({});
         return;
       }
 
       const userEmail = user.email ?? "";
       setEmail(userEmail);
 
-      // 1) 내 uid 기준으로 event_members에서 event_id 목록 가져오기
-      let memberEventIds: string[] = [];
-      {
-        const { data: mData, error: mErr } = await supabase
-          .from("event_members")
-          .select("event_id")
-          .eq("user_id", user.id);
+      // 1) 운영자 + 전체보기면 events 직접 조회
+      if (isAdmin && effectiveScope === "all") {
+        let query = supabase
+          .from("events")
+          .select("id, created_at, owner_email, groom_name, bride_name, ceremony_date, venue_name, venue_address")
+          .order("created_at", { ascending: false });
 
-        // RLS 때문에 안 보일 수 있으면 그냥 memberEventIds 비워두고 owner_email로라도 가져오면 됨
-        if (!mErr) {
-          memberEventIds = (mData || []).map((r: any) => r.event_id);
+        if (q.trim()) query = query.ilike("owner_email", `%${q.trim()}%`);
+
+        const { data, error } = await query.limit(50);
+        if (error) throw error;
+
+        const rows = (data || []) as EventRow[];
+        setEvents(rows);
+
+        // settings
+        const ids = rows.map((r) => r.id);
+        if (ids.length > 0) {
+          const { data: sData, error: sErr } = await supabase
+            .from("event_settings")
+            .select("event_id, title, ceremony_date")
+            .in("event_id", ids);
+
+          if (sErr) throw sErr;
+
+          const sMap: Record<string, EventSettingsRow> = {};
+          (sData || []).forEach((row: any) => {
+            sMap[row.event_id] = row;
+          });
+          setSettingsByEventId(sMap);
+        } else {
+          setSettingsByEventId({});
         }
+
+        // 운영자 모드에서는 내 role 표시가 굳이 필요 없으니 비움
+        setMyRoleByEventId({});
+        return;
       }
 
-      // 2) events 조회: (owner_email == 내 이메일) OR (id in memberEventIds)
-      let query = supabase
+      // 2) 일반/내것 보기: event_members 기준으로 event_id 목록 가져오기
+      const { data: mData, error: mErr } = await supabase
+        .from("event_members")
+        .select("event_id, role")
+        .eq("user_id", user.id);
+
+      if (mErr) throw mErr;
+
+      const members = (mData || []) as MemberRow[];
+      const roleMap: Record<string, "owner" | "member"> = {};
+      const eventIds = members.map((r) => {
+        roleMap[r.event_id] = r.role;
+        return r.event_id;
+      });
+
+      setMyRoleByEventId(roleMap);
+
+      if (eventIds.length === 0) {
+        setEvents([]);
+        setSettingsByEventId({});
+        return;
+      }
+
+      // 3) events 상세는 events 테이블에서 in 조회 (정렬 확실하게)
+      const { data: eData, error: eErr } = await supabase
         .from("events")
         .select("id, created_at, owner_email, groom_name, bride_name, ceremony_date, venue_name, venue_address")
+        .in("id", eventIds)
         .order("created_at", { ascending: false });
 
-      // admin scope
-      if (isAdmin && effectiveScope === "all") {
-        if (q.trim()) query = query.ilike("owner_email", `%${q.trim()}%`);
-      } else {
-        // 일반 유저(또는 admin mine)
-        if (memberEventIds.length > 0) {
-          // supabase OR 문법: owner_email.eq.xxx,id.in.(a,b,c)
-          query = query.or(`owner_email.eq.${userEmail},id.in.(${memberEventIds.join(",")})`);
-        } else {
-          query = query.eq("owner_email", userEmail);
-        }
-      }
+      if (eErr) throw eErr;
 
-      const { data, error } = await query.limit(50);
-      if (error) throw error;
-
-      const rows = (data || []) as EventRow[];
+      const rows = (eData || []) as EventRow[];
       setEvents(rows);
 
-      // 3) settings mapping
+      // 4) settings
       const ids = rows.map((r) => r.id);
       if (ids.length > 0) {
         const { data: sData, error: sErr } = await supabase
@@ -233,7 +266,7 @@ export default function EventHome() {
 
         const sMap: Record<string, EventSettingsRow> = {};
         (sData || []).forEach((row: any) => {
-          sMap[row.event_id] = row as EventSettingsRow;
+          sMap[row.event_id] = row;
         });
         setSettingsByEventId(sMap);
       } else {
@@ -247,7 +280,7 @@ export default function EventHome() {
   };
 
   const ensureInviteBundle = async (eventId: string): Promise<InviteBundle> => {
-    // 1️⃣ 링크 초대 (다회용)
+    // 1) 링크 초대 (진입/로그인 유도용 토큰)
     const { data: linkData, error: linkErr } = await supabase.rpc("event_link_invite", {
       p_event_id: eventId,
       p_role: "member",
@@ -258,7 +291,7 @@ export default function EventHome() {
     const linkToken = (linkRow?.out_token || "").trim();
     if (!linkToken) throw new Error("초대 링크 생성에 실패했습니다.");
 
-    // 2️⃣ 코드 초대 (1회용)
+    // 2) 코드 초대 (참여 확정용, 1회용)
     const { data: codeData, error: codeErr } = await supabase.rpc("create_event_code_invite", {
       p_event_id: eventId,
       p_role: "member",
@@ -287,7 +320,6 @@ export default function EventHome() {
 
     setExpandedInviteId(eventId);
 
-    // 이미 있으면 그대로 열기
     if (inviteByEventId[eventId]) return;
 
     setInviteLoadingByEventId((p) => ({ ...p, [eventId]: true }));
@@ -322,12 +354,7 @@ export default function EventHome() {
           </div>
 
           <div className="flex justify-end sm:justify-start">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={fetchEvents}
-              className="text-muted-foreground hover:text-foreground"
-            >
+            <Button variant="ghost" size="sm" onClick={fetchEvents} className="text-muted-foreground hover:text-foreground">
               <RefreshCcw className="mr-2 h-4 w-4" />
               새로고침
             </Button>
@@ -356,6 +383,7 @@ export default function EventHome() {
                 내것
               </button>
             </div>
+
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -376,7 +404,10 @@ export default function EventHome() {
               const eventDate = getEventDate(ev);
               const dDay = getDDayInfo(eventDate);
 
-              const canInvite = isAdmin || (email && ev.owner_email === email);
+              const myRole = myRoleByEventId[ev.id]; // owner/member/undefined(운영자 all 모드)
+              const isOwner = myRole === "owner" || (!!email && ev.owner_email === email);
+              const canInvite = isAdmin || isOwner;
+
               const isExpanded = expandedInviteId === ev.id;
               const invite = inviteByEventId[ev.id];
 
@@ -387,7 +418,7 @@ export default function EventHome() {
                       <div className="p-8 sm:p-10">
                         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                           <div className="space-y-4">
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 flex-wrap">
                               {dDay && (
                                 <motion.span
                                   animate={dDay.animate ? { scale: [1, 1.05, 1] } : {}}
@@ -400,7 +431,8 @@ export default function EventHome() {
                                   {dDay.label}
                                 </motion.span>
                               )}
-                              <h2 className="text-2xl font-bold tracking-tight text-slate-900">{getDisplayTitle(ev)}</h2>
+
+                            <h2 className="text-2xl font-bold tracking-tight text-slate-900">{getDisplayTitle(ev)}</h2>
                             </div>
 
                             <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-500 font-medium">
@@ -441,9 +473,7 @@ export default function EventHome() {
                             )}
 
                             <Link to={`/app/event/${ev.id}/report`}>
-                              <Button className="rounded-full bg-indigo-600 text-white font-bold hover:bg-indigo-700">
-                                웨딩 리포트
-                              </Button>
+                              <Button className="rounded-full bg-indigo-600 text-white font-bold hover:bg-indigo-700">웨딩 리포트</Button>
                             </Link>
                           </div>
                         </div>
@@ -480,9 +510,7 @@ export default function EventHome() {
                                   {/* Left */}
                                   <div className="rounded-[2rem] bg-white border border-slate-200 p-6 shadow-sm transition-all hover:shadow-md">
                                     <div className="flex items-center justify-between mb-4">
-                                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                                        INVITE
-                                      </span>
+                                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">INVITE</span>
                                       <Clock className="h-4 w-4 text-slate-300" />
                                     </div>
 
@@ -516,15 +544,11 @@ export default function EventHome() {
                                   {/* Right */}
                                   <div className="rounded-[2rem] bg-white border border-slate-200 p-6 shadow-sm transition-all hover:shadow-md">
                                     <div className="flex items-center justify-between mb-4">
-                                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                                        LINK & CODE
-                                      </span>
+                                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">LINK & CODE</span>
                                       <Share2 className="h-4 w-4 text-slate-300" />
                                     </div>
 
-                                    <p className="text-sm font-bold text-slate-800 mb-4">
-                                      🔗 링크는 “사이트 진입/로그인 유도” 용도예요.
-                                    </p>
+                                    <p className="text-sm font-bold text-slate-800 mb-4">🔗 링크는 “접속/로그인 유도”, 참여 확정은 코드 입력입니다.</p>
 
                                     <Button
                                       variant="outline"
@@ -545,9 +569,7 @@ export default function EventHome() {
                                     <div className="mt-4 rounded-xl bg-slate-50 border border-slate-100 p-4">
                                       <div className="text-[11px] font-semibold text-slate-500 mb-2">초대 코드</div>
                                       <div className="flex items-center justify-between gap-3">
-                                        <div className="text-3xl font-black tracking-tighter text-slate-900">
-                                          {invite.code}
-                                        </div>
+                                        <div className="text-3xl font-black tracking-tighter text-slate-900">{invite.code}</div>
                                         <Button
                                           variant="outline"
                                           onClick={() => handleCopy(invite.code, `${ev.id}-codeonly`)}
@@ -561,7 +583,6 @@ export default function EventHome() {
                                           코드만 복사
                                         </Button>
                                       </div>
-
                                       <div className="mt-2 text-[11px] text-slate-400">유효기간: {invite.expiresLabel}</div>
                                       <div className="mt-2 text-[11px] text-slate-400">
                                         참여는 <span className="font-semibold">/join</span>에서 코드 입력으로 완료
@@ -570,9 +591,7 @@ export default function EventHome() {
                                   </div>
                                 </div>
                               ) : (
-                                <div className="py-10 text-center text-slate-400">
-                                  초대 정보를 만들 수 없습니다. (함수/권한/파라미터를 확인해주세요)
-                                </div>
+                                <div className="py-10 text-center text-slate-400">초대 정보를 만들 수 없습니다. (함수/권한/파라미터를 확인해주세요)</div>
                               )}
                             </div>
                           </motion.div>
