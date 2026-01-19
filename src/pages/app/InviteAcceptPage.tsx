@@ -61,7 +61,7 @@ export default function InviteAcceptPage() {
 
       // ✅ 함수 RETURNS TABLE(event_id uuid, role text) 기준
       // (예전 out_event_id 등 혼용 방지)
-      const eventId = row?.event_id;
+      const eventId = row?.out_event_id;
 
       if (!eventId) throw new Error("이벤트 정보를 찾을 수 없습니다.");
 
