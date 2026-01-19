@@ -115,7 +115,7 @@ export default function EventHome() {
     return "상세 설정 필요";
   };
 
-  // ✅ 초대장 제목(상세설정 이름과 동일하게 나가야 함 → events의 groom/bride가 Confirm 결과라고 가정)
+  // ✅ 초대장 제목
   const getInviteTitleForText = (ev: EventRow) => {
     const names = [ev.groom_name, ev.bride_name].filter(Boolean).join(" · ");
     if (names) return `${names} 결혼식 디지털방명록 초대장`;
@@ -139,7 +139,6 @@ export default function EventHome() {
     const dateLine = formatDateLine(getEventDate(ev));
     const titleLine = getInviteTitleForText(ev);
 
-    // ✅ 이모지 + 감각적인 문장 + /join 설명 단순화
     return [
       `💌 [Digital Guestbook]`,
       `${dateLine} · ${titleLine}`,
@@ -164,12 +163,37 @@ export default function EventHome() {
       const userEmail = sessionData.session?.user?.email ?? "";
       setEmail(userEmail);
 
+      // ✅ 멤버로 참여한 event_id까지 포함해서 보여주기
+      const { data: meData, error: meErr } = await supabase.auth.getUser();
+      if (meErr) throw meErr;
+
+      const uid = meData.user?.id;
+      let memberEventIds: string[] = [];
+
+      if (uid) {
+        const { data: mData, error: mErr } = await supabase
+          .from("event_members")
+          .select("event_id")
+          .eq("user_id", uid);
+
+        if (mErr) throw mErr;
+        memberEventIds = (mData || []).map((r: any) => r.event_id);
+      }
+
       let query = supabase
         .from("events")
         .select("id, created_at, owner_email, groom_name, bride_name, ceremony_date, venue_name, venue_address")
         .order("created_at", { ascending: false });
 
-      if (effectiveScope === "mine") query = query.eq("owner_email", userEmail);
+      if (effectiveScope === "mine") {
+        if (memberEventIds.length > 0) {
+          // owner_email == 내 이메일 OR id in (멤버 이벤트)
+          query = query.or(`owner_email.eq.${userEmail},id.in.(${memberEventIds.join(",")})`);
+        } else {
+          query = query.eq("owner_email", userEmail);
+        }
+      }
+
       if (isAdmin && q.trim()) query = query.ilike("owner_email", `%${q.trim()}%`);
 
       const { data, error } = await query.limit(50);
@@ -201,46 +225,29 @@ export default function EventHome() {
       setLoading(false);
     }
   };
+
   const ensureInviteBundle = async (eventId: string): Promise<InviteBundle> => {
     // 1️⃣ 링크 초대 (다회용)
-    const { data: linkData, error: linkErr } = await supabase.rpc(
-      "event_link_invite",
-      {
-        p_event_id: eventId,
-        p_role: "member",
-      }
-    );
-
+    const { data: linkData, error: linkErr } = await supabase.rpc("event_link_invite", {
+      p_event_id: eventId,
+      p_role: "member",
+    });
     if (linkErr) throw linkErr;
 
-    const linkRow = (Array.isArray(linkData)
-      ? linkData[0]
-      : linkData) as LinkInviteRow | undefined;
-
+    const linkRow = (Array.isArray(linkData) ? linkData[0] : linkData) as LinkInviteRow | undefined;
     const linkToken = (linkRow?.out_token || "").trim();
-    if (!linkToken) {
-      throw new Error("초대 링크 생성에 실패했습니다.");
-    }
+    if (!linkToken) throw new Error("초대 링크 생성에 실패했습니다.");
 
-    // 2️⃣ 코드 초대 (⚠️ 파라미터 2개만!)
-    const { data: codeData, error: codeErr } = await supabase.rpc(
-      "create_event_code_invite",
-      {
-        p_event_id: eventId,
-        p_role: "member",
-      }
-    );
-
+    // 2️⃣ 코드 초대 (1회용)
+    const { data: codeData, error: codeErr } = await supabase.rpc("create_event_code_invite", {
+      p_event_id: eventId,
+      p_role: "member",
+    });
     if (codeErr) throw codeErr;
 
-    const codeRow = (Array.isArray(codeData)
-      ? codeData[0]
-      : codeData) as CodeInviteRow | undefined;
-
+    const codeRow = (Array.isArray(codeData) ? codeData[0] : codeData) as CodeInviteRow | undefined;
     const code = (codeRow?.invite_code ?? codeRow?.code ?? "").trim();
-    if (!code) {
-      throw new Error("초대 코드 생성에 실패했습니다.");
-    }
+    if (!code) throw new Error("초대 코드 생성에 실패했습니다.");
 
     const linkUrl = `${window.location.origin}/invite/${linkToken}`;
 
@@ -251,8 +258,6 @@ export default function EventHome() {
       expiresLabel: "7일 (코드 1회 사용)",
     };
   };
-
-
 
   const handleInviteToggle = async (eventId: string) => {
     if (expandedInviteId === eventId) {
@@ -271,7 +276,6 @@ export default function EventHome() {
       setInviteByEventId((p) => ({ ...p, [eventId]: bundle }));
     } catch (e) {
       console.error(e);
-      // 여기서 UI에 “초대 정보 생성 실패”로 보임
     } finally {
       setInviteLoadingByEventId((p) => ({ ...p, [eventId]: false }));
     }
@@ -300,12 +304,7 @@ export default function EventHome() {
           </div>
 
           <div className="flex justify-end sm:justify-start">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={fetchEvents}
-              className="text-muted-foreground hover:text-foreground"
-            >
+            <Button variant="ghost" size="sm" onClick={fetchEvents} className="text-muted-foreground hover:text-foreground">
               <RefreshCcw className="mr-2 h-4 w-4" />
               새로고침
             </Button>
@@ -419,9 +418,7 @@ export default function EventHome() {
                             )}
 
                             <Link to={`/app/event/${ev.id}/report`}>
-                              <Button className="rounded-full bg-indigo-600 text-white font-bold hover:bg-indigo-700">
-                                웨딩 리포트
-                              </Button>
+                              <Button className="rounded-full bg-indigo-600 text-white font-bold hover:bg-indigo-700">웨딩 리포트</Button>
                             </Link>
                           </div>
                         </div>
@@ -452,12 +449,10 @@ export default function EventHome() {
                               </div>
 
                               {inviteLoadingByEventId[ev.id] ? (
-                                <div className="py-10 text-center text-slate-400 animate-pulse">
-                                  초대 정보를 준비하고 있습니다...
-                                </div>
+                                <div className="py-10 text-center text-slate-400 animate-pulse">초대 정보를 준비하고 있습니다...</div>
                               ) : invite ? (
                                 <div className="grid gap-4 sm:grid-cols-2">
-                                  {/* Left: 초대장 복사 + (미리보기) */}
+                                  {/* Left */}
                                   <div className="rounded-[2rem] bg-white border border-slate-200 p-6 shadow-sm transition-all hover:shadow-md">
                                     <div className="flex items-center justify-between mb-4">
                                       <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
@@ -485,7 +480,6 @@ export default function EventHome() {
                                       )}
                                     </Button>
 
-                                    {/* ✅ 미리보기(원하면 지울 수 있음) */}
                                     <div className="mt-4 rounded-xl bg-slate-50 border border-slate-100 p-4">
                                       <div className="text-[11px] font-semibold text-slate-500 mb-2">미리보기</div>
                                       <pre className="whitespace-pre-wrap text-xs leading-relaxed text-slate-600">
@@ -494,7 +488,7 @@ export default function EventHome() {
                                     </div>
                                   </div>
 
-                                  {/* Right: 링크 복사 + 코드만 복사 */}
+                                  {/* Right */}
                                   <div className="rounded-[2rem] bg-white border border-slate-200 p-6 shadow-sm transition-all hover:shadow-md">
                                     <div className="flex items-center justify-between mb-4">
                                       <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
@@ -503,9 +497,7 @@ export default function EventHome() {
                                       <Share2 className="h-4 w-4 text-slate-300" />
                                     </div>
 
-                                    <p className="text-sm font-bold text-slate-800 mb-4">
-                                      🔗 링크만 따로 필요하면 아래에서 복사하세요.
-                                    </p>
+                                    <p className="text-sm font-bold text-slate-800 mb-4">🔗 링크만 따로 필요하면 아래에서 복사하세요.</p>
 
                                     <Button
                                       variant="outline"
@@ -526,9 +518,7 @@ export default function EventHome() {
                                     <div className="mt-4 rounded-xl bg-slate-50 border border-slate-100 p-4">
                                       <div className="text-[11px] font-semibold text-slate-500 mb-2">초대 코드</div>
                                       <div className="flex items-center justify-between gap-3">
-                                        <div className="text-3xl font-black tracking-tighter text-slate-900">
-                                          {invite.code}
-                                        </div>
+                                        <div className="text-3xl font-black tracking-tighter text-slate-900">{invite.code}</div>
                                         <Button
                                           variant="outline"
                                           onClick={() => handleCopy(invite.code, `${ev.id}-codeonly`)}
