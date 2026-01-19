@@ -6,7 +6,17 @@ import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Calendar, MapPin, Share2, Copy, Check, Users, Info, Clock, RefreshCcw } from "lucide-react";
+import {
+  Calendar,
+  MapPin,
+  Share2,
+  Copy,
+  Check,
+  Users,
+  Info,
+  Clock,
+  RefreshCcw,
+} from "lucide-react";
 
 // --- Types ---
 type EventRow = {
@@ -43,9 +53,9 @@ type InviteBundle = {
   expiresLabel: string; // UI용
 };
 
-type MemberRow = {
+type MemberJoinRow = {
   event_id: string;
-  role: "owner" | "member";
+  events: EventRow | null;
 };
 
 const ADMIN_EMAIL = "goraeuniverse@gmail.com";
@@ -95,9 +105,6 @@ export default function EventHome() {
 
   // settings mapping
   const [settingsByEventId, setSettingsByEventId] = useState<Record<string, EventSettingsRow>>({});
-
-  // ✅ 내가 속한 이벤트에서의 내 역할(초대 버튼 권한용)
-  const [myRoleByEventId, setMyRoleByEventId] = useState<Record<string, "owner" | "member">>({});
 
   // invite UI state
   const [expandedInviteId, setExpandedInviteId] = useState<string | null>(null);
@@ -153,13 +160,34 @@ export default function EventHome() {
       ``,
       `1) 아래 링크로 접속`,
       `2) 이메일 인증으로 로그인`,
-      `3) /join 에서 초대 코드 입력 후 참여 완료`,
+      `3) /join 에서 초대 코드 입력`,
       ``,
       `🔗 초대 링크: ${invite.linkUrl}`,
       `🔢 초대 코드: ${invite.code}`,
       ``,
       `⏳ 코드 유효기간: ${invite.expiresLabel}`,
     ].join("\n");
+  };
+
+  const fetchSettings = async (rows: EventRow[]) => {
+    const ids = rows.map((r) => r.id);
+    if (ids.length === 0) {
+      setSettingsByEventId({});
+      return;
+    }
+
+    const { data: sData, error: sErr } = await supabase
+      .from("event_settings")
+      .select("event_id, title, ceremony_date")
+      .in("event_id", ids);
+
+    if (sErr) throw sErr;
+
+    const sMap: Record<string, EventSettingsRow> = {};
+    (sData || []).forEach((row: any) => {
+      sMap[row.event_id] = row;
+    });
+    setSettingsByEventId(sMap);
   };
 
   const fetchEvents = async () => {
@@ -172,81 +200,70 @@ export default function EventHome() {
       if (!user) {
         setEvents([]);
         setSettingsByEventId({});
-        setMyRoleByEventId({});
         return;
       }
 
-      setEmail(user.email ?? "");
+      const userEmail = user.email ?? "";
+      setEmail(userEmail);
 
-      // ✅ 1) 내가 속한 event_id/role 목록 (event_members 기준)
-      const { data: mData, error: mErr } = await supabase
+      // ✅ 핵심: 새로 만들어진 이벤트(=events.owner_email만 있고 event_members 없는 상태)를 자동 보정
+      // 이게 없으면 "네이버로 예약한 케이스"가 /app에서 카드가 안 뜸
+      await supabase.rpc("ensure_owner_memberships");
+
+      // Admin이면 events 직접 조회 유지 (운영자 모드)
+      if (isAdmin && effectiveScope === "all") {
+        let qy = supabase
+          .from("events")
+          .select("id, created_at, owner_email, groom_name, bride_name, ceremony_date, venue_name, venue_address")
+          .order("created_at", { ascending: false });
+
+        if (q.trim()) qy = qy.ilike("owner_email", `%${q.trim()}%`);
+
+        const { data, error } = await qy.limit(50);
+        if (error) throw error;
+
+        const rows = (data || []) as EventRow[];
+        setEvents(rows);
+        await fetchSettings(rows);
+        return;
+      }
+
+      // ✅ 정답: event_members 기준으로만 내 이벤트 목록 구성
+      // (owner도 ensure_owner_memberships()가 넣어주므로 여기로 통일됨)
+      const { data, error } = await supabase
         .from("event_members")
-        .select("event_id, role")
+        .select(
+          `
+          event_id,
+          events (
+            id,
+            created_at,
+            owner_email,
+            groom_name,
+            bride_name,
+            ceremony_date,
+            venue_name,
+            venue_address
+          )
+        `
+        )
         .eq("user_id", user.id);
 
-      if (mErr) throw mErr;
+      if (error) throw error;
 
-      const members = (mData || []) as MemberRow[];
-      const eventIds = members.map((r) => r.event_id);
+      const mapped = ((data || []) as any as MemberJoinRow[])
+        .map((r) => r.events)
+        .filter(Boolean) as EventRow[];
 
-      const roleMap: Record<string, "owner" | "member"> = {};
-      members.forEach((r) => (roleMap[r.event_id] = r.role));
-      setMyRoleByEventId(roleMap);
+      // 정렬은 JS로 (foreignTable order 버전차 이슈 회피)
+      mapped.sort((a, b) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tb - ta;
+      });
 
-      // ✅ 2) events 조회 (RLS로 멤버도 읽을 수 있어야 함)
-      let evRows: EventRow[] = [];
-
-      // 운영자 all/mine 지원
-      if (isAdmin && effectiveScope === "all") {
-        let q1 = supabase
-          .from("events")
-          .select("id, created_at, owner_email, groom_name, bride_name, ceremony_date, venue_name, venue_address")
-          .order("created_at", { ascending: false })
-          .limit(50);
-
-        if (q.trim()) q1 = q1.ilike("owner_email", `%${q.trim()}%`);
-
-        const { data, error } = await q1;
-        if (error) throw error;
-        evRows = (data || []) as EventRow[];
-      } else {
-        if (eventIds.length === 0) {
-          setEvents([]);
-          setSettingsByEventId({});
-          return;
-        }
-
-        const { data, error } = await supabase
-          .from("events")
-          .select("id, created_at, owner_email, groom_name, bride_name, ceremony_date, venue_name, venue_address")
-          .in("id", eventIds)
-          .order("created_at", { ascending: false })
-          .limit(50);
-
-        if (error) throw error;
-        evRows = (data || []) as EventRow[];
-      }
-
-      setEvents(evRows);
-
-      // ✅ 3) settings 조회 (멤버도 SELECT 가능해야 함)
-      const ids = evRows.map((r) => r.id);
-      if (ids.length > 0) {
-        const { data: sData, error: sErr } = await supabase
-          .from("event_settings")
-          .select("event_id, title, ceremony_date")
-          .in("event_id", ids);
-
-        if (sErr) throw sErr;
-
-        const sMap: Record<string, EventSettingsRow> = {};
-        (sData || []).forEach((row: any) => {
-          sMap[row.event_id] = row;
-        });
-        setSettingsByEventId(sMap);
-      } else {
-        setSettingsByEventId({});
-      }
+      setEvents(mapped);
+      await fetchSettings(mapped);
     } catch (e) {
       console.error(e);
     } finally {
@@ -255,7 +272,7 @@ export default function EventHome() {
   };
 
   const ensureInviteBundle = async (eventId: string): Promise<InviteBundle> => {
-    // 1️⃣ 링크 초대 (다회용) - 링크 자체로 권한 부여 X, “진입/로그인 유도용” 토큰
+    // 1️⃣ 링크 초대 (다회용)
     const { data: linkData, error: linkErr } = await supabase.rpc("event_link_invite", {
       p_event_id: eventId,
       p_role: "member",
@@ -304,7 +321,6 @@ export default function EventHome() {
       setInviteByEventId((p) => ({ ...p, [eventId]: bundle }));
     } catch (e) {
       console.error(e);
-      alert("초대 생성에 실패했습니다. (권한/RPC/정책 확인)");
     } finally {
       setInviteLoadingByEventId((p) => ({ ...p, [eventId]: false }));
     }
@@ -387,9 +403,8 @@ export default function EventHome() {
               const eventDate = getEventDate(ev);
               const dDay = getDDayInfo(eventDate);
 
-              // ✅ 초대하기는 "운영자" 또는 "해당 이벤트의 예약자(권한자)"만
-              const myRole = myRoleByEventId[ev.id];
-              const canInvite = isAdmin || myRole === "owner";
+              // 초대하기는 "이 이벤트를 만든 사람(=owner_email)" 또는 운영자만 가능
+              const canInvite = isAdmin || (email && ev.owner_email === email);
 
               const isExpanded = expandedInviteId === ev.id;
               const invite = inviteByEventId[ev.id];
@@ -479,7 +494,7 @@ export default function EventHome() {
                                   배우자 및 혼주 초대
                                 </h3>
                                 <p className="mt-2 text-sm leading-relaxed text-slate-500 font-medium">
-                                  함께 예식 설정과 웨딩 리포트를 확인할 사람을 초대하세요.
+                                  초대받은 분은 예식 설정과 웨딩 리포트를 함께 확인할 수 있어요.
                                   <span className="flex items-center gap-1.5 mt-2 text-[11px] text-rose-500/80">
                                     <Info className="h-3.5 w-3.5" />
                                     축의금 상세 내역은 본인인증 후 본인 계좌의 내역만 조회할 수 있어요.
@@ -537,7 +552,7 @@ export default function EventHome() {
                                     </div>
 
                                     <p className="text-sm font-bold text-slate-800 mb-4">
-                                      🔗 링크는 “사이트 접속/로그인 유도” 용도이고, 참여 확정은 코드 입력으로 완료돼요.
+                                      🔗 링크는 “접속/로그인 유도” 용도예요.
                                     </p>
 
                                     <Button
@@ -575,14 +590,14 @@ export default function EventHome() {
                                       </div>
                                       <div className="mt-2 text-[11px] text-slate-400">유효기간: {invite.expiresLabel}</div>
                                       <div className="mt-2 text-[11px] text-slate-400">
-                                        참여 방법: 링크 접속 → 로그인 → <span className="font-semibold">/join</span>에서 코드 입력
+                                        참여는 <span className="font-semibold">/join</span>에서 코드 입력으로 완료
                                       </div>
                                     </div>
                                   </div>
                                 </div>
                               ) : (
                                 <div className="py-10 text-center text-slate-400">
-                                  초대 정보를 만들 수 없습니다. (함수/권한/정책을 확인해주세요)
+                                  초대 정보를 만들 수 없습니다. (함수/권한/파라미터를 확인해주세요)
                                 </div>
                               )}
                             </div>
