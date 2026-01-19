@@ -154,77 +154,60 @@ export default function EventHome() {
     ].join("\n");
   };
 
-  const fetchEvents = async () => {
-    setLoading(true);
-    try {
-      const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
-      if (sessionErr) throw sessionErr;
+ const fetchEvents = async () => {
+  setLoading(true);
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData.session?.user;
+    if (!user) return;
 
-      const userEmail = sessionData.session?.user?.email ?? "";
-      setEmail(userEmail);
+    setEmail(user.email ?? "");
 
-      // ✅ 멤버로 참여한 event_id까지 포함해서 보여주기
-      const { data: meData, error: meErr } = await supabase.auth.getUser();
-      if (meErr) throw meErr;
+    // 🔥 핵심: event_members 기준
+    const { data, error } = await supabase
+      .from("event_members")
+      .select(`
+        event_id,
+        events (
+          id,
+          created_at,
+          owner_email,
+          groom_name,
+          bride_name,
+          ceremony_date,
+          venue_name,
+          venue_address
+        )
+      `)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
 
-      const uid = meData.user?.id;
-      let memberEventIds: string[] = [];
+    if (error) throw error;
 
-      if (uid) {
-        const { data: mData, error: mErr } = await supabase
-          .from("event_members")
-          .select("event_id")
-          .eq("user_id", uid);
+    const rows =
+      data?.map((r: any) => r.events).filter(Boolean) ?? [];
 
-        if (mErr) throw mErr;
-        memberEventIds = (mData || []).map((r: any) => r.event_id);
-      }
+    setEvents(rows);
 
-      let query = supabase
-        .from("events")
-        .select("id, created_at, owner_email, groom_name, bride_name, ceremony_date, venue_name, venue_address")
-        .order("created_at", { ascending: false });
+    // settings
+    const ids = rows.map((r) => r.id);
+    if (ids.length > 0) {
+      const { data: sData } = await supabase
+        .from("event_settings")
+        .select("event_id, title, ceremony_date")
+        .in("event_id", ids);
 
-      if (effectiveScope === "mine") {
-        if (memberEventIds.length > 0) {
-          // owner_email == 내 이메일 OR id in (멤버 이벤트)
-          query = query.or(`owner_email.eq.${userEmail},id.in.(${memberEventIds.join(",")})`);
-        } else {
-          query = query.eq("owner_email", userEmail);
-        }
-      }
-
-      if (isAdmin && q.trim()) query = query.ilike("owner_email", `%${q.trim()}%`);
-
-      const { data, error } = await query.limit(50);
-      if (error) throw error;
-
-      const rows = (data || []) as EventRow[];
-      setEvents(rows);
-
-      const ids = rows.map((r) => r.id);
-      if (ids.length > 0) {
-        const { data: sData, error: sErr } = await supabase
-          .from("event_settings")
-          .select("event_id, title, ceremony_date")
-          .in("event_id", ids);
-
-        if (sErr) throw sErr;
-
-        const sMap: Record<string, EventSettingsRow> = {};
-        (sData || []).forEach((row) => {
-          sMap[(row as any).event_id] = row as any;
-        });
-        setSettingsByEventId(sMap);
-      } else {
-        setSettingsByEventId({});
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+      const map: any = {};
+      sData?.forEach((r: any) => (map[r.event_id] = r));
+      setSettingsByEventId(map);
     }
-  };
+  } catch (e) {
+    console.error(e);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
     const ensureInviteBundle = async (eventId: string): Promise<InviteBundle> => {
     // 1️⃣ 링크 초대 (다회용)
