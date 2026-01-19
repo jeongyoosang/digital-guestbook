@@ -382,7 +382,7 @@ export default function EventHome() {
                               <div className="mb-8">
                                 <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                                   <Users className="h-5 w-5 text-rose-500" />
-                                  가족 및 혼주 초대
+                                  배우자 및 혼주 초대
                                 </h3>
                                 <p className="mt-2 text-sm leading-relaxed text-slate-500 font-medium">
                                   신랑·신부·혼주를 초대하면 예식 설정과 웨딩 리포트를 함께 확인할 수 있어요.

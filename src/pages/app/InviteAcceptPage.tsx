@@ -5,6 +5,22 @@ import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
+const toKoreanInviteError = (err: any) => {
+  const m = String(err?.message || "");
+
+  if (m.includes("not authenticated")) return "로그인이 필요합니다. 로그인 후 다시 시도해주세요.";
+  if (m.includes("invalid invite")) return "초대 링크가 유효하지 않습니다. 다시 확인해주세요.";
+  if (m.includes("invite expired")) return "초대장이 만료되었습니다. 새로운 초대 링크를 받아주세요.";
+  if (m.includes("invite already used up"))
+    return "이미 사용된 초대장입니다. 이미 참여했다면 ‘내 이벤트’에서 확인해주세요.";
+  if (m.includes("provide exactly one")) return "초대 링크로 참여할 수 없습니다. 다시 시도해주세요.";
+  if (m.includes("no permission")) return "초대 권한이 없습니다.";
+  if (m.includes("ambiguous"))
+    return "서버 응답 처리 중 오류가 발생했습니다. 새로고침 후 다시 시도해주세요.";
+
+  return "초대 참여에 실패했습니다. 잠시 후 다시 시도해주세요.";
+};
+
 export default function InviteAcceptPage() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
@@ -42,14 +58,17 @@ export default function InviteAcceptPage() {
       if (error) throw error;
 
       const row = Array.isArray(data) ? data[0] : data;
-      const eventId = row?.out_event_id;
+
+      // ✅ 함수 RETURNS TABLE(event_id uuid, role text) 기준
+      // (예전 out_event_id 등 혼용 방지)
+      const eventId = row?.event_id;
 
       if (!eventId) throw new Error("이벤트 정보를 찾을 수 없습니다.");
 
       navigate(`/app/event/${eventId}/report`);
     } catch (e: any) {
       console.error(e);
-      setMsg(e?.message || "초대 참여에 실패했습니다.");
+      setMsg(toKoreanInviteError(e));
     } finally {
       setLoading(false);
     }
