@@ -23,10 +23,17 @@ type NormalizedTx = {
   raw_json?: unknown | null;
 };
 
-function json(data: unknown, status = 200) {
+// ✅ CORS (브라우저에서 functions/v1 호출 시 필수)
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+function json(data: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...corsHeaders, ...extraHeaders },
   });
 }
 
@@ -74,6 +81,11 @@ async function makeTxHash(input: {
 }
 
 Deno.serve(async (req) => {
+  // ✅ Preflight (이게 없으면 브라우저에서 "Failed to fetch" / CORS 발생)
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   try {
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
@@ -113,7 +125,7 @@ Deno.serve(async (req) => {
     if (memErr) return json({ error: "Member check failed" }, 500);
     if (!memberRow) return json({ error: "Forbidden (not event member)" }, 403);
 
-    // ✅ 2.5) 리포트 확정 상태면 스크래핑 차단 (C단계)
+    // ✅ 2.5) 리포트 확정 상태면 스크래핑 차단 (C단계: 409)
     const { data: ev, error: evErr } = await userClient
       .from("events")
       .select("report_status, report_finalized_at")
@@ -126,16 +138,14 @@ Deno.serve(async (req) => {
       return json(
         {
           error: "Report finalized",
-          message:
-            "확정된 현장 참석자 리포트는 갱신할 수 없습니다.",
+          message: "확정된 현장 참석자 리포트는 갱신할 수 없습니다.",
           report_finalized_at: ev.report_finalized_at ?? null,
         },
         409
       );
     }
 
-    // 3) 이 scrapeAccount가 내 접근 권한 범위인지 확인
-    // ✅ event_id까지 같이 확인해서 안전성 강화
+    // 3) 이 scrapeAccount가 내 접근 권한 범위인지 확인 + event_id까지 확인
     const { data: myAccount, error: accErr } = await userClient
       .from("event_scrape_accounts")
       .select("id, event_id, bank_code, account_masked")
@@ -148,30 +158,33 @@ Deno.serve(async (req) => {
       return json({ error: "Forbidden (scrape account not for this event)" }, 403);
     }
 
-    // 4) (TODO) 쿠콘 거래내역 조회 fetch로 교체
-    // - 지금은 엔진 없으니 stub
-    // - 여기에서 쿠콘 응답을 NormalizedTx[] 로 매핑하면 됨
-    const fetched: NormalizedTx[] = [
-      // 예시:
-      // {
-      //   tx_date: "2026-01-19",
-      //   tx_time: "13:10:00",
-      //   amount: 100000,
-      //   direction: "IN",
-      //   balance: 500000,
-      //   memo: "축의금",
-      //   counterparty: "김OO",
-      //   counterparty_account: null,
-      //   raw_json: { ...original },
-      // },
-    ];
+    // 4) (TODO) 쿠콘 거래내역 조회 fetch로 교체 (현재는 stub)
+    const fetched: NormalizedTx[] = [];
 
     // 5) 서비스 롤로 적재 (RLS 무시)
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+      auth: { persistSession: false },
+    });
 
-    const rows: any[] = [];
+    const rows: Array<{
+      event_id: string;
+      scrape_account_id: string;
+      tx_date: string;
+      tx_time: string | null;
+      amount: number;
+      direction: Direction;
+      balance: number | null;
+      memo: string | null;
+      counterparty: string | null;
+      counterparty_account: string | null;
+      currency: string;
+      is_reflected: boolean;
+      tx_hash: string;
+      raw_json: unknown | null;
+      scraped_at: string;
+    }> = [];
+
     for (const t of fetched) {
-      // 방어: direction/amount
       const direction: Direction = t.direction === "OUT" ? "OUT" : "IN";
       const amount = Math.abs(Number(t.amount ?? 0));
       if (!t.tx_date || !isYmd(t.tx_date) || !amount) continue;
@@ -207,7 +220,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ✅ 멱등 적재: (scrape_account_id, tx_hash) 기준 중복은 무시
+    // ✅ 멱등 적재: (scrape_account_id, tx_hash) 기준 중복 무시
     // - ux_est_dedupe 유니크 인덱스와 정합
     let inserted = 0;
 
