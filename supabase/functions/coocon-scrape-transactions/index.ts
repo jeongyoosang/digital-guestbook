@@ -46,7 +46,7 @@ async function sha256Hex(input: string) {
 /**
  * 계좌별 dedupe를 위한 tx_hash
  * - scrape_account_id를 반드시 포함
- * - tx_date/tx_time/amount/direction/balance/memo/counterparty/counterparty_account를 포함 (가능한 안정적으로)
+ * - tx_date/tx_time/amount/direction/balance/memo/counterparty/counterparty_account 포함
  */
 async function makeTxHash(input: {
   scrape_account_id: string;
@@ -113,15 +113,40 @@ Deno.serve(async (req) => {
     if (memErr) return json({ error: "Member check failed" }, 500);
     if (!memberRow) return json({ error: "Forbidden (not event member)" }, 403);
 
-    // 3) 이 scrapeAccount가 내 접근 권한 범위인지 확인 (RLS + 서버측 확인)
+    // ✅ 2.5) 리포트 확정 상태면 스크래핑 차단 (C단계)
+    const { data: ev, error: evErr } = await userClient
+      .from("events")
+      .select("report_status, report_finalized_at")
+      .eq("id", body.eventId)
+      .maybeSingle();
+
+    if (evErr) return json({ error: "Event read failed" }, 500);
+
+    if (ev?.report_status === "finalized") {
+      return json(
+        {
+          error: "Report finalized",
+          message:
+            "확정된 현장 참석자 리포트는 갱신할 수 없습니다.",
+          report_finalized_at: ev.report_finalized_at ?? null,
+        },
+        409
+      );
+    }
+
+    // 3) 이 scrapeAccount가 내 접근 권한 범위인지 확인
+    // ✅ event_id까지 같이 확인해서 안전성 강화
     const { data: myAccount, error: accErr } = await userClient
       .from("event_scrape_accounts")
-      .select("id, bank_code, account_masked")
+      .select("id, event_id, bank_code, account_masked")
       .eq("id", body.scrapeAccountId)
       .maybeSingle();
 
     if (accErr) return json({ error: "Account read failed" }, 500);
     if (!myAccount) return json({ error: "Forbidden (not your scrape account)" }, 403);
+    if (myAccount.event_id !== body.eventId) {
+      return json({ error: "Forbidden (scrape account not for this event)" }, 403);
+    }
 
     // 4) (TODO) 쿠콘 거래내역 조회 fetch로 교체
     // - 지금은 엔진 없으니 stub
@@ -144,7 +169,7 @@ Deno.serve(async (req) => {
     // 5) 서비스 롤로 적재 (RLS 무시)
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    const rows = [];
+    const rows: any[] = [];
     for (const t of fetched) {
       // 방어: direction/amount
       const direction: Direction = t.direction === "OUT" ? "OUT" : "IN";
@@ -211,7 +236,7 @@ Deno.serve(async (req) => {
       fetched: fetched.length,
       note: "fetched는 아직 stub입니다. 엔진 받으면 4)에서 쿠콘 fetch로 교체하세요.",
     });
-  } catch (e) {
+  } catch (e: any) {
     return json({ error: "Unhandled", detail: String(e?.message ?? e) }, 500);
   }
 });

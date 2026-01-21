@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 interface RouteParams {
@@ -27,18 +27,24 @@ type EventSettingsLite = {
   recipients: Recipient[] | null;
 };
 
+type ReportStatus = "draft" | "finalized" | "archived";
+
 const PAGE_SIZE = 10;
 
 export default function ResultPage() {
   const { eventId } = useParams<RouteParams>();
-  const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [settings, setSettings] = useState<EventSettingsLite | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // 축의금 관련
+  // 리포트 상태
+  const [reportStatus, setReportStatus] = useState<ReportStatus>("draft");
+  const [reportFinalizedAt, setReportFinalizedAt] = useState<string | null>(null);
+  const [finalizing, setFinalizing] = useState(false);
+
+  // 축의금
   const [scrapeAccountId, setScrapeAccountId] = useState<string | null>(null);
   const [txCount, setTxCount] = useState<number>(0);
   const [scraping, setScraping] = useState(false);
@@ -86,7 +92,19 @@ export default function ResultPage() {
           });
         }
 
-        // 스크래핑 계좌 (가장 최신)
+        // 이벤트 리포트 상태
+        const { data: ev } = await supabase
+          .from("events")
+          .select("report_status, report_finalized_at")
+          .eq("id", eventId)
+          .maybeSingle();
+
+        if (ev?.report_status) {
+          setReportStatus(ev.report_status);
+          setReportFinalizedAt(ev.report_finalized_at ?? null);
+        }
+
+        // 스크래핑 계좌
         const { data: acc } = await supabase
           .from("event_scrape_accounts")
           .select("id")
@@ -97,7 +115,7 @@ export default function ResultPage() {
 
         if (acc?.id) setScrapeAccountId(acc.id);
 
-        // 축의금 트랜잭션 개수
+        // 축의금 개수
         const { count } = await supabase
           .from("event_scrape_transactions")
           .select("*", { count: "exact", head: true })
@@ -116,14 +134,18 @@ export default function ResultPage() {
     fetchAll();
   }, [eventId]);
 
-  /* ------------------ 통합 리포트 생성/갱신 ------------------ */
+  /* ------------------ 리포트 생성/갱신 ------------------ */
   const handleGenerateReport = async () => {
+    if (reportStatus === "finalized") {
+      setScrapeResult("확정된 리포트는 갱신할 수 없습니다.");
+      return;
+    }
+
     if (!scrapeAccountId) {
       setScrapeResult("연결된 계좌가 없습니다.");
       return;
     }
 
-    // 이미 축의금 있으면 굳이 재조회 안 함
     if (txCount > 0) {
       setScrapeResult("이미 최신 리포트가 있습니다.");
       return;
@@ -166,6 +188,37 @@ export default function ResultPage() {
     }
   };
 
+  /* ------------------ 리포트 확정 ------------------ */
+  const handleFinalizeReport = async () => {
+    if (!eventId || reportStatus === "finalized") return;
+
+    const ok = window.confirm(
+      "이 리포트는 현장 참석자 기준의 공식 기록으로 확정됩니다.\n확정 후에는 자동 조회나 수정이 불가능합니다.\n\n리포트를 확정할까요?"
+    );
+    if (!ok) return;
+
+    try {
+      setFinalizing(true);
+
+      const { error } = await supabase
+        .from("events")
+        .update({
+          report_status: "finalized",
+          report_finalized_at: new Date().toISOString(),
+        })
+        .eq("id", eventId);
+
+      if (error) throw error;
+
+      setReportStatus("finalized");
+      setReportFinalizedAt(new Date().toISOString());
+    } catch (e) {
+      alert("리포트 확정 중 오류가 발생했습니다.");
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
   /* ------------------ 계산 ------------------ */
   const totalCount = messages.length;
   const groomCount = messages.filter((m) => m.side === "groom").length;
@@ -202,7 +255,7 @@ export default function ResultPage() {
 
         {/* ===== 헤더 ===== */}
         <header className="mb-8">
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start justify-between gap-6">
             <div>
               <h1 className="text-2xl font-semibold mb-1">디지털 방명록 리포트</h1>
               {ceremonyDateText && (
@@ -210,14 +263,44 @@ export default function ResultPage() {
               )}
             </div>
 
-            {/* 통합 CTA */}
-            <button
-              onClick={handleGenerateReport}
-              disabled={scraping}
-              className="px-4 py-2 rounded-xl bg-black text-white text-sm disabled:opacity-50"
-            >
-              {scraping ? "리포트 생성 중…" : "리포트 생성/갱신"}
-            </button>
+            <div className="flex flex-col items-end gap-2">
+              {reportStatus === "finalized" ? (
+                <div className="text-right">
+                  <div className="text-sm font-semibold text-gray-900">
+                    확정된 현장 참석자 리포트입니다
+                  </div>
+                  <div className="mt-1 text-xs text-gray-500 max-w-[280px]">
+                    이 리포트는 디지털 방명록을 통해 수집된{" "}
+                    <span className="font-medium">현장 참석자 기준</span>의
+                    공식 기록으로, 확정 이후에는 수정할 수 없습니다.
+                  </div>
+                  {reportFinalizedAt && (
+                    <div className="mt-1 text-[11px] text-gray-400">
+                      확정 시각:{" "}
+                      {new Date(reportFinalizedAt).toLocaleString()}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <button
+                    onClick={handleGenerateReport}
+                    disabled={scraping}
+                    className="px-4 py-2 rounded-xl bg-black text-white text-sm disabled:opacity-50"
+                  >
+                    {scraping ? "리포트 생성 중…" : "리포트 생성/갱신"}
+                  </button>
+
+                  <button
+                    onClick={handleFinalizeReport}
+                    disabled={finalizing}
+                    className="px-4 py-2 rounded-xl bg-white border text-sm hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {finalizing ? "확정 중…" : "리포트 확정하기"}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {scrapeResult && (
