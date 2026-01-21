@@ -1,4 +1,22 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// supabase/functions/coocon-connect/index.ts
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+
+type Body =
+  | {
+      action: "start";
+      eventId: string;
+      bankCode?: string | null; // optional
+    }
+  | {
+      action: "finish";
+      eventId: string;
+      scrapeAccountId: string;
+      bankCode: string; // required for finish
+      accountMasked: string; // required for finish (마스킹 계좌번호)
+      // mode: 'stub' | 'real' (나중에 엔진 붙이면 real로)
+      mode?: "stub" | "real";
+    };
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -9,85 +27,129 @@ function json(data: unknown, status = 200) {
 
 Deno.serve(async (req) => {
   try {
-    if (req.method !== "POST") return json({ ok: false, error: "POST only" }, 405);
+    if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-    const auth = req.headers.get("authorization") || "";
-    const jwt = auth.startsWith("Bearer ") ? auth.slice(7) : null;
-    if (!jwt) return json({ ok: false, error: "Missing Bearer token" }, 401);
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // ✅ secrets 로 넣어야 하는 값
-    const PROJECT_URL = Deno.env.get("PROJECT_URL");
-    const SERVICE_ROLE_KEY = Deno.env.get("SERVICE_ROLE_KEY");
-    const COOCON_BASE_URL = Deno.env.get("COOCON_BASE_URL") || ""; // 없어도 됨(Stub)
+    const authHeader = req.headers.get("Authorization") ?? "";
+    if (!authHeader.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
 
-    if (!PROJECT_URL) return json({ ok: false, error: "Missing PROJECT_URL secret" }, 500);
-    if (!SERVICE_ROLE_KEY) return json({ ok: false, error: "Missing SERVICE_ROLE_KEY secret" }, 500);
+    // 로그인 유저용 클라이언트 (RLS 적용)
+    const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
 
-    const admin = createClient(PROJECT_URL, SERVICE_ROLE_KEY);
+    const { data: userData, error: userErr } = await userClient.auth.getUser();
+    if (userErr || !userData?.user) return json({ error: "Unauthorized" }, 401);
+    const userId = userData.user.id;
 
-    const { data: userRes, error: userErr } = await admin.auth.getUser(jwt);
-    if (userErr || !userRes?.user) return json({ ok: false, error: "Invalid token" }, 401);
-    const userId = userRes.user.id;
+    const body = (await req.json()) as Partial<Body>;
+    if (!body?.action) return json({ error: "Missing action" }, 400);
 
-    const body = await req.json().catch(() => null) as any;
-    if (!body?.action) return json({ ok: false, error: "Missing action" }, 400);
-    if (!body?.eventId || !body?.module) return json({ ok: false, error: "Missing eventId/module" }, 400);
+    // 공통: eventId 필수
+    const eventId = (body as any).eventId;
+    if (!eventId) return json({ error: "Missing eventId" }, 400);
 
-    // 멤버 체크 (event_members에 user_id가 있어야 통과)
-    const { data: member } = await admin
+    // ✅ 이 유저가 event 멤버인지 확인
+    const { data: memberRow, error: memErr } = await userClient
       .from("event_members")
       .select("id")
-      .eq("event_id", body.eventId)
+      .eq("event_id", eventId)
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (!member) return json({ ok: false, error: "Not a member" }, 403);
+    if (memErr) return json({ error: "Member check failed" }, 500);
+    if (!memberRow) return json({ error: "Forbidden (not event member)" }, 403);
 
-    const isStub = !COOCON_BASE_URL;
+    // 서비스 롤 (RLS 무시) - insert/update는 admin으로(안전)
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
+    // =========================
+    // action: start
+    // =========================
     if (body.action === "start") {
-      // ✅ event_scrape_accounts 컬럼에 맞춰 insert (현재 테이블 기준)
-      const { error: insErr } = await admin.from("event_scrape_accounts").insert({
-        event_id: body.eventId,
-        owner_user_id: userId,
-        provider: "coocon",
-        bank_code: body.module,     // 지금은 module 값을 bank_code에 저장
-        status: "pending",
-        // bank_name/account_masked/last_scraped_at 등은 나중에 채움
-      });
+      const bankCode = (body as any).bankCode ?? null;
 
-      if (insErr) {
-        // 중복이면(이미 row 존재) insert가 실패할 수 있으니 메시지 반환
-        return json({ ok: false, error: "DB insert failed", detail: insErr.message }, 500);
-      }
-
-      if (isStub) {
-        return json({
-          ok: true,
-          stub: true,
-          coocon: { Output: { Result: { req: { SignParam: "DUMMY_SIGN_PARAM_FOR_UI" } } } },
-        });
-      }
-
-      return json({ ok: false, error: "COOCON_BASE_URL missing" }, 500);
-    }
-
-    if (body.action === "finish") {
-      // ✅ 완료 처리: status만 업데이트
-      const { error: updErr } = await admin
+      // row 생성
+      const { data: created, error: insErr } = await admin
         .from("event_scrape_accounts")
-        .update({ status: "connected_stub", verified_at: new Date().toISOString() })
-        .eq("event_id", body.eventId)
-        .eq("owner_user_id", userId)
-        .eq("bank_code", body.module);
+        .insert({
+          event_id: eventId,
+          owner_user_id: userId,
+          status: "started",
+          bank_code: bankCode,
+        })
+        .select("id, status")
+        .maybeSingle();
 
-      if (updErr) return json({ ok: false, error: "DB update failed", detail: updErr.message }, 500);
+      if (insErr || !created) {
+        return json({ error: "Create scrape account failed", detail: insErr?.message }, 500);
+      }
 
-      return json({ ok: true, stub: true, connected: true });
+      return json({
+        ok: true,
+        scrapeAccountId: created.id,
+        status: created.status,
+      });
     }
 
-    return json({ ok: false, error: "Unknown action" }, 400);
+    // =========================
+    // action: finish
+    // =========================
+    if (body.action === "finish") {
+      const b = body as any;
+      const scrapeAccountId = b.scrapeAccountId as string | undefined;
+      const bankCode = b.bankCode as string | undefined;
+      const accountMasked = b.accountMasked as string | undefined;
+      const mode = (b.mode as "stub" | "real" | undefined) ?? "stub";
+
+      if (!scrapeAccountId || !bankCode || !accountMasked) {
+        return json(
+          { error: "Missing required fields (scrapeAccountId, bankCode, accountMasked)" },
+          400
+        );
+      }
+
+      // ✅ 이 scrapeAccount가 "내 것"인지 확인 (서버에서도 확실히)
+      const { data: myAccount, error: accErr } = await userClient
+        .from("event_scrape_accounts")
+        .select("id, event_id, owner_user_id")
+        .eq("id", scrapeAccountId)
+        .maybeSingle();
+
+      if (accErr) return json({ error: "Account read failed" }, 500);
+      if (!myAccount) return json({ error: "Forbidden (not your scrape account)" }, 403);
+      if (myAccount.event_id !== eventId) return json({ error: "Mismatch eventId" }, 400);
+
+      const nextStatus = mode === "real" ? "connected" : "connected_stub";
+
+      const { data: updated, error: updErr } = await admin
+        .from("event_scrape_accounts")
+        .update({
+          status: nextStatus,
+          bank_code: bankCode,
+          account_masked: accountMasked,
+        })
+        .eq("id", scrapeAccountId)
+        .select("id, status, bank_code, account_masked")
+        .maybeSingle();
+
+      if (updErr || !updated) {
+        return json({ error: "Finish update failed", detail: updErr?.message }, 500);
+      }
+
+      return json({
+        ok: true,
+        connected: true,
+        mode,
+        scrapeAccount: updated,
+      });
+    }
+
+    return json({ error: "Unknown action" }, 400);
   } catch (e) {
-    return json({ ok: false, error: "Unhandled", detail: String(e) }, 500);
+    return json({ error: "Unhandled", detail: String((e as any)?.message ?? e) }, 500);
   }
 });
