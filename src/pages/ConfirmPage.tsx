@@ -112,16 +112,17 @@ const BANK_OPTIONS = [
 ];
 
 function isVideoUrl(url: string) {
-  const u = url.toLowerCase();
+  const u = (url || "").toLowerCase().split("?")[0]; // ✅ 쿼리 제거
   return (
-    u.includes(".mp4") ||
-    u.includes(".mov") ||
-    u.includes(".m4v") ||
-    u.includes(".webm") ||
-    u.includes(".ogg") ||
-    u.includes(".avi")
+    u.endsWith(".mp4") ||
+    u.endsWith(".mov") ||
+    u.endsWith(".m4v") ||
+    u.endsWith(".webm") ||
+    u.endsWith(".ogg") ||
+    u.endsWith(".avi")
   );
 }
+
 
 function countVideosInUrls(urls: string[]) {
   return urls.reduce((acc, u) => (isVideoUrl(u) ? acc + 1 : acc), 0);
@@ -463,8 +464,13 @@ export default function ConfirmPage() {
         const path = `${eventId}/${filename}`;
 
         const { error: uploadError } = await supabase.storage
-          .from("event-media")
-          .upload(path, file, { upsert: false });
+        .from("event-media")
+        .upload(path, file, {
+          upsert: false,
+          contentType: file.type || undefined, // ✅ 중요: video/mp4, image/jpeg 등 명시
+          cacheControl: "3600",
+        });
+
         if (uploadError) throw uploadError;
 
         const { data } = supabase.storage.from("event-media").getPublicUrl(path);
@@ -1034,11 +1040,13 @@ export default function ConfirmPage() {
                               muted
                               playsInline
                               preload="metadata"
+                              controls                    // ✅ “영상이 맞다”를 눈으로 확인
+                              controlsList="nodownload noplaybackrate noremoteplayback"
                             />
                           ) : (
-                            // eslint-disable-next-line jsx-a11y/alt-text
                             <img src={url} className="w-full h-full object-cover" />
                           )}
+
 
                           <div className="absolute left-1 bottom-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px]">
                             {vid ? "VIDEO" : "PHOTO"}

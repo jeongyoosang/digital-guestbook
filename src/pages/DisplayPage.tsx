@@ -1,3 +1,4 @@
+// src/pages/DisplayPage.tsx
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -74,6 +75,18 @@ function InstagramIcon({
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+// ✅ URL이 영상인지 판별
+function isVideoUrl(url: string) {
+  const u = (url || "").toLowerCase().split("?")[0];
+  return (
+    u.endsWith(".mp4") ||
+    u.endsWith(".mov") ||
+    u.endsWith(".m4v") ||
+    u.endsWith(".webm") ||
+    u.endsWith(".ogg")
   );
 }
 
@@ -175,7 +188,8 @@ export default function DisplayPage() {
       .eq("event_id", eventId)
       .maybeSingle()
       .then(({ data, error }) => {
-        if (error) console.error("[DisplayPage] event_settings select error:", error);
+        if (error)
+          console.error("[DisplayPage] event_settings select error:", error);
         if (!data) return;
 
         if (data.lower_message) setLowerMessage(data.lower_message);
@@ -193,11 +207,12 @@ export default function DisplayPage() {
         }
 
         setDisplayStyle((data.display_style as DisplayStyle) ?? "basic");
-        setBackgroundMode((data.background_mode as BackgroundMode) ?? "template");
+        setBackgroundMode(
+          (data.background_mode as BackgroundMode) ?? "template"
+        );
         setMediaUrls(Array.isArray(data.media_urls) ? data.media_urls : []);
 
         // ✅ (fallback 1) event_settings.recipients에서 이름 채우기
-        // events에서 못 읽어오거나 값이 비었을 때 대비
         const recipients = Array.isArray(data.recipients)
           ? (data.recipients as Recipient[])
           : [];
@@ -205,7 +220,6 @@ export default function DisplayPage() {
         const groom = recipients.find((r) => r?.role === "신랑")?.name;
         const bride = recipients.find((r) => r?.role === "신부")?.name;
 
-        // 현재 값이 비어있을 때만 채움
         if (!groomName && groom) setGroomName(groom);
         if (!brideName && bride) setBrideName(bride);
       });
@@ -228,11 +242,13 @@ export default function DisplayPage() {
         return;
       }
       if (!data) {
-        console.warn("[DisplayPage] events data is null (maybe RLS?) eventId:", eventId);
+        console.warn(
+          "[DisplayPage] events data is null (maybe RLS?) eventId:",
+          eventId
+        );
         return;
       }
 
-      // 정상 케이스
       setGroomName(data.groom_name ?? "");
       setBrideName(data.bride_name ?? "");
 
@@ -246,7 +262,9 @@ export default function DisplayPage() {
 
         if (sErr) console.error("[DisplayPage] fallback recipients error:", sErr);
 
-        const recipients = Array.isArray(s?.recipients) ? (s!.recipients as Recipient[]) : [];
+        const recipients = Array.isArray(s?.recipients)
+          ? (s!.recipients as Recipient[])
+          : [];
         const groom = recipients.find((r) => r?.role === "신랑")?.name;
         const bride = recipients.find((r) => r?.role === "신부")?.name;
 
@@ -278,6 +296,15 @@ export default function DisplayPage() {
     return () => clearInterval(t);
   }, [usePhotoBackground, mediaUrls]);
 
+  const currentMediaUrl = useMemo(() => {
+    if (!usePhotoBackground || mediaUrls.length === 0) return "";
+    return mediaUrls[currentSlide] ?? "";
+  }, [usePhotoBackground, mediaUrls, currentSlide]);
+
+  const currentIsVideo = useMemo(() => {
+    return !!currentMediaUrl && isVideoUrl(currentMediaUrl);
+  }, [currentMediaUrl]);
+
   /* ---------- ✅ 자동 밀도 ---------- */
   const queueLen = rotationQueueRef.current.length;
 
@@ -295,11 +322,9 @@ export default function DisplayPage() {
   /* ---------- ✅ 헤더/폰트 ---------- */
   const topBarHeight = isPortrait ? "26vh" : "28vh";
 
-  // ✅ 라벨 크기 + 라벨↔이름 간격
   const groomBrideLabelClass = isPortrait ? "text-4xl" : "text-2xl";
   const groomBrideGapClass = isPortrait ? "mb-3" : "mb-2";
 
-  // ✅ 자간(고급스럽게 약간만)
   const roleLabelStyle: CSSProperties = {
     letterSpacing: "0.02em",
     fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
@@ -353,47 +378,55 @@ export default function DisplayPage() {
     return { min: 14, max: 86 };
   };
 
-      /* ---------- floating spawn (INFINITE) ---------- */
-    useEffect(() => {
-      // ✅ Display는 open이 아니어도 보여주자 (닫힘만 제외)
-      if (phase === "closed") return;
+  /* ---------- floating spawn (INFINITE) ---------- */
+  useEffect(() => {
+    if (phase === "closed") return;
 
-      const t = setInterval(() => {
-        if (rotationQueueRef.current.length === 0) return;
-        if (activeItems.length >= maxActive) return;
+    const t = setInterval(() => {
+      if (rotationQueueRef.current.length === 0) return;
+      if (activeItems.length >= maxActive) return;
 
-        const msg = rotationQueueRef.current.shift();
-        if (!msg) return;
-        rotationQueueRef.current.push(msg);
+      const msg = rotationQueueRef.current.shift();
+      if (!msg) return;
+      rotationQueueRef.current.push(msg);
 
-        const len = msg.body.length;
-        const { min, max } = getSafeRange(len);
+      const len = msg.body.length;
+      const { min, max } = getSafeRange(len);
 
-        const candidates = Array.from({ length: 12 }, () => min + Math.random() * (max - min));
-        const chosen = candidates.find((x) => {
-          const minGap = isPortrait ? (len >= 60 ? 16 : 14) : (len >= 60 ? 14 : 12);
-          return !activeItems.some((a) => Math.abs(a.leftPct - x) < minGap);
-        });
+      const candidates = Array.from(
+        { length: 12 },
+        () => min + Math.random() * (max - min)
+      );
+      const chosen = candidates.find((x) => {
+        const minGap = isPortrait
+          ? len >= 60
+            ? 16
+            : 14
+          : len >= 60
+          ? 14
+          : 12;
+        return !activeItems.some((a) => Math.abs(a.leftPct - x) < minGap);
+      });
 
-        if (chosen === undefined) return;
+      if (chosen === undefined) return;
 
-        const durationMs =
-          (isPortrait ? 15500 : 13200) +
-          Math.min(6500, Math.max(0, len - 30) * 120);
+      const durationMs =
+        (isPortrait ? 15500 : 13200) +
+        Math.min(6500, Math.max(0, len - 30) * 120);
 
-        setActiveItems((prev) => [
-          ...prev,
-          {
-            key: `${msg.id}-${Date.now()}`,
-            message: msg,
-            leftPct: chosen,
-            durationMs,
-          },
-        ]);
-      }, intervalMs);
+      setActiveItems((prev) => [
+        ...prev,
+        {
+          key: `${msg.id}-${Date.now()}`,
+          message: msg,
+          leftPct: chosen,
+          durationMs,
+        },
+      ]);
+    }, intervalMs);
 
-      return () => clearInterval(t);
-    }, [activeItems, phase, intervalMs, maxActive, isPortrait]);
+    return () => clearInterval(t);
+  }, [activeItems, phase, intervalMs, maxActive, isPortrait]);
 
   /* ---------- render ---------- */
   return (
@@ -407,6 +440,8 @@ export default function DisplayPage() {
         }
       `}</style>
 
+      {/* ✅ iOS/TV 자동재생 안정화를 위해 muted 필수.
+          (원치 않으면 audio 태그 제거해도 됨) */}
       <audio src="/bgm.m4a" autoPlay loop preload="auto" />
 
       {/* FLOATING (z-30) */}
@@ -510,25 +545,40 @@ export default function DisplayPage() {
         }}
       >
         {usePhotoBackground ? (
-          isPortrait ? (
-            <img
-              src={mediaUrls[currentSlide]}
+          currentIsVideo ? (
+            // ✅ VIDEO background (스탠바이미 포함 자동재생 안정)
+            <video
+              key={currentMediaUrl} // ✅ 슬라이드 바뀔 때마다 새로 로드
+              src={currentMediaUrl}
               className="absolute inset-0 w-full h-full object-cover"
-              alt="background"
+              autoPlay
+              muted
+              playsInline
+              loop
+              preload="auto"
             />
           ) : (
-            <>
+            // ✅ IMAGE background
+            isPortrait ? (
               <img
-                src={mediaUrls[currentSlide]}
-                className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-60"
-                alt="background blur"
+                src={currentMediaUrl}
+                className="absolute inset-0 w-full h-full object-cover"
+                alt="background"
               />
-              <img
-                src={mediaUrls[currentSlide]}
-                className="absolute inset-0 w-full h-full object-contain"
-                alt="background contain"
-              />
-            </>
+            ) : (
+              <>
+                <img
+                  src={currentMediaUrl}
+                  className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-60"
+                  alt="background blur"
+                />
+                <img
+                  src={currentMediaUrl}
+                  className="absolute inset-0 w-full h-full object-contain"
+                  alt="background contain"
+                />
+              </>
+            )
           )
         ) : (
           <div
