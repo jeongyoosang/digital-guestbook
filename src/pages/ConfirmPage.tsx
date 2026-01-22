@@ -39,8 +39,11 @@ type EventSettingsRow = {
 
   display_style?: string | null;
   background_mode?: "photo" | "template" | null;
+
+  // ✅ 사진/영상 URL들 (혼합)
   media_urls?: string[] | null;
 
+  // ✅ 모바일 청첩장 링크
   mobile_invitation_link?: string | null;
 };
 
@@ -56,6 +59,11 @@ type AccountForm = {
 
 const MAX_ACCOUNTS = 6;
 
+// ✅ 미디어 정책
+const MAX_MEDIA_TOTAL = 10;
+const MAX_VIDEOS = 2;
+const MAX_VIDEO_MB = 50;
+
 const DEFAULT_TITLE = "WEDDING MESSAGES";
 const DEFAULT_SUBTITLE = "하객 분들의 마음이 전해지고 있어요 💐";
 const DEFAULT_LOWER_MESSAGE = "친히 오셔서 축복해주시어 감사합니다.";
@@ -63,7 +71,9 @@ const DEFAULT_LOWER_MESSAGE = "친히 오셔서 축복해주시어 감사합니�
 const DEFAULT_START_OFFSET = -60; // 예식 시작 1시간 전
 const DEFAULT_END_OFFSET = -10; // 예식 종료 10분 전
 
-const HOURS: string[] = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+const HOURS: string[] = Array.from({ length: 24 }, (_, i) =>
+  String(i).padStart(2, "0")
+);
 const MINUTES_10: string[] = ["00", "10", "20", "30", "40", "50"];
 
 const DISPLAY_STYLE_OPTIONS = [
@@ -73,7 +83,6 @@ const DISPLAY_STYLE_OPTIONS = [
   { value: "autumn", label: "가을" },
   { value: "winter", label: "겨울" },
 ];
-
 
 const BANK_OPTIONS = [
   "국민은행",
@@ -95,6 +104,26 @@ const BANK_OPTIONS = [
   "제주은행",
   "기타(직접 입력)",
 ];
+
+function isVideoUrl(url: string) {
+  const u = url.toLowerCase();
+  return (
+    u.includes(".mp4") ||
+    u.includes(".mov") ||
+    u.includes(".m4v") ||
+    u.includes(".webm") ||
+    u.includes(".ogg") ||
+    u.includes(".avi")
+  );
+}
+
+function countVideosInUrls(urls: string[]) {
+  return urls.reduce((acc, u) => (isVideoUrl(u) ? acc + 1 : acc), 0);
+}
+
+function bytesToMB(bytes: number) {
+  return bytes / (1024 * 1024);
+}
 
 export default function ConfirmPage() {
   const { eventId } = useParams<RouteParams>();
@@ -130,9 +159,11 @@ export default function ConfirmPage() {
   // ✅ 모바일 청첩장 링크 (필수)
   const [mobileInvitationLink, setMobileInvitationLink] = useState("");
 
-  // 배경 모드 & 업로드된 사진 URL 들
-  const [backgroundMode, setBackgroundMode] = useState<"template" | "photo">("photo");
-  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  // 배경 모드 & 업로드된 미디어 URL 들
+  const [backgroundMode, setBackgroundMode] = useState<"template" | "photo">(
+    "photo"
+  );
+  const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
 
   // 템플릿 미리보기 로드 실패 여부
@@ -160,7 +191,7 @@ export default function ConfirmPage() {
     setTemplatePreviewError(false);
   }, [displayStyle]);
 
-  async function fetchData(eventId: string) {
+  async function fetchData(id: string) {
     setLoading(true);
     setError(null);
     setSuccess(null);
@@ -170,15 +201,14 @@ export default function ConfirmPage() {
       const { data: eventData, error: eventError } = await supabase
         .from("events")
         .select("*")
-        .eq("id", eventId)
+        .eq("id", id)
         .maybeSingle();
-
       if (eventError) throw eventError;
 
       let e: EventRow;
       if (!eventData) {
         e = {
-          id: eventId,
+          id,
           title: null,
           groom_name: null,
           bride_name: null,
@@ -223,9 +253,8 @@ export default function ConfirmPage() {
           mobile_invitation_link
         `
         )
-        .eq("event_id", eventId)
+        .eq("event_id", id)
         .maybeSingle();
-
       if (settingsError) throw settingsError;
 
       if (settingsData) {
@@ -248,11 +277,9 @@ export default function ConfirmPage() {
             : "template";
         setBackgroundMode(mode);
 
-        if (Array.isArray(s.media_urls) && s.media_urls.length > 0) {
-          setPhotoUrls(s.media_urls);
-        } else {
-          setPhotoUrls([]);
-        }
+        if (Array.isArray(s.media_urls) && s.media_urls.length > 0)
+          setMediaUrls(s.media_urls);
+        else setMediaUrls([]);
 
         setMobileInvitationLink(s.mobile_invitation_link ?? "");
       } else {
@@ -264,7 +291,7 @@ export default function ConfirmPage() {
         setLowerMessage(DEFAULT_LOWER_MESSAGE);
         setDisplayStyle("basic");
         setBackgroundMode("photo");
-        setPhotoUrls([]);
+        setMediaUrls([]);
         setMobileInvitationLink("");
       }
 
@@ -282,7 +309,7 @@ export default function ConfirmPage() {
           is_active
         `
         )
-        .eq("event_id", eventId)
+        .eq("event_id", id)
         .order("sort_order", { ascending: true });
 
       if (accountError && accountError.code !== "42P01") throw accountError;
@@ -301,8 +328,22 @@ export default function ConfirmPage() {
         );
       } else {
         setAccounts([
-          { label: "신랑", holder_name: "", bank_name: "", account_number: "", sort_order: 0, is_active: true },
-          { label: "신부", holder_name: "", bank_name: "", account_number: "", sort_order: 1, is_active: true },
+          {
+            label: "신랑",
+            holder_name: "",
+            bank_name: "",
+            account_number: "",
+            sort_order: 0,
+            is_active: true,
+          },
+          {
+            label: "신부",
+            holder_name: "",
+            bank_name: "",
+            account_number: "",
+            sort_order: 1,
+            is_active: true,
+          },
         ]);
       }
     } catch (e: any) {
@@ -313,8 +354,14 @@ export default function ConfirmPage() {
     }
   }
 
-  function handleAccountChange(index: number, field: keyof AccountForm, value: string | boolean) {
-    setAccounts((prev) => prev.map((acct, i) => (i === index ? { ...acct, [field]: value } : acct)));
+  function handleAccountChange(
+    index: number,
+    field: keyof AccountForm,
+    value: string | boolean
+  ) {
+    setAccounts((prev) =>
+      prev.map((acct, i) => (i === index ? { ...acct, [field]: value } : acct))
+    );
   }
 
   function addAccount() {
@@ -333,11 +380,15 @@ export default function ConfirmPage() {
   }
 
   function removeAccount(index: number) {
-    setAccounts((prev) => prev.filter((_, i) => i !== index).map((acct, i) => ({ ...acct, sort_order: i })));
+    setAccounts((prev) =>
+      prev
+        .filter((_, i) => i !== index)
+        .map((acct, i) => ({ ...acct, sort_order: i }))
+    );
   }
 
-  function removePhoto(index: number) {
-    setPhotoUrls((prev) => prev.filter((_, i) => i !== index));
+  function removeMedia(index: number) {
+    setMediaUrls((prev) => prev.filter((_, i) => i !== index));
   }
 
   async function handleFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
@@ -345,33 +396,80 @@ export default function ConfirmPage() {
     if (!files || !eventId) return;
 
     setSaving(true);
-    setUploadStatus("사진 업로드 중...");
+    setUploadStatus("업로드 중...");
     setError(null);
     setSuccess(null);
 
     try {
-      const current = [...photoUrls];
+      const current = [...mediaUrls];
+
+      let videoCount = countVideosInUrls(current);
+      let totalCount = current.length;
+
+      const skipped: string[] = [];
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const ext = file.name.split(".").pop() || "jpg";
-        const filename = `${Date.now()}_${i}.${ext}`;
+
+        if (totalCount >= MAX_MEDIA_TOTAL) {
+          skipped.push(`"${file.name}" (최대 ${MAX_MEDIA_TOTAL}개 초과)`);
+          continue;
+        }
+
+        const isVideo = (file.type || "").startsWith("video/");
+        const isImage = (file.type || "").startsWith("image/");
+
+        if (!isVideo && !isImage) {
+          skipped.push(`"${file.name}" (지원하지 않는 파일 형식)`);
+          continue;
+        }
+
+        if (isVideo && videoCount >= MAX_VIDEOS) {
+          skipped.push(`"${file.name}" (영상은 최대 ${MAX_VIDEOS}개)`);
+          continue;
+        }
+
+        if (isVideo) {
+          const mb = bytesToMB(file.size);
+          if (mb > MAX_VIDEO_MB) {
+            skipped.push(`"${file.name}" (영상은 파일당 ${MAX_VIDEO_MB}MB 이하)`);
+            continue;
+          }
+        }
+
+        const ext = file.name.split(".").pop() || (isVideo ? "mp4" : "jpg");
+        const safeExt =
+          ext.replace(/[^a-zA-Z0-9]/g, "") || (isVideo ? "mp4" : "jpg");
+        const filename = `${Date.now()}_${i}.${safeExt}`;
         const path = `${eventId}/${filename}`;
 
-        const { error: uploadError } = await supabase.storage.from("event-media").upload(path, file, { upsert: false });
+        const { error: uploadError } = await supabase.storage
+          .from("event-media")
+          .upload(path, file, { upsert: false });
         if (uploadError) throw uploadError;
 
         const { data } = supabase.storage.from("event-media").getPublicUrl(path);
-        if (data?.publicUrl) current.push(data.publicUrl);
+        if (data?.publicUrl) {
+          current.push(data.publicUrl);
+          totalCount += 1;
+          if (isVideo) videoCount += 1;
+        }
       }
 
-      const limited = current.slice(0, 8);
-      setPhotoUrls(limited);
+      const limited = current.slice(0, MAX_MEDIA_TOTAL);
+      setMediaUrls(limited);
       setBackgroundMode("photo");
-      setUploadStatus("업로드가 완료되었습니다. 하단에서 사진을 확인해주세요.");
+
+      if (skipped.length > 0) {
+        setUploadStatus(
+          `업로드 완료. 일부 파일은 제외되었습니다: ${skipped.join(", ")}`
+        );
+      } else {
+        setUploadStatus("업로드가 완료되었습니다. 하단에서 미디어를 확인해주세요.");
+      }
     } catch (err: any) {
       console.error("[ConfirmPage] file upload error", err);
-      setError(err.message ?? "사진 업로드 중 오류가 발생했습니다. 다시 시도해주세요.");
+      setError(err.message ?? "업로드 중 오류가 발생했습니다. 다시 시도해주세요.");
       setUploadStatus(null);
     } finally {
       setSaving(false);
@@ -384,7 +482,9 @@ export default function ConfirmPage() {
     if (!venueSearchKeyword.trim()) return;
     const kakao = (window as any).kakao;
     if (!kakao || !kakao.maps || !kakao.maps.services) {
-      alert("카카오 지도 스크립트가 아직 로드되지 않았습니다.\n잠시 후 새로고침 후 다시 시도해주세요.");
+      alert(
+        "카카오 지도 스크립트가 아직 로드되지 않았습니다.\n잠시 후 새로고침 후 다시 시도해주세요."
+      );
       return;
     }
 
@@ -422,26 +522,31 @@ export default function ConfirmPage() {
   // ✅ 필수값 검증
   const validateBeforeSave = () => {
     if (!mobileInvitationLink.trim()) return "모바일 청첩장 링크는 필수입니다.";
-    if (!isValidUrl(mobileInvitationLink.trim())) return "모바일 청첩장 링크가 유효한 URL 형식이 아닙니다.";
+    if (!isValidUrl(mobileInvitationLink.trim()))
+      return "모바일 청첩장 링크가 유효한 URL 형식이 아닙니다.";
 
-    // 기본 정보
     if (!groomName.trim()) return "신랑 이름을 입력해주세요.";
     if (!brideName.trim()) return "신부 이름을 입력해주세요.";
     if (!venueName.trim()) return "예식장을 선택해주세요.";
-    if (!venueAddress.trim()) return "예식장 주소가 필요합니다. (검색으로 선택해주세요.)";
+    if (!venueAddress.trim())
+      return "예식장 주소가 필요합니다. (검색으로 선택해주세요.)";
 
-    // 예식 시간
     if (!ceremonyDate) return "예식 날짜를 입력해주세요.";
     if (!ceremonyStartTime) return "예식 시작 시간을 선택해주세요.";
     if (!ceremonyEndTime) return "예식 종료 시간을 선택해주세요.";
 
-    // 디스플레이
-    if (backgroundMode === "template" && !displayStyle) return "디스플레이 배경사진을 선택해주세요.";
+    if (backgroundMode === "template" && !displayStyle)
+      return "디스플레이 배경사진을 선택해주세요.";
 
-    // 계좌(최소 1개 필수)
     const validAccounts = accounts
       .filter((a) => a.is_active)
-      .filter((a) => a.label.trim() && a.holder_name.trim() && a.bank_name.trim() && a.account_number.trim());
+      .filter(
+        (a) =>
+          a.label.trim() &&
+          a.holder_name.trim() &&
+          a.bank_name.trim() &&
+          a.account_number.trim()
+      );
 
     if (validAccounts.length === 0) {
       return "축의금 계좌를 최소 1개 이상 등록해주세요. (구분/예금주/은행/계좌번호 모두 필요)";
@@ -463,7 +568,6 @@ export default function ConfirmPage() {
       if (msg) throw new Error(msg);
 
       const link = mobileInvitationLink.trim();
-
       const startOffsetNum = DEFAULT_START_OFFSET;
       const endOffsetNum = DEFAULT_END_OFFSET;
 
@@ -477,21 +581,27 @@ export default function ConfirmPage() {
         venue_lng: venueLng,
       };
 
-      const { error: eventUpdateError } = await supabase.from("events").update(eventPayload).eq("id", eventId);
+      const { error: eventUpdateError } = await supabase
+        .from("events")
+        .update(eventPayload)
+        .eq("id", eventId);
       if (eventUpdateError) throw eventUpdateError;
 
       // 2) recipients (신랑/신부)
       const recipients: any[] = [];
-      if (groomName.trim()) recipients.push({ name: groomName.trim(), role: "신랑", contact: null });
-      if (brideName.trim()) recipients.push({ name: brideName.trim(), role: "신부", contact: null });
+      if (groomName.trim())
+        recipients.push({ name: groomName.trim(), role: "신랑", contact: null });
+      if (brideName.trim())
+        recipients.push({ name: brideName.trim(), role: "신부", contact: null });
 
-      // 배경모드/사진 배열
-      const cleaned = photoUrls.map((u) => u.trim()).filter(Boolean);
+      // 배경모드/미디어 배열
+      const cleaned = mediaUrls.map((u) => u.trim()).filter(Boolean);
       const isPhotoValid = cleaned.length > 0;
-      const modeToSave: "photo" | "template" = backgroundMode === "photo" && isPhotoValid ? "photo" : "template";
+
+      const modeToSave: "photo" | "template" =
+        backgroundMode === "photo" && isPhotoValid ? "photo" : "template";
       const mediaToSave = modeToSave === "photo" ? cleaned : null;
 
-      // ✅ theme_prompt는 UI에서 제거 → 저장 시 null
       const payload = {
         event_id: eventId,
         ceremony_date: ceremonyDate || null,
@@ -512,7 +622,10 @@ export default function ConfirmPage() {
 
       // 3) event_settings upsert
       if (settings?.id) {
-        const { error: updateError } = await supabase.from("event_settings").update(payload).eq("id", settings.id);
+        const { error: updateError } = await supabase
+          .from("event_settings")
+          .update(payload)
+          .eq("id", settings.id);
         if (updateError) throw updateError;
       } else {
         const { data: inserted, error: insertError } = await supabase
@@ -527,7 +640,13 @@ export default function ConfirmPage() {
       // 4) 계좌 저장(전부 삭제 후 insert)
       const validAccounts = accounts
         .filter((a) => a.is_active)
-        .filter((a) => a.label.trim() && a.holder_name.trim() && a.bank_name.trim() && a.account_number.trim())
+        .filter(
+          (a) =>
+            a.label.trim() &&
+            a.holder_name.trim() &&
+            a.bank_name.trim() &&
+            a.account_number.trim()
+        )
         .map((a, index) => ({
           event_id: eventId,
           label: a.label.trim(),
@@ -538,13 +657,22 @@ export default function ConfirmPage() {
           is_active: a.is_active,
         }));
 
-      const { error: deleteError } = await supabase.from("event_accounts").delete().eq("event_id", eventId);
+      const { error: deleteError } = await supabase
+        .from("event_accounts")
+        .delete()
+        .eq("event_id", eventId);
       if (deleteError && deleteError.code !== "42P01") throw deleteError;
 
-      const { error: insertAccountsError } = await supabase.from("event_accounts").insert(validAccounts);
-      if (insertAccountsError && insertAccountsError.code !== "42P01") throw insertAccountsError;
+      const { error: insertAccountsError } = await supabase
+        .from("event_accounts")
+        .insert(validAccounts);
+      if (insertAccountsError && insertAccountsError.code !== "42P01")
+        throw insertAccountsError;
 
-      setSuccess("모든 설정이 저장되었습니다.");
+      // ✅ 저장 성공 UX: 안내 + 액션 버튼 제공
+      setSuccess(
+        "설정이 완료되었습니다. 이제 이벤트 홈에서 디스플레이/리포트를 확인할 수 있어요."
+      );
     } catch (e: any) {
       console.error("[ConfirmPage] handleSave error:", e);
       setError(e.message ?? "저장 중 오류가 발생했습니다.");
@@ -578,39 +706,37 @@ export default function ConfirmPage() {
   const endHour = endHourRaw;
   const endMinute = MINUTES_10.includes(endMinuteRaw) ? endMinuteRaw : "";
 
+  const videoCount = useMemo(() => countVideosInUrls(mediaUrls), [mediaUrls]);
+
   return (
     <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
-      {/* ✅ 상단: 이벤트 홈 버튼 */}
-     {/* ✅ 상단: 우측 링크(모바일에서도 제목 위 라인) + 타이틀 */}
-        <div className="flex flex-col gap-2">
-          {/* 링크 라인 */}
-          <div className="flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => navigate("/app")}
-              className="text-xs md:text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900 whitespace-nowrap"
-            >
-              이벤트 홈
-            </button>
+      {/* ✅ 상단: 우측 링크 + 타이틀 */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("/app")}
+            className="text-xs md:text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900 whitespace-nowrap"
+          >
+            이벤트 홈
+          </button>
 
-            <button
-              type="button"
-              onClick={() => navigate(`/app/event/${eventId}/report`)}
-              className="text-xs md:text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900 whitespace-nowrap"
-            >
-              리포트
-            </button>
-          </div>
-
-          {/* 타이틀/설명 */}
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold">디지털방명록 세부사항 확정</h1>
-            <p className="text-xs md:text-sm text-gray-600 mt-1">
-              예식 시간, 디스플레이, 축의금 계좌, 사진을 한 번에 설정하면 결혼식 당일 디스플레이에 그대로 적용됩니다.
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={() => navigate(`/app/event/${eventId}/report`)}
+            className="text-xs md:text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900 whitespace-nowrap"
+          >
+            리포트
+          </button>
         </div>
 
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold">디지털방명록 세부사항 확정</h1>
+          <p className="text-xs md:text-sm text-gray-600 mt-1">
+            예식 시간, 디스플레이, 축의금 계좌, 사진/영상을 한 번에 설정하면 결혼식 당일 디스플레이에 그대로 적용됩니다.
+          </p>
+        </div>
+      </div>
 
       <form onSubmit={handleSave} className="space-y-6">
         {/* 모바일 청첩장 */}
@@ -668,7 +794,6 @@ export default function ConfirmPage() {
               />
             </div>
 
-            {/* 예식장 */}
             <div className="md:col-span-2 space-y-2">
               <label className="block text-[11px] font-medium text-gray-500 mb-1">예식장</label>
               <div className="flex flex-col sm:flex-row gap-2">
@@ -798,13 +923,11 @@ export default function ConfirmPage() {
 
         {/* 디스플레이 */}
         <section className="bg-white/70 border border-rose-200/70 ring-1 ring-rose-200/40 rounded-2xl p-4 space-y-4 shadow-2xl shadow-rose-200/30 backdrop-blur-xl transition-all hover:border-rose-300/80">
-          <h2 className="text-sm md:text-lg font-semibold">디스플레이 디자인 & 사진</h2>
+          <h2 className="text-sm md:text-lg font-semibold">디스플레이 디자인 & 사진/영상</h2>
 
-          {/* 배경 방식 (공통) */}
           <div className="space-y-2">
             <label className="block text-[11px] font-medium text-gray-600 mb-1">배경 방식</label>
             <div className="flex flex-col gap-1 text-sm">
-              {/* ✅ 1순위: 웨딩사진 */}
               <label className="flex items-center gap-2">
                 <input
                   type="radio"
@@ -813,10 +936,9 @@ export default function ConfirmPage() {
                   checked={backgroundMode === "photo"}
                   onChange={() => setBackgroundMode("photo")}
                 />
-                <span>신랑·신부 웨딩사진 사용 (추천)</span>
+                <span>신랑·신부 웨딩사진/영상 사용 (추천)</span>
               </label>
 
-              {/* ✅ 2순위: 계절 템플릿 */}
               <label className="flex items-center gap-2">
                 <input
                   type="radio"
@@ -830,71 +952,108 @@ export default function ConfirmPage() {
             </div>
 
             <p className="text-[11px] text-gray-500">
-              사진을 올리면 신랑·신부 사진 위로 축하 메시지가 자연스럽게 표시됩니다.
+              사진/영상을 올리면 신랑·신부 화면 위로 축하 메시지가 자연스럽게 표시됩니다.
             </p>
           </div>
 
-          {/* =========================
-              ✅ PHOTO 모드 (기존 가로 썸네일 유지)
-            ========================= */}
           {backgroundMode === "photo" && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">신랑·신부 사진 올리기 (선택)</label>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">
+                  신랑·신부 사진/영상 올리기 (선택)
+                </label>
+
                 <label className="block">
                   <div className="w-full border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-center bg-white active:scale-[0.99] transition">
-                    <span className="text-3xl mb-1">📷</span>
-                    <p className="text-sm font-medium text-gray-800">핸드폰 앨범에서 사진 선택하기</p>
+                    <span className="text-3xl mb-1">🎞️</span>
+                    <p className="text-sm font-medium text-gray-800">
+                      핸드폰 앨범에서 사진/영상 선택하기
+                    </p>
                     <p className="mt-1 text-[11px] text-gray-500">
-                      여러 장을 한 번에 선택해 업로드할 수 있고, 최대 8장까지 사용됩니다.
+                      사진+영상 합쳐서 최대 {MAX_MEDIA_TOTAL}개까지 업로드할 수 있어요. (영상은 최대{" "}
+                      {MAX_VIDEOS}개, 영상 파일당 {MAX_VIDEO_MB}MB 이하)
                     </p>
                   </div>
-                  <input type="file" accept="image/*" multiple onChange={handleFilesSelected} className="hidden" />
+
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    multiple
+                    onChange={handleFilesSelected}
+                    className="hidden"
+                  />
                 </label>
+
                 {uploadStatus && <p className="text-[11px] text-gray-500">{uploadStatus}</p>}
               </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-gray-700">업로드된 사진 ({photoUrls.length}/8)</span>
-                  <span className="text-[11px] text-gray-500">왼쪽부터 순서대로 슬라이드 재생됩니다. (✕ 삭제)</span>
+                  <span className="text-xs font-semibold text-gray-700">
+                    업로드된 미디어 ({mediaUrls.length}/{MAX_MEDIA_TOTAL}) · 영상 {videoCount}/{MAX_VIDEOS}
+                  </span>
+                  <span className="text-[11px] text-gray-500">
+                    왼쪽부터 순서대로 재생됩니다. (✕ 삭제)
+                  </span>
                 </div>
 
-                {photoUrls.length === 0 ? (
+                {mediaUrls.length === 0 ? (
                   <div className="border border-dashed border-gray-300 rounded-xl py-4 text-center text-[11px] text-gray-400 bg-white">
-                    아직 업로드된 사진이 없습니다. 원하시면 위 버튼으로 사진을 추가해주세요.
+                    아직 업로드된 미디어가 없습니다. 원하시면 위 버튼으로 추가해주세요.
                   </div>
                 ) : (
                   <div className="flex gap-2 overflow-x-auto pb-1">
-                    {photoUrls.map((url, idx) => (
-                      <div key={idx} className="relative flex-shrink-0 w-20 h-28 rounded-lg overflow-hidden border bg-gray-100">
-                        {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                        <img src={url} className="w-full h-full object-cover" />
-                        <button
-                          type="button"
-                          onClick={() => removePhoto(idx)}
-                          className="absolute top-1 right-1 bg-black/75 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center shadow"
+                    {mediaUrls.map((url, idx) => {
+                      const vid = isVideoUrl(url);
+                      return (
+                        <div
+                          key={idx}
+                          className="relative flex-shrink-0 w-20 h-28 rounded-lg overflow-hidden border bg-gray-100"
                         >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
+                          {vid ? (
+                            <video
+                              src={url}
+                              className="w-full h-full object-cover"
+                              muted
+                              playsInline
+                              preload="metadata"
+                            />
+                          ) : (
+                            // eslint-disable-next-line jsx-a11y/alt-text
+                            <img src={url} className="w-full h-full object-cover" />
+                          )}
+
+                          <div className="absolute left-1 bottom-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px]">
+                            {vid ? "VIDEO" : "PHOTO"}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => removeMedia(idx)}
+                            className="absolute top-1 right-1 bg-black/75 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center shadow"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
+
+                <p className="text-[11px] text-gray-500">
+                  * 사진/영상을 업로드하지 않으면, 저장 시 자동으로{" "}
+                  <span className="font-semibold">기본 계절 템플릿</span>으로 적용됩니다.
+                </p>
               </div>
             </div>
           )}
 
-          {/* =========================
-              ✅ TEMPLATE 모드
-              - 모바일: 아래쪽(1열) 미리보기 1번
-              - 데스크탑: 2열(오른쪽) 미리보기
-            ========================= */}
           {backgroundMode === "template" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* 왼쪽: 템플릿 선택 + (모바일 미리보기) */}
               <div className="space-y-2">
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">디스플레이 배경사진</label>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">
+                  디스플레이 배경사진
+                </label>
                 <select
                   className="w-full border rounded-md px-3 py-2 text-sm"
                   value={displayStyle}
@@ -907,9 +1066,10 @@ export default function ConfirmPage() {
                   ))}
                 </select>
 
-                {/* ✅ 모바일 미리보기 (딱 1번만) */}
                 <div className="md:hidden border rounded-xl overflow-hidden bg-gray-50">
-                  <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">미리보기</div>
+                  <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">
+                    미리보기
+                  </div>
                   <div className="p-3 flex justify-center">
                     {!templatePreviewError ? (
                       <div className="w-[220px] aspect-[9/16] rounded-xl overflow-hidden border bg-white shadow">
@@ -929,10 +1089,11 @@ export default function ConfirmPage() {
                 </div>
               </div>
 
-              {/* 오른쪽: 데스크탑 미리보기 */}
               <div className="hidden md:flex justify-end">
                 <div className="border rounded-xl overflow-hidden bg-gray-50 w-fit">
-                  <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">미리보기</div>
+                  <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">
+                    미리보기
+                  </div>
                   <div className="p-3 flex justify-center">
                     {!templatePreviewError ? (
                       <div className="w-[260px] aspect-[9/16] rounded-xl overflow-hidden border bg-white shadow">
@@ -955,7 +1116,6 @@ export default function ConfirmPage() {
           )}
         </section>
 
-
         {/* 축의금 계좌 */}
         <section className="bg-white/70 border border-rose-200/70 ring-1 ring-rose-200/40 rounded-2xl p-4 space-y-4 shadow-2xl shadow-rose-200/30 backdrop-blur-xl transition-all hover:border-rose-300/80">
           <div className="flex items-center justify-between">
@@ -977,16 +1137,26 @@ export default function ConfirmPage() {
 
           <div className="space-y-4">
             {accounts.map((acct, index) => {
-              const isKnownBank = BANK_OPTIONS.includes(acct.bank_name);
-              let selectValue = "";
-              if (acct.bank_name) selectValue = isKnownBank ? acct.bank_name : "기타(직접 입력)";
+              // ✅ FIX: “기타(직접 입력)” 입력칸이 항상 정확히 뜨도록 selectValue를 안정적으로 계산
+              const isKnownBank =
+                !!acct.bank_name && BANK_OPTIONS.includes(acct.bank_name);
+              const selectValue =
+                !acct.bank_name
+                  ? ""
+                  : isKnownBank
+                  ? acct.bank_name
+                  : "기타(직접 입력)";
 
               return (
                 <div key={index} className="border rounded-lg p-3 bg-gray-50 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="text-[11px] font-semibold text-gray-600">계좌 #{index + 1}</div>
                     {accounts.length > 1 && (
-                      <button type="button" onClick={() => removeAccount(index)} className="text-[11px] text-red-500">
+                      <button
+                        type="button"
+                        onClick={() => removeAccount(index)}
+                        className="text-[11px] text-red-500"
+                      >
                         삭제
                       </button>
                     )}
@@ -1022,20 +1192,26 @@ export default function ConfirmPage() {
 
                     <div>
                       <label className="block text-[11px] font-medium text-gray-600 mb-1">은행명</label>
+
                       <select
                         className="w-full border rounded-md px-2 py-1.5 text-xs mb-1"
                         value={selectValue}
                         onChange={(e) => {
                           const v = e.target.value;
+
+                          // 초기화
                           if (v === "") {
                             handleAccountChange(index, "bank_name", "");
                             return;
                           }
+
+                          // ✅ 기타 선택: bank_name은 건드리지 않음 (입력칸에서 입력)
                           if (v === "기타(직접 입력)") {
-                            handleAccountChange(index, "bank_name", isKnownBank ? "" : acct.bank_name);
-                          } else {
-                            handleAccountChange(index, "bank_name", v);
+                            return;
                           }
+
+                          // 일반 은행 선택
+                          handleAccountChange(index, "bank_name", v);
                         }}
                       >
                         <option value="">은행 선택</option>
@@ -1046,11 +1222,12 @@ export default function ConfirmPage() {
                         ))}
                       </select>
 
+                      {/* ✅ 기타 선택 시 직접 입력 */}
                       {selectValue === "기타(직접 입력)" && (
                         <input
                           type="text"
                           className="w-full border rounded-md px-2 py-1.5 text-xs"
-                          placeholder="은행명을 직접 입력해주세요"
+                          placeholder="예: 새마을금고, 신협, 단위농협 등"
                           value={acct.bank_name}
                           onChange={(e) => handleAccountChange(index, "bank_name", e.target.value)}
                         />
@@ -1080,14 +1257,55 @@ export default function ConfirmPage() {
               {error}
             </div>
           )}
+
           {success && (
             <div className="text-xs md:text-sm text-green-700 bg-green-50 border border-green-100 px-3 py-2 rounded-md">
-              {success}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <span>{success}</span>
+                <div className="flex gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => navigate("/app")}
+                    className="px-3 py-2 rounded-md bg-white border text-xs sm:text-sm hover:bg-gray-50"
+                  >
+                    이벤트 홈으로
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/app/event/${eventId}/report`)}
+                    className="px-3 py-2 rounded-md bg-black text-white text-xs sm:text-sm hover:opacity-90"
+                  >
+                    리포트 보기
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="submit" disabled={saving} className="px-4 py-2 rounded-md bg-black text-white text-sm disabled:opacity-50">
+          {/* ✅ 하단 액션바: 모바일에서도 명확하게 */}
+          <div className="flex items-center justify-between gap-2 pt-2">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => navigate("/app")}
+                className="px-4 py-2 rounded-md border bg-white text-sm hover:bg-gray-50"
+              >
+                이벤트 홈
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(`/app/event/${eventId}/report`)}
+                className="px-4 py-2 rounded-md border bg-white text-sm hover:bg-gray-50"
+              >
+                리포트
+              </button>
+            </div>
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 rounded-md bg-black text-white text-sm disabled:opacity-50"
+            >
               {saving ? "저장 중..." : "확정하기"}
             </button>
           </div>
@@ -1100,7 +1318,11 @@ export default function ConfirmPage() {
           <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl p-4 space-y-3">
             <div className="flex items-center justify-between mb-1">
               <h3 className="text-base font-semibold">예식장 검색</h3>
-              <button type="button" className="text-sm text-gray-500" onClick={() => setVenueSearchOpen(false)}>
+              <button
+                type="button"
+                className="text-sm text-gray-500"
+                onClick={() => setVenueSearchOpen(false)}
+              >
                 닫기
               </button>
             </div>
@@ -1146,7 +1368,9 @@ export default function ConfirmPage() {
                         onClick={() => handleSelectVenue(place)}
                       >
                         <div className="font-medium">{place.place_name}</div>
-                        <div className="text-xs text-gray-600">{place.road_address_name || place.address_name}</div>
+                        <div className="text-xs text-gray-600">
+                          {place.road_address_name || place.address_name}
+                        </div>
                       </button>
                     </li>
                   ))}
