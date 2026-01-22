@@ -74,6 +74,18 @@ function formatKoreanMobile(input: string) {
   return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
 }
 
+function downloadTextFile(filename: string, content: string, mime = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function ResultPage() {
   const { eventId } = useParams<RouteParams>();
 
@@ -113,7 +125,11 @@ export default function ResultPage() {
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newRel, setNewRel] = useState("");
+  // NOTE: 기존 변수명 newSide는 실제로 “측” 선택이므로 유지
   const [newSide, setNewSide] = useState<"" | "groom" | "bride">("");
+
+  // ✅ CSV 업로드 UI (현재는 준비중)
+  const [showCsvHelp, setShowCsvHelp] = useState(false);
 
   const isFinalized = reportStatus === "finalized";
 
@@ -372,7 +388,7 @@ export default function ResultPage() {
   }
 
   async function saveLedgerRow(row: LedgerRow) {
-    if (isFinalized) return; // 확정 이후 수정 불가 정책
+    if (isFinalized) return; // 확정 이후 수정 불가 정책 (현재는 전체 잠금)
 
     setSavingId(row.id);
 
@@ -460,6 +476,19 @@ export default function ResultPage() {
     setNewSide("");
   }
 
+  /* ------------------ CSV 샘플 다운로드 ------------------ */
+  function downloadCsvSample() {
+    // 최소 컬럼만: 나중에 업로드 파서도 이 헤더를 그대로 쓰면 됨
+    const content = [
+      "guest_name,guest_phone,relationship,side,gift_amount,gift_method,attended,ticket_count,return_given,thanks_done,memo,source",
+      "김철수,01012345678,친구,groom,50000,cash,true,0,false,false,현금봉투,manual",
+      "이영희,01099998888,직장,bride,100000,account,false,0,false,false,청첩장송금,offsite",
+    ].join("\n");
+
+    const filename = "장부_업로드_샘플.csv";
+    downloadTextFile(filename, content, "text/csv;charset=utf-8");
+  }
+
   /* ------------------ 계산 ------------------ */
   const totalCount = messages.length;
   const groomCount = messages.filter((m) => m.side === "groom").length;
@@ -486,12 +515,7 @@ export default function ResultPage() {
     return ledger
       .filter((r) => {
         if (!query) return true;
-        const hay = [
-          r.guest_name,
-          r.relationship ?? "",
-          r.guest_phone ?? "",
-          r.memo ?? "",
-        ]
+        const hay = [r.guest_name, r.relationship ?? "", r.guest_phone ?? "", r.memo ?? ""]
           .join(" ")
           .toLowerCase();
         return hay.includes(query);
@@ -527,25 +551,19 @@ export default function ResultPage() {
           <div className="flex items-start justify-between gap-6">
             <div>
               <h1 className="text-2xl font-semibold mb-1">디지털 방명록 리포트</h1>
-              {ceremonyDateText && (
-                <p className="text-xs text-gray-400">{ceremonyDateText}</p>
-              )}
+              {ceremonyDateText && <p className="text-xs text-gray-400">{ceremonyDateText}</p>}
               <p className="mt-2 text-xs text-gray-500">
-                이 화면은 <span className="font-semibold">개인 기준</span> 리포트입니다.
-                (신랑/신부/혼주 각각 분리)
+                이 화면은 <span className="font-semibold">개인 기준</span> 리포트입니다. (신랑/신부/혼주 각각 분리)
               </p>
             </div>
 
             <div className="flex flex-col items-end gap-2">
               {reportStatus === "finalized" ? (
                 <div className="text-right">
-                  <div className="text-sm font-semibold text-gray-900">
-                    확정된 현장 참석자 리포트입니다
-                  </div>
+                  <div className="text-sm font-semibold text-gray-900">확정된 현장 참석자 리포트입니다</div>
                   <div className="mt-1 text-xs text-gray-500 max-w-[320px]">
-                    이 리포트는 디지털 방명록을 통해 수집된{" "}
-                    <span className="font-medium">현장 참석자 기준</span>의
-                    공식 기록으로, 확정 이후에는 수정할 수 없습니다.
+                    이 리포트는 디지털 방명록을 통해 수집된 <span className="font-medium">현장 참석자 기준</span>의 공식 기록으로,
+                    확정 이후에는 수정할 수 없습니다.
                   </div>
                   {reportFinalizedAt && (
                     <div className="mt-1 text-[11px] text-gray-400">
@@ -612,26 +630,21 @@ export default function ResultPage() {
               <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
                 이 이벤트에 대한 개인 리포트 권한(event_members)을 찾지 못했어요.
                 <div className="mt-1 text-xs text-amber-700">
-                  event_members의 이메일 컬럼명이 다르면 발생합니다. (필요 시 수정)
+                  event_members의 이메일/유저 컬럼명이 다르면 발생합니다. (필요 시 수정)
                 </div>
               </div>
             )}
 
             {/* 요약 */}
             <div className="rounded-2xl bg-slate-50 p-4 flex flex-wrap gap-2 text-xs">
+              <span className="px-3 py-1 rounded-full bg-white border">내 하객 {ledgerStats.total}명</span>
               <span className="px-3 py-1 rounded-full bg-white border">
-                내 하객 {ledgerStats.total}명
-              </span>
-              <span className="px-3 py-1 rounded-full bg-white border">
-                참석 {ledgerStats.attended}명{" "}
-                <span className="text-gray-400">(디지털방명록 스캔 기준)</span>
+                참석 {ledgerStats.attended}명 <span className="text-gray-400">(디지털방명록 스캔 기준)</span>
               </span>
               <span className="px-3 py-1 rounded-full bg-white border">
                 축의금 합계 {ledgerStats.totalAmount.toLocaleString()}원
               </span>
-              <span className="px-3 py-1 rounded-full bg-white border">
-                답례 미완료 {ledgerStats.thanksPending}명
-              </span>
+              <span className="px-3 py-1 rounded-full bg-white border">답례 미완료 {ledgerStats.thanksPending}명</span>
             </div>
 
             {/* 필터 */}
@@ -651,8 +664,7 @@ export default function ResultPage() {
                     onChange={(e) => setOnlyAttended(e.target.checked)}
                     disabled={ledgerLoading}
                   />
-                  참석만
-                  <span className="text-xs text-gray-400">(스캔 기준)</span>
+                  참석만 <span className="text-xs text-gray-400">(스캔 기준)</span>
                 </label>
                 <label className="inline-flex items-center gap-2">
                   <input
@@ -667,13 +679,28 @@ export default function ResultPage() {
               </div>
             </div>
 
-            {/* 수기 추가 */}
+            {/* ✅ 장부 업데이트(수기) + CSV 업로드 UI */}
             <div className="rounded-2xl border p-4">
-              <div className="text-sm font-semibold">하객 추가 (수기)</div>
-              <p className="mt-1 text-xs text-gray-500">
-                계좌 외 축의금(현금 봉투 등)도 추가 입력 가능합니다.
-              </p>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">장부 업데이트 (수기)</div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    계좌 외 축의금(현금 봉투 등)도 추가 입력 가능합니다. 또한 CSV로 여러 건을 한 번에 업로드할 수 있어요.
+                  </p>
+                </div>
 
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="px-3 py-2 rounded-xl border text-xs hover:bg-slate-50"
+                    onClick={() => setShowCsvHelp(true)}
+                  >
+                    업로드 안내
+                  </button>
+                </div>
+              </div>
+
+              {/* 수기 입력 row */}
               <div className="mt-3 grid grid-cols-1 md:grid-cols-12 gap-2">
                 <div className="md:col-span-3">
                   <label className="block text-xs text-gray-600">이름</label>
@@ -708,8 +735,9 @@ export default function ResultPage() {
                   />
                 </div>
 
+                {/* NOTE: 기존 라벨 “구분(선택)”이 헷갈려서 명확하게 수정 */}
                 <div className="md:col-span-2">
-                  <label className="block text-xs text-gray-600">구분(선택)</label>
+                  <label className="block text-xs text-gray-600">측(선택)</label>
                   <select
                     className="mt-1 w-full px-3 py-2 rounded-xl border text-sm bg-white"
                     value={newSide}
@@ -731,6 +759,45 @@ export default function ResultPage() {
                     추가
                   </button>
                 </div>
+              </div>
+
+              {/* CSV 업로드 UI */}
+              <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-200 p-4">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold">CSV로 장부 한번에 업로드</div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      축의대 지인에게 받은 엑셀/종이 장부를 CSV로 변환해 업로드하면, 장부에 자동으로 통합됩니다.
+                      <span className="block mt-1 text-[11px] text-gray-400">
+                        * 구분(source): onsite=현장QR, offsite=비현장(청첩장/원격), manual=현금/수기
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={true || isFinalized}
+                      className="px-4 py-2 rounded-xl bg-gray-300 text-white text-sm disabled:opacity-60"
+                      onClick={() => {}}
+                    >
+                      CSV 업로드 (준비중)
+                    </button>
+                    <button
+                      type="button"
+                      className="px-4 py-2 rounded-xl border bg-white text-sm hover:bg-slate-50"
+                      onClick={downloadCsvSample}
+                    >
+                      CSV 샘플 다운로드
+                    </button>
+                  </div>
+                </div>
+
+                {isFinalized && (
+                  <div className="mt-2 text-xs text-amber-700">
+                    리포트가 확정되어 업로드/수정이 잠겨있습니다.
+                  </div>
+                )}
               </div>
 
               {isFinalized && (
@@ -815,7 +882,9 @@ export default function ResultPage() {
                               type="button"
                               disabled={isFinalized}
                               className={`h-8 px-3 rounded-full border text-xs font-semibold ${
-                                r.attended ? "bg-emerald-50 border-emerald-300 text-emerald-700" : "bg-white border-gray-200 text-gray-600"
+                                r.attended
+                                  ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                                  : "bg-white border-gray-200 text-gray-600"
                               } ${isFinalized ? "opacity-50" : ""}`}
                               onClick={() => {
                                 const next = !(r.attended === true);
@@ -935,16 +1004,12 @@ export default function ResultPage() {
             <h2 className="text-sm font-semibold mb-3">축하 메시지 목록</h2>
 
             <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-              {messages
-                .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-                .map((m) => (
-                  <div key={m.id} className="border rounded-xl px-4 py-3 bg-slate-50">
-                    <p className="text-sm">{m.body}</p>
-                    <div className="mt-1 text-xs text-gray-400">
-                      {m.nickname || m.guest_name || "익명"}
-                    </div>
-                  </div>
-                ))}
+              {messages.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((m) => (
+                <div key={m.id} className="border rounded-xl px-4 py-3 bg-slate-50">
+                  <p className="text-sm">{m.body}</p>
+                  <div className="mt-1 text-xs text-gray-400">{m.nickname || m.guest_name || "익명"}</div>
+                </div>
+              ))}
             </div>
 
             {/* 페이지네이션(간단) */}
@@ -966,6 +1031,65 @@ export default function ResultPage() {
               </button>
             </div>
           </section>
+        )}
+
+        {/* ✅ CSV 업로드 안내 모달 */}
+        {showCsvHelp && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-lg font-semibold">CSV 업로드 안내</div>
+                  <p className="mt-1 text-sm text-gray-600">
+                    축의대 지인이 정리한 엑셀 장부를 CSV로 변환해서 한 번에 업로드하는 기능입니다.
+                    (현재는 UI만 제공하며, 업로드 기능은 준비중입니다)
+                  </p>
+                </div>
+                <button
+                  className="px-3 py-1.5 rounded-xl border text-sm hover:bg-slate-50"
+                  onClick={() => setShowCsvHelp(false)}
+                >
+                  닫기
+                </button>
+              </div>
+
+              <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-gray-700 space-y-2">
+                <div className="font-semibold">필수 컬럼</div>
+                <ul className="list-disc pl-5 text-sm text-gray-600">
+                  <li>guest_name (이름)</li>
+                  <li>gift_amount (축의금)</li>
+                  <li>source (onsite / offsite / manual)</li>
+                </ul>
+
+                <div className="font-semibold mt-3">권장 컬럼</div>
+                <ul className="list-disc pl-5 text-sm text-gray-600">
+                  <li>guest_phone (연락처)</li>
+                  <li>relationship (관계)</li>
+                  <li>side (groom / bride)</li>
+                  <li>memo (메모)</li>
+                </ul>
+
+                <div className="text-xs text-gray-500 mt-2">
+                  * 업로드 후에는 장부(event_ledger_entries)에 통합되어, 여기서 수정/정리가 가능합니다.
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2 justify-end">
+                <button
+                  className="px-4 py-2 rounded-xl border bg-white text-sm hover:bg-slate-50"
+                  onClick={downloadCsvSample}
+                >
+                  CSV 샘플 다운로드
+                </button>
+                <button
+                  className="px-4 py-2 rounded-xl bg-black text-white text-sm"
+                  onClick={() => setShowCsvHelp(false)}
+                >
+                  확인
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
