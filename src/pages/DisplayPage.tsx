@@ -27,6 +27,10 @@ const POLL_INTERVAL_MS = 5000;
 const SLIDE_DURATION_MS = 6000; // ✅ 사진 슬라이드 전환 기본값
 const FOOTER_HEIGHT_PX = 64;
 
+// ✅ 영상 안전장치: duration을 못 읽어도 최소 이만큼은 기다림(충분히 넉넉하게)
+const VIDEO_SAFETY_FALLBACK_MS = 15 * 60 * 1000; // 15분
+const VIDEO_SAFETY_PADDING_MS = 2000; // duration + 2초 여유
+
 type FloatingItem = {
   key: string;
   message: MessageRow;
@@ -302,7 +306,7 @@ export default function DisplayPage() {
 
   // ✅ 1) 사진은 SLIDE_DURATION_MS로 넘어감
   // ✅ 2) 영상은 "끝나면" 넘어감 (onEnded)
-  // ✅ 안전장치: 영상이 끝나지 않는 스트림/메타데이터 이슈 대비 timeout 하나 둠
+  // ✅ 3) 안전장치: duration 기반으로 "충분히 넉넉"하게 (더 이상 90/120초로 자르지 않음)
   useEffect(() => {
     if (!usePhotoBackground || mediaUrls.length <= 1) {
       setCurrentSlide(0);
@@ -311,20 +315,23 @@ export default function DisplayPage() {
 
     // 사진이면 타이머로 다음
     if (!currentIsVideo) {
-      const t = setTimeout(() => advanceSlide(), SLIDE_DURATION_MS);
-      return () => clearTimeout(t);
+      const t = window.setTimeout(() => advanceSlide(), SLIDE_DURATION_MS);
+      return () => window.clearTimeout(t);
     }
 
-    // 영상이면 timeout은 "안전장치"로만 (기본 90초, duration 알면 duration+1초)
+    // 영상이면 onEnded가 1순위. 안전장치는 '예외 상황' 대비
     const v = videoRef.current;
+
     const durationSec =
       v && Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
 
     const safetyMs =
-      durationSec > 0 ? Math.min(120000, Math.round((durationSec + 1) * 1000)) : 90000;
+      durationSec > 0
+        ? Math.round(durationSec * 1000) + VIDEO_SAFETY_PADDING_MS
+        : VIDEO_SAFETY_FALLBACK_MS;
 
     const safety = window.setTimeout(() => {
-      // 영상이 어떤 이유로든 끝 이벤트가 안 오면 다음으로
+      // onEnded가 안 오는 특이 케이스(메타데이터 깨짐/스트림 등) 대비
       advanceSlide();
     }, safetyMs);
 
@@ -341,7 +348,6 @@ export default function DisplayPage() {
     // 사진/템플릿일 때는 bgm 유지
     if (!currentIsVideo) {
       if (bgm) {
-        // autoplay 정책 때문에 실패할 수 있으니 catch
         bgm.muted = false;
         bgm.volume = 1;
         bgm.play().catch(() => {});
@@ -355,22 +361,18 @@ export default function DisplayPage() {
     const v = videoRef.current;
     if (!v) return;
 
-    // 1차: 언뮤트로 바로 재생 시도
     v.muted = false;
     v.volume = 1;
 
     v.play().catch(() => {
-      // 브라우저가 "소리 있는 autoplay"를 막는 경우:
-      // ✅ 2차: muted로라도 재생 시작 -> playing 이후 언뮤트
+      // 소리 있는 autoplay가 막히면: muted로 먼저 시작 -> 이후 언뮤트 시도
       v.muted = true;
       v.play()
         .then(() => {
-          const tryUnmute = () => {
+          window.setTimeout(() => {
             v.muted = false;
             v.volume = 1;
-          };
-          // 살짝 지연 후 언뮤트 시도
-          window.setTimeout(tryUnmute, 300);
+          }, 300);
         })
         .catch(() => {});
     });
@@ -556,7 +558,6 @@ export default function DisplayPage() {
       >
         <div className="absolute inset-0 bg-black/40 z-20" />
 
-        {/* QR/텍스트는 z-40으로 항상 위 */}
         <div className="relative w-full max-w-6xl flex items-center justify-between z-40">
           <div className="text-right">
             <p
@@ -616,31 +617,24 @@ export default function DisplayPage() {
       >
         {usePhotoBackground ? (
           currentIsVideo ? (
-            // ✅ VIDEO background
-            // - loop 제거
-            // - 끝나면 next (onEnded)
-            // - bgm pause + video unmute는 effect에서 처리
             <video
               ref={videoRef}
-              key={currentMediaUrl} // ✅ 슬라이드 바뀔 때마다 새로 로드
+              key={currentMediaUrl}
               src={currentMediaUrl}
               className="absolute inset-0 w-full h-full object-cover"
               autoPlay
               playsInline
               preload="auto"
-              // muted는 effect에서 제어(autoplay 정책 대응)
               onEnded={() => {
                 advanceSlide();
               }}
               onLoadedMetadata={() => {
-                // 메타데이터 로딩 시점에 한번 더 재생 시도(안정)
                 const v = videoRef.current;
                 if (!v) return;
                 v.play().catch(() => {});
               }}
             />
           ) : (
-            // ✅ IMAGE background
             isPortrait ? (
               <img
                 src={currentMediaUrl}
