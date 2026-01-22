@@ -706,8 +706,7 @@ export default function ConfirmPage() {
   const endHour = endHourRaw;
   const endMinute = MINUTES_10.includes(endMinuteRaw) ? endMinuteRaw : "";
 
-  const videoCount = useMemo(() => countVideosInUrls(mediaUrls), [mediaUrls]);
-
+  const videoCount = countVideosInUrls(mediaUrls);
   return (
     <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
       {/* ✅ 상단: 우측 링크 + 타이틀 */}
