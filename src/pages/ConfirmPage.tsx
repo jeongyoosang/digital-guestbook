@@ -47,6 +47,9 @@ type EventSettingsRow = {
   mobile_invitation_link?: string | null;
 };
 
+// ✅ A안: 은행 “기타(직접 입력)” 선택 상태를 bank_name과 분리
+type BankMode = "select" | "custom";
+
 type AccountForm = {
   id?: string;
   label: string;
@@ -55,6 +58,9 @@ type AccountForm = {
   account_number: string;
   sort_order: number;
   is_active: boolean;
+
+  // ✅ UI 전용(서버 저장 X)
+  bank_mode?: BankMode;
 };
 
 const MAX_ACCOUNTS = 6;
@@ -123,6 +129,10 @@ function countVideosInUrls(urls: string[]) {
 
 function bytesToMB(bytes: number) {
   return bytes / (1024 * 1024);
+}
+
+function isKnownBankName(name: string) {
+  return BANK_OPTIONS.includes(name) && name !== "기타(직접 입력)";
 }
 
 export default function ConfirmPage() {
@@ -316,15 +326,21 @@ export default function ConfirmPage() {
 
       if (accountData && accountData.length > 0) {
         setAccounts(
-          accountData.map((row: any) => ({
-            id: row.id,
-            label: row.label,
-            holder_name: row.holder_name,
-            bank_name: row.bank_name,
-            account_number: row.account_number,
-            sort_order: row.sort_order ?? 0,
-            is_active: row.is_active ?? true,
-          }))
+          accountData.map((row: any) => {
+            const bankName = row.bank_name ?? "";
+            const mode: BankMode =
+              bankName && isKnownBankName(bankName) ? "select" : "custom";
+            return {
+              id: row.id,
+              label: row.label,
+              holder_name: row.holder_name,
+              bank_name: bankName,
+              account_number: row.account_number,
+              sort_order: row.sort_order ?? 0,
+              is_active: row.is_active ?? true,
+              bank_mode: mode,
+            } as AccountForm;
+          })
         );
       } else {
         setAccounts([
@@ -335,6 +351,7 @@ export default function ConfirmPage() {
             account_number: "",
             sort_order: 0,
             is_active: true,
+            bank_mode: "select",
           },
           {
             label: "신부",
@@ -343,6 +360,7 @@ export default function ConfirmPage() {
             account_number: "",
             sort_order: 1,
             is_active: true,
+            bank_mode: "select",
           },
         ]);
       }
@@ -375,6 +393,7 @@ export default function ConfirmPage() {
         account_number: "",
         sort_order: prev.length,
         is_active: true,
+        bank_mode: "select",
       },
     ]);
   }
@@ -669,10 +688,8 @@ export default function ConfirmPage() {
       if (insertAccountsError && insertAccountsError.code !== "42P01")
         throw insertAccountsError;
 
-      // ✅ 저장 성공 UX: 안내 + 액션 버튼 제공
-      setSuccess(
-        "설정이 완료되었습니다. 이제 이벤트 홈에서 디스플레이/리포트를 확인할 수 있어요."
-      );
+      // ✅ 저장 성공 UX: 문구 교체 + 성공 박스에만 CTA 노출
+      setSuccess("설정이 완료되었습니다. 상세설정은 예식 시작 1시간 전까지 수정할 수 있어요.");
     } catch (e: any) {
       console.error("[ConfirmPage] handleSave error:", e);
       setError(e.message ?? "저장 중 오류가 발생했습니다.");
@@ -707,6 +724,7 @@ export default function ConfirmPage() {
   const endMinute = MINUTES_10.includes(endMinuteRaw) ? endMinuteRaw : "";
 
   const videoCount = countVideosInUrls(mediaUrls);
+
   return (
     <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
       {/* ✅ 상단: 우측 링크 + 타이틀 */}
@@ -1136,15 +1154,16 @@ export default function ConfirmPage() {
 
           <div className="space-y-4">
             {accounts.map((acct, index) => {
-              // ✅ FIX: “기타(직접 입력)” 입력칸이 항상 정확히 뜨도록 selectValue를 안정적으로 계산
-              const isKnownBank =
-                !!acct.bank_name && BANK_OPTIONS.includes(acct.bank_name);
+              const bankMode: BankMode =
+                acct.bank_mode ??
+                (acct.bank_name && isKnownBankName(acct.bank_name) ? "select" : "custom");
+
               const selectValue =
-                !acct.bank_name
-                  ? ""
-                  : isKnownBank
+                bankMode === "custom"
+                  ? "기타(직접 입력)"
+                  : acct.bank_name
                   ? acct.bank_name
-                  : "기타(직접 입력)";
+                  : "";
 
               return (
                 <div key={index} className="border rounded-lg p-3 bg-gray-50 space-y-2">
@@ -1198,18 +1217,20 @@ export default function ConfirmPage() {
                         onChange={(e) => {
                           const v = e.target.value;
 
-                          // 초기화
                           if (v === "") {
+                            handleAccountChange(index, "bank_mode", "select");
                             handleAccountChange(index, "bank_name", "");
                             return;
                           }
 
-                          // ✅ 기타 선택: bank_name은 건드리지 않음 (입력칸에서 입력)
                           if (v === "기타(직접 입력)") {
+                            handleAccountChange(index, "bank_mode", "custom");
+                            // bank_name은 직접 입력칸에서 입력
                             return;
                           }
 
                           // 일반 은행 선택
+                          handleAccountChange(index, "bank_mode", "select");
                           handleAccountChange(index, "bank_name", v);
                         }}
                       >
@@ -1221,8 +1242,8 @@ export default function ConfirmPage() {
                         ))}
                       </select>
 
-                      {/* ✅ 기타 선택 시 직접 입력 */}
-                      {selectValue === "기타(직접 입력)" && (
+                      {/* ✅ bank_mode === custom이면 무조건 직접 입력 칸 노출 */}
+                      {bankMode === "custom" && (
                         <input
                           type="text"
                           className="w-full border rounded-md px-2 py-1.5 text-xs"
@@ -1281,25 +1302,8 @@ export default function ConfirmPage() {
             </div>
           )}
 
-          {/* ✅ 하단 액션바: 모바일에서도 명확하게 */}
-          <div className="flex items-center justify-between gap-2 pt-2">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => navigate("/app")}
-                className="px-4 py-2 rounded-md border bg-white text-sm hover:bg-gray-50"
-              >
-                이벤트 홈
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate(`/app/event/${eventId}/report`)}
-                className="px-4 py-2 rounded-md border bg-white text-sm hover:bg-gray-50"
-              >
-                리포트
-              </button>
-            </div>
-
+          {/* ✅ 하단 액션바: 확정 전에는 “확정하기”만 */}
+          <div className="flex items-center justify-end gap-2 pt-2">
             <button
               type="submit"
               disabled={saving}
@@ -1386,3 +1390,4 @@ export default function ConfirmPage() {
     </div>
   );
 }
+
