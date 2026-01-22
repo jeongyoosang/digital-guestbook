@@ -69,6 +69,11 @@ function friendlySupabaseError(err: any) {
 export default function GuestPage() {
   const { eventId } = useParams<RouteParams>();
 
+  // ✅ 운영자만 디버그(하객 노출 X) : URL에 ?debug=1
+  const debug =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("debug") === "1";
+
   const [side, setSide] = useState<"" | "groom" | "bride">("");
   const [realName, setRealName] = useState("");
   const [phone, setPhone] = useState("");
@@ -84,9 +89,7 @@ export default function GuestPage() {
   const [relationshipDetail, setRelationshipDetail] = useState("");
 
   const [accounts, setAccounts] = useState<EventAccountRow[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(
-    null
-  );
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [selectedAccountForSummary, setSelectedAccountForSummary] =
     useState<EventAccountRow | null>(null);
 
@@ -98,9 +101,11 @@ export default function GuestPage() {
 
   // ✅ 디버깅/상태 안내용
   const [canWrite, setCanWrite] = useState(true);
-  const [writeBlockedReason, setWriteBlockedReason] = useState<string | null>(
-    null
-  );
+  const [writeBlockedReason, setWriteBlockedReason] = useState<string | null>(null);
+
+  // ✅ 계좌 로딩 실패(하객에겐 중립 문구, 운영자만 debug=1로 상세 확인)
+  const [accountsLoadFailed, setAccountsLoadFailed] = useState(false);
+  const [debugBanner, setDebugBanner] = useState<string | null>(null);
 
   if (!eventId) {
     return (
@@ -125,6 +130,7 @@ export default function GuestPage() {
 
       if (error) {
         console.error("[Guest] fetchSchedule error", error);
+        if (debug) setDebugBanner(`[fetchSchedule] ${error.message}`);
         return;
       }
       if (!data || cancelled) return;
@@ -151,7 +157,7 @@ export default function GuestPage() {
     return () => {
       cancelled = true;
     };
-  }, [eventId]);
+  }, [eventId, debug]);
 
   // 0-1) 스케줄에 따라 phase 계산 (1분마다 갱신)
   useEffect(() => {
@@ -175,6 +181,8 @@ export default function GuestPage() {
     let cancelled = false;
 
     const fetchAccounts = async () => {
+      setAccountsLoadFailed(false);
+
       const { data, error } = await supabase
         .from("event_accounts")
         .select(
@@ -193,11 +201,15 @@ export default function GuestPage() {
 
       if (error) {
         console.error("[Guest] fetchAccounts error", error);
+        setAccountsLoadFailed(true);
+        if (debug) setDebugBanner(`[fetchAccounts] ${error.message}`);
         return;
       }
       if (!data || cancelled) return;
 
-      setAccounts(data as EventAccountRow[]);
+      // ✅ is_active=false는 숨김 처리(Null은 active로 취급)
+      const rows = (data as EventAccountRow[]).filter((a) => a.is_active !== false);
+      setAccounts(rows);
     };
 
     fetchAccounts();
@@ -205,7 +217,7 @@ export default function GuestPage() {
     return () => {
       cancelled = true;
     };
-  }, [eventId]);
+  }, [eventId, debug]);
 
   // ✅ (선택) "쓰기 권한" 간단 체크: 1개 insert를 해보진 않고,
   // 정책 문제 시 사용자에게 안내할 수 있도록 가벼운 probe를 둠.
@@ -214,11 +226,7 @@ export default function GuestPage() {
     let cancelled = false;
 
     const probe = async () => {
-      const { error } = await supabase
-        .from("messages")
-        .select("id")
-        .eq("event_id", eventId)
-        .limit(1);
+      const { error } = await supabase.from("messages").select("id").eq("event_id", eventId).limit(1);
 
       if (cancelled) return;
 
@@ -229,6 +237,7 @@ export default function GuestPage() {
         setWriteBlockedReason(
           "현재 메시지 저장/조회 권한이 차단되어 있어요. (관리자에게 정책 설정 확인 요청)"
         );
+        if (debug) setDebugBanner(`[messages probe] ${error.message}`);
       } else {
         setCanWrite(true);
         setWriteBlockedReason(null);
@@ -239,7 +248,7 @@ export default function GuestPage() {
     return () => {
       cancelled = true;
     };
-  }, [eventId]);
+  }, [eventId, debug]);
 
   const filteredAccounts = useMemo(() => {
     if (!side) return accounts;
@@ -253,6 +262,13 @@ export default function GuestPage() {
     if (!selectedAccountId) return;
     if (!filteredAccounts.find((a) => a.id === selectedAccountId)) {
       setSelectedAccountId(null);
+    }
+  }, [filteredAccounts, selectedAccountId]);
+
+  // ✅ side/목록이 바뀌었고 선택이 없으면 첫 항목 자동 선택(현장 UX 안정)
+  useEffect(() => {
+    if (!selectedAccountId && filteredAccounts.length > 0) {
+      setSelectedAccountId(filteredAccounts[0].id);
     }
   }, [filteredAccounts, selectedAccountId]);
 
@@ -323,15 +339,12 @@ export default function GuestPage() {
       return;
     }
 
-    const selectedAccount = filteredAccounts.find(
-      (a) => a.id === selectedAccountId
-    );
+    const selectedAccount = filteredAccounts.find((a) => a.id === selectedAccountId);
 
     setLoading(true);
 
     const finalBody = sendMoneyOnly ? DEFAULT_DISPLAY_MESSAGE : message.trim();
-    const finalIsAnonymous =
-      sendMoneyOnly ? true : displayMode === "anonymous";
+    const finalIsAnonymous = sendMoneyOnly ? true : displayMode === "anonymous";
     const finalNickname =
       sendMoneyOnly ? null : displayMode === "nickname" ? nickname.trim() : null;
 
@@ -360,6 +373,11 @@ export default function GuestPage() {
         code: (error as any).code,
         payload,
       });
+      if (debug) {
+        setDebugBanner(
+          `[messages insert] ${error.message}\ncode=${(error as any)?.code ?? ""}`
+        );
+      }
 
       const friendly = friendlySupabaseError(error);
       alert(`메시지 전송 중 오류가 발생했습니다.\n\n${friendly}`);
@@ -368,9 +386,7 @@ export default function GuestPage() {
       const code = (error as any)?.code ?? "";
       if (code === "42501" || /permission/i.test(error.message || "")) {
         setCanWrite(false);
-        setWriteBlockedReason(
-          "현재 메시지 저장 권한이 차단되어 있어요. (RLS/Policy 설정 확인 필요)"
-        );
+        setWriteBlockedReason("현재 메시지 저장 권한이 차단되어 있어요. (RLS/Policy 설정 확인 필요)");
       }
 
       return;
@@ -383,12 +399,16 @@ export default function GuestPage() {
   function copyAccountNumber() {
     if (!selectedAccountForSummary) return;
 
-    const text = selectedAccountForSummary.account_number;
+    const bank = (selectedAccountForSummary.bank_name ?? "").trim();
+    const acct = (selectedAccountForSummary.account_number ?? "").trim();
+
+    // ✅ 은행명 + 계좌번호를 함께 복사
+    const text = [bank, acct].filter(Boolean).join(" ");
     if (!text) return;
 
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).then(
-        () => alert("계좌번호가 복사되었습니다."),
+        () => alert("은행명 + 계좌번호가 복사되었습니다."),
         () => alert("복사에 실패했습니다. 직접 입력해 주세요.")
       );
     } else {
@@ -416,22 +436,20 @@ export default function GuestPage() {
                   축의금 수취 계좌
                 </p>
                 <p className="text-sm font-semibold">
-                  {selectedAccountForSummary.label} ·{" "}
-                  {selectedAccountForSummary.holder_name}
+                  {selectedAccountForSummary.label} · {selectedAccountForSummary.holder_name}
                 </p>
                 <p className="text-sm text-gray-700">
-                  {selectedAccountForSummary.bank_name}{" "}
-                  {selectedAccountForSummary.account_number}
+                  {selectedAccountForSummary.bank_name} {selectedAccountForSummary.account_number}
                 </p>
                 <button
                   type="button"
                   onClick={copyAccountNumber}
                   className="mt-2 inline-flex items-center justify-center rounded-full border border-pink-400 px-4 py-1.5 text-xs font-medium text-pink-700 bg-white hover:bg-pink-50 transition"
                 >
-                  계좌번호 복사하기
+                  은행+계좌번호 복사하기
                 </button>
                 <p className="mt-1 text-[10px] text-gray-500">
-                  복사된 계좌번호로 사용하는 은행/간편결제 앱에서 송금해 주세요.
+                  복사된 정보로 사용하는 은행/간편결제 앱에서 송금해 주세요.
                 </p>
               </div>
             ) : (
@@ -456,6 +474,16 @@ export default function GuestPage() {
                 카카오톡 채널 친구추가
               </a>
             </div>
+
+            {/* ✅ 운영자 디버그 배너(하객에게는 절대 안 보이게) */}
+            {debug && debugBanner && (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-left">
+                <p className="text-[12px] font-semibold text-red-800">DEBUG</p>
+                <p className="mt-1 text-[11px] text-red-700 whitespace-pre-wrap">
+                  {debugBanner}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -479,6 +507,15 @@ export default function GuestPage() {
               잠시 후 다시 접속하시거나,
               <br className="sm:hidden" /> 잠깐 후에 새로고침해 주세요.
             </p>
+
+            {debug && debugBanner && (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-left">
+                <p className="text-[12px] font-semibold text-red-800">DEBUG</p>
+                <p className="mt-1 text-[11px] text-red-700 whitespace-pre-wrap">
+                  {debugBanner}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -500,6 +537,15 @@ export default function GuestPage() {
             <p className="text-xs text-gray-400">
               소중한 축하의 마음을 전해주셔서 감사합니다.
             </p>
+
+            {debug && debugBanner && (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-left">
+                <p className="text-[12px] font-semibold text-red-800">DEBUG</p>
+                <p className="mt-1 text-[11px] text-red-700 whitespace-pre-wrap">
+                  {debugBanner}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -541,6 +587,28 @@ export default function GuestPage() {
               <p className="mt-1 text-[11px] text-amber-700">
                 {writeBlockedReason ??
                   "관리자 설정(RLS/Policy)을 확인한 뒤 다시 시도해 주세요."}
+              </p>
+            </div>
+          )}
+
+          {/* ✅ 계좌 로딩 실패 시: 하객에게는 중립 문구만 */}
+          {accountsLoadFailed && (
+            <div className="mt-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left">
+              <p className="text-[12px] font-semibold text-gray-800">
+                축의금 계좌 정보를 불러오지 못했어요
+              </p>
+              <p className="mt-1 text-[11px] text-gray-600">
+                잠시 후 새로고침해 주세요. 계속 문제가 있으면 예식장 안내에 따라 송금해 주세요.
+              </p>
+            </div>
+          )}
+
+          {/* ✅ 운영자 디버그 배너(하객 노출 X) */}
+          {debug && debugBanner && (
+            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-left">
+              <p className="text-[12px] font-semibold text-red-800">DEBUG</p>
+              <p className="mt-1 text-[11px] text-red-700 whitespace-pre-wrap">
+                {debugBanner}
               </p>
             </div>
           )}
@@ -670,9 +738,7 @@ export default function GuestPage() {
           )}
 
           <section>
-            <label className="block text-sm font-semibold">
-              어느 쪽 하객이신가요?
-            </label>
+            <label className="block text-sm font-semibold">어느 쪽 하객이신가요?</label>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <button
                 type="button"
@@ -757,9 +823,7 @@ export default function GuestPage() {
                         : "border-gray-200 bg-white"
                     }`}
                   >
-                    <p className="text-xs font-semibold text-gray-700">
-                      {acct.label}
-                    </p>
+                    <p className="text-xs font-semibold text-gray-700">{acct.label}</p>
                     <p className="text-xs text-gray-600">
                       {acct.holder_name} · {acct.bank_name}
                     </p>
@@ -781,8 +845,7 @@ export default function GuestPage() {
         </div>
 
         <p className="mt-4 text-[11px] text-center text-gray-400">
-          전송 버튼을 누르시면 이용약관 및 개인정보 처리방침에 동의한 것으로
-          간주됩니다.
+          전송 버튼을 누르시면 이용약관 및 개인정보 처리방침에 동의한 것으로 간주됩니다.
         </p>
       </div>
     </div>
