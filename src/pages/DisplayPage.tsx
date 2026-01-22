@@ -24,7 +24,7 @@ type DisplayStyle = "basic" | "christmas" | "garden" | "luxury";
 type BackgroundMode = "photo" | "template";
 
 const POLL_INTERVAL_MS = 5000;
-const SLIDE_DURATION_MS = 6000;
+const SLIDE_DURATION_MS = 6000; // ✅ 사진 슬라이드 전환 기본값
 const FOOTER_HEIGHT_PX = 64;
 
 type FloatingItem = {
@@ -131,6 +131,10 @@ export default function DisplayPage() {
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [currentSlide, setCurrentSlide] = useState(0);
 
+  // ✅ 오디오/비디오 ref
+  const bgmRef = useRef<HTMLAudioElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
   /* ---------- time ---------- */
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60 * 1000);
@@ -207,9 +211,7 @@ export default function DisplayPage() {
         }
 
         setDisplayStyle((data.display_style as DisplayStyle) ?? "basic");
-        setBackgroundMode(
-          (data.background_mode as BackgroundMode) ?? "template"
-        );
+        setBackgroundMode((data.background_mode as BackgroundMode) ?? "template");
         setMediaUrls(Array.isArray(data.media_urls) ? data.media_urls : []);
 
         // ✅ (fallback 1) event_settings.recipients에서 이름 채우기
@@ -280,21 +282,9 @@ export default function DisplayPage() {
     return getEventPhase(now, new Date(schedule.start), new Date(schedule.end));
   }, [now, schedule]);
 
-  /* ---------- photo slide ---------- */
+  /* ---------- photo/video slide ---------- */
   const usePhotoBackground =
     backgroundMode === "photo" && mediaUrls.length > 0;
-
-  useEffect(() => {
-    if (!usePhotoBackground || mediaUrls.length <= 1) {
-      setCurrentSlide(0);
-      return;
-    }
-    const t = setInterval(
-      () => setCurrentSlide((p) => (p + 1) % mediaUrls.length),
-      SLIDE_DURATION_MS
-    );
-    return () => clearInterval(t);
-  }, [usePhotoBackground, mediaUrls]);
 
   const currentMediaUrl = useMemo(() => {
     if (!usePhotoBackground || mediaUrls.length === 0) return "";
@@ -304,6 +294,87 @@ export default function DisplayPage() {
   const currentIsVideo = useMemo(() => {
     return !!currentMediaUrl && isVideoUrl(currentMediaUrl);
   }, [currentMediaUrl]);
+
+  const advanceSlide = () => {
+    if (!usePhotoBackground || mediaUrls.length <= 1) return;
+    setCurrentSlide((p) => (p + 1) % mediaUrls.length);
+  };
+
+  // ✅ 1) 사진은 SLIDE_DURATION_MS로 넘어감
+  // ✅ 2) 영상은 "끝나면" 넘어감 (onEnded)
+  // ✅ 안전장치: 영상이 끝나지 않는 스트림/메타데이터 이슈 대비 timeout 하나 둠
+  useEffect(() => {
+    if (!usePhotoBackground || mediaUrls.length <= 1) {
+      setCurrentSlide(0);
+      return;
+    }
+
+    // 사진이면 타이머로 다음
+    if (!currentIsVideo) {
+      const t = setTimeout(() => advanceSlide(), SLIDE_DURATION_MS);
+      return () => clearTimeout(t);
+    }
+
+    // 영상이면 timeout은 "안전장치"로만 (기본 90초, duration 알면 duration+1초)
+    const v = videoRef.current;
+    const durationSec =
+      v && Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
+
+    const safetyMs =
+      durationSec > 0 ? Math.min(120000, Math.round((durationSec + 1) * 1000)) : 90000;
+
+    const safety = window.setTimeout(() => {
+      // 영상이 어떤 이유로든 끝 이벤트가 안 오면 다음으로
+      advanceSlide();
+    }, safetyMs);
+
+    return () => window.clearTimeout(safety);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usePhotoBackground, mediaUrls.length, currentSlide, currentIsVideo]);
+
+  // ✅ 사운드 정책:
+  // - 사진: BGM play
+  // - 영상: BGM pause + 영상 음소거 해제 시도
+  useEffect(() => {
+    const bgm = bgmRef.current;
+
+    // 사진/템플릿일 때는 bgm 유지
+    if (!currentIsVideo) {
+      if (bgm) {
+        // autoplay 정책 때문에 실패할 수 있으니 catch
+        bgm.muted = false;
+        bgm.volume = 1;
+        bgm.play().catch(() => {});
+      }
+      return;
+    }
+
+    // 영상일 때: bgm 멈추고, 영상 소리 시도
+    if (bgm) bgm.pause();
+
+    const v = videoRef.current;
+    if (!v) return;
+
+    // 1차: 언뮤트로 바로 재생 시도
+    v.muted = false;
+    v.volume = 1;
+
+    v.play().catch(() => {
+      // 브라우저가 "소리 있는 autoplay"를 막는 경우:
+      // ✅ 2차: muted로라도 재생 시작 -> playing 이후 언뮤트
+      v.muted = true;
+      v.play()
+        .then(() => {
+          const tryUnmute = () => {
+            v.muted = false;
+            v.volume = 1;
+          };
+          // 살짝 지연 후 언뮤트 시도
+          window.setTimeout(tryUnmute, 300);
+        })
+        .catch(() => {});
+    });
+  }, [currentIsVideo, currentMediaUrl]);
 
   /* ---------- ✅ 자동 밀도 ---------- */
   const queueLen = rotationQueueRef.current.length;
@@ -440,9 +511,8 @@ export default function DisplayPage() {
         }
       `}</style>
 
-      {/* ✅ iOS/TV 자동재생 안정화를 위해 muted 필수.
-          (원치 않으면 audio 태그 제거해도 됨) */}
-      <audio src="/bgm.m4a" autoPlay loop preload="auto" />
+      {/* ✅ 사진/템플릿일 때만 BGM을 쓰는 정책 (영상일 때는 pause 처리) */}
+      <audio ref={bgmRef} src="/bgm.m4a" autoPlay loop preload="auto" />
 
       {/* FLOATING (z-30) */}
       <div className="absolute inset-0 overflow-hidden z-30 pointer-events-none">
@@ -546,16 +616,28 @@ export default function DisplayPage() {
       >
         {usePhotoBackground ? (
           currentIsVideo ? (
-            // ✅ VIDEO background (스탠바이미 포함 자동재생 안정)
+            // ✅ VIDEO background
+            // - loop 제거
+            // - 끝나면 next (onEnded)
+            // - bgm pause + video unmute는 effect에서 처리
             <video
+              ref={videoRef}
               key={currentMediaUrl} // ✅ 슬라이드 바뀔 때마다 새로 로드
               src={currentMediaUrl}
               className="absolute inset-0 w-full h-full object-cover"
               autoPlay
-              muted
               playsInline
-              loop
               preload="auto"
+              // muted는 effect에서 제어(autoplay 정책 대응)
+              onEnded={() => {
+                advanceSlide();
+              }}
+              onLoadedMetadata={() => {
+                // 메타데이터 로딩 시점에 한번 더 재생 시도(안정)
+                const v = videoRef.current;
+                if (!v) return;
+                v.play().catch(() => {});
+              }}
             />
           ) : (
             // ✅ IMAGE background
