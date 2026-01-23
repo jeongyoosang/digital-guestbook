@@ -197,8 +197,8 @@ export default function ResultPage() {
 
       /* ------------------ 내 member id 찾기 ------------------ */
       async function resolveOwnerMemberId(): Promise<string | null> {
-        const { data: authData, error: authErr } = await supabase.auth.getUser();
-        if (authErr || !authData?.user) return null;
+        const { data: authData } = await supabase.auth.getUser();
+        if (!authData?.user) return null;
 
         const user = authData.user;
 
@@ -212,20 +212,23 @@ export default function ResultPage() {
           .eq("user_id", user.id)
           .maybeSingle();
 
+        console.log("DEBUG event_members row:", data);
+
         if (error) {
           console.error("resolveOwnerMemberId error:", error);
           return null;
         }
 
         if (data?.id) {
-          const role = (data as any)?.role;
-          setOwnerLabel(role === "owner" ? "주최" : "내");
-          return data.id as string;
+          setOwnerLabel(data.role === "owner" ? "주최" : "내");
+          return data.id;
         }
 
+        // 여기 오면 진짜 정합성 이슈
         setOwnerLabel("내");
         return null;
       }
+
 
 
   /* ------------------ 데이터 로드 ------------------ */
