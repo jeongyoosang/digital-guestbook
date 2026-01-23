@@ -67,7 +67,6 @@ type LedgerRow = {
 const PAGE_SIZE = 10;
 
 // event_members에서 이메일/유저를 식별하는 컬럼명이 다를 수 있어서 후보로 둠
-const MEMBER_EMAIL_COL_CANDIDATES = ["member_email", "email", "user_email"] as const;
 
 function onlyDigits(s: string) {
   return (s ?? "").replace(/\D/g, "");
@@ -196,53 +195,38 @@ export default function ResultPage() {
   // 다만 스크래핑(자동 갱신) 및 스크래핑 row 편집은 불가.
   const canRunScrape = !isFinalized;
 
-  /* ------------------ 내 member id 찾기 ------------------ */
-  async function resolveOwnerMemberId(): Promise<string | null> {
-    const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !authData?.user) return null;
+      /* ------------------ 내 member id 찾기 ------------------ */
+      async function resolveOwnerMemberId(): Promise<string | null> {
+        const { data: authData, error: authErr } = await supabase.auth.getUser();
+        if (authErr || !authData?.user) return null;
 
-    const user = authData.user;
-    const email = (user.email ?? "").toLowerCase();
+        const user = authData.user;
 
-    // 1) user_id 컬럼이 있으면 가장 정확함
-    const byUserId = await supabase
-      .from("event_members")
-      .select("id, role, side, user_id")
-      .eq("event_id", eventId)
-      // @ts-ignore
-      .eq("user_id", user.id)
-      .maybeSingle();
+        console.log("DEBUG eventId param:", eventId);
+        console.log("DEBUG auth user id:", user.id);
 
-    if (byUserId.data?.id) {
-      const role = (byUserId.data as any)?.role;
-      const side = (byUserId.data as any)?.side;
-      const label = side === "groom" ? "신랑" : side === "bride" ? "신부" : role === "owner" ? "주최" : "내";
-      setOwnerLabel(label);
-      return byUserId.data.id as string;
-    }
+        const { data, error } = await supabase
+          .from("event_members")
+          .select("id, role")
+          .eq("event_id", eventId)
+          .eq("user_id", user.id)
+          .maybeSingle();
 
-    // 2) email 후보 컬럼들로 찾기
-    for (const col of MEMBER_EMAIL_COL_CANDIDATES) {
-      const byEmail = await supabase
-        .from("event_members")
-        .select("id, role, side")
-        .eq("event_id", eventId)
-        // @ts-ignore
-        .ilike(col, email)
-        .maybeSingle();
+        if (error) {
+          console.error("resolveOwnerMemberId error:", error);
+          return null;
+        }
 
-      if (byEmail.data?.id) {
-        const role = (byEmail.data as any)?.role;
-        const side = (byEmail.data as any)?.side;
-        const label = side === "groom" ? "신랑" : side === "bride" ? "신부" : role === "owner" ? "주최" : "내";
-        setOwnerLabel(label);
-        return byEmail.data.id as string;
+        if (data?.id) {
+          const role = (data as any)?.role;
+          setOwnerLabel(role === "owner" ? "주최" : "내");
+          return data.id as string;
+        }
+
+        setOwnerLabel("내");
+        return null;
       }
-    }
 
-    setOwnerLabel("내");
-    return null;
-  }
 
   /* ------------------ 데이터 로드 ------------------ */
   useEffect(() => {
@@ -576,7 +560,7 @@ export default function ResultPage() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "장부_업로드샘플");
 
-    const filename = `${ownerLabel}_장부_업로드샘플_${yyyymmdd(settings?.ceremony_date)}.xlsx`;
+    const filename = `장부_업로드샘플_${yyyymmdd(settings?.ceremony_date)}.xlsx`;
     XLSX.writeFile(wb, filename);
   }
 
@@ -888,12 +872,15 @@ export default function ResultPage() {
           <section className="space-y-4">
             {!ownerMemberId && (
               <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
-                이 이벤트에 대한 개인 리포트 권한(event_members)을 찾지 못했어요.
+                멤버 매칭에 실패했습니다. (event_members.user_id 정합성 이슈)
                 <div className="mt-1 text-xs text-amber-700">
-                  event_members의 이메일 컬럼명이 다르면 발생합니다. (필요 시 수정)
+                  EventHome에서 이벤트가 보였다면 원래는 항상 매칭되어야 합니다.
+                  <br />
+                  초대/이벤트 생성 플로우에서 event_members에 user_id가 들어가도록 보강이 필요합니다.
                 </div>
               </div>
             )}
+
 
             {/* 요약 */}
             <div className="rounded-2xl bg-slate-50 p-4 flex flex-wrap gap-2 text-xs">
@@ -931,20 +918,20 @@ export default function ResultPage() {
                     엑셀로 장부 다운로드
                   </button>
 
-                  <button
-                    className="px-4 py-2 rounded-xl border text-sm hover:bg-slate-50 disabled:opacity-50"
-                    onClick={downloadLedgerSampleExcel}
-                    disabled={!ownerMemberId}
-                  >
-                    엑셀 샘플 다운로드
-                  </button>
+                 <button
+                  className="px-4 py-2 rounded-xl border text-sm hover:bg-slate-50"
+                  onClick={downloadLedgerSampleExcel}
+                >
+                  엑셀 샘플 다운로드
+                </button>
 
-                  <button
-                    className="px-4 py-2 rounded-xl border text-sm hover:bg-slate-50 disabled:opacity-50"
-                    onClick={() => setExcelHelpOpen(true)}
-                  >
-                    업로드 포맷 안내
-                  </button>
+                <button
+                  className="px-4 py-2 rounded-xl border text-sm hover:bg-slate-50"
+                  onClick={() => setExcelHelpOpen(true)}
+                >
+                  업로드 포맷 안내
+                </button>
+
 
                   <button
                     className="px-4 py-2 rounded-xl bg-pink-500 text-white text-sm disabled:opacity-50"
