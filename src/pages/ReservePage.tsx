@@ -78,9 +78,7 @@ export default function ReservePage({ onServiceFlowClick, onReportClick }: Reser
 
           {/* ✅ 하얀 테두리 제거: border 없이 소프트 박스로 */}
           <div className="mt-6 rounded-2xl bg-foreground/5 px-5 py-4 text-sm text-muted-foreground">
-            제출 후 <span className="font-semibold text-foreground">카카오톡</span>으로 입금 및 확정 안내를 드립니다.
-            <br />
-            입금 확인 후 예약이 확정됩니다.
+            제출 후 안내 메시지는 <span className="font-semibold text-foreground">공식 카카오톡 채널</span>로 발송됩니다.
           </div>
         </header>
 

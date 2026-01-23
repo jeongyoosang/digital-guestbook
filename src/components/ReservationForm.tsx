@@ -439,48 +439,43 @@ export const ReservationForm = () => {
           <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground mb-3">
             감사합니다 💐
           </h2>
-          <p className="text-base sm:text-lg text-muted-foreground leading-relaxed">
-            문의가 정상 접수되었습니다.
-            <br />
-            예약 확정 안내와 디지털 방명록 질의응답은
-            <br />
-            <span className="font-semibold text-foreground">공식 카카오톡 채널</span>로 발송됩니다.
-          </p>
+         <p className="text-base sm:text-lg text-muted-foreground leading-relaxed">
+          문의가 정상 접수되었습니다.
+          <br />
+          안내 메시지는 <span className="font-semibold text-foreground">공식 카카오톡 채널</span>로 발송됩니다.
+        </p>
         </section>
 
-        {/* 3) 하단 CTA: 처음으로 / 서비스흐름 / 인스타 */}
-        <section className="rounded-3xl bg-white/70 backdrop-blur-xl border border-border/60 p-6 sm:p-7">
-          <div className="flex flex-col sm:flex-row items-center justify-end gap-2 sm:gap-3">
-            <Button
-              variant="outline"
-              onClick={() => (window.location.href = "/")}
-              className="w-full sm:w-auto rounded-full"
-            >
-              처음으로
-            </Button>
+        {/* 3) 하단 CTA: 박스 없이 가운데 정렬 */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3">
+          <Button
+            variant="outline"
+            onClick={() => (window.location.href = "/")}
+            className="w-full sm:w-auto rounded-full"
+          >
+            처음으로
+          </Button>
 
-            <Button
-              variant="outline"
-              onClick={() => (window.location.href = "https://digital-guestbook-app.vercel.app/service-flow")}
-              className="w-full sm:w-auto rounded-full"
-            >
-              서비스 흐름
-            </Button>
+          <Button
+            variant="outline"
+            onClick={() => (window.location.href = "https://digital-guestbook-app.vercel.app/service-flow")}
+            className="w-full sm:w-auto rounded-full"
+          >
+            서비스 흐름
+          </Button>
 
-            {/* Instagram */}
-            <a
-              href="https://www.instagram.com/digital_guestbook"
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Instagram"
-              className="inline-flex h-10 w-full sm:w-10 items-center justify-center rounded-full border border-border/60 bg-background/60 hover:bg-foreground/5 transition"
-              title="Instagram"
-            >
-              <Instagram className="h-5 w-5" />
-              <span className="sm:hidden ml-2 text-sm">인스타그램</span>
-            </a>
-          </div>
-        </section>
+          <a
+            href="https://www.instagram.com/digital_guestbook"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Instagram"
+            className="inline-flex h-10 w-full sm:w-10 items-center justify-center rounded-full border border-border/60 bg-background/60 hover:bg-foreground/5 transition"
+            title="Instagram"
+          >
+            <Instagram className="h-5 w-5" />
+            <span className="sm:hidden ml-2 text-sm">인스타그램</span>
+          </a>
+        </div>
       </div>
     );
   }
