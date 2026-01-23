@@ -68,6 +68,14 @@ const PAGE_SIZE = 10;
 
 // event_members에서 이메일/유저를 식별하는 컬럼명이 다를 수 있어서 후보로 둠
 
+function sourceLabel(src?: string | null) {
+  if (src === "scrape") return "은행 자동 반영 (수정 불가)";
+  if (src === "import") return "엑셀 업로드";
+  if (src === "guestpage") return "하객 입력";
+  return "수기 입력";
+}
+
+
 function onlyDigits(s: string) {
   return (s ?? "").replace(/\D/g, "");
 }
@@ -585,7 +593,7 @@ export default function ResultPage() {
         감사인사: r.thanks_done ? "완료" : "미완료",
         메모: r.memo ?? "",
         "구분(선택)": r.side === "groom" ? "신랑측" : r.side === "bride" ? "신부측" : "",
-        출처: (r.created_source ?? "manual") === "scrape" ? "스크래핑(잠김)" : r.created_source ?? "manual",
+        출처: sourceLabel(r.created_source ?? null),
       }));
 
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -677,7 +685,7 @@ export default function ResultPage() {
             return_given,
             thanks_done,
             memo,
-            created_source: "excel" as const,
+            created_source: "import" as const,
           };
         })
         .filter(Boolean) as any[];
@@ -1299,11 +1307,7 @@ export default function ResultPage() {
                           </td>
 
                           <td className="px-3 py-3 text-xs text-gray-600">
-                            {(r.created_source ?? "manual") === "scrape"
-                              ? "스크래핑(잠김)"
-                              : (r.created_source ?? "manual") === "excel"
-                              ? "엑셀"
-                              : "수기"}
+                            {sourceLabel(r.created_source ?? null)}
                           </td>
 
                           <td className="px-3 py-3 text-right">
