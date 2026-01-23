@@ -53,7 +53,7 @@ export default function HeroSection({
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55, ease: "easeOut" }}
-            className="max-w-xl text-center lg:text-left mx-auto lg:mx-0"
+            className="max-w-xl text-center sm:text-left mx-auto sm:mx-0"
           >
             <div className="flex items-baseline gap-3">
               <span className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground/90">
@@ -93,11 +93,20 @@ export default function HeroSection({
                 </span>
               </span>
 
-              <span className="block mt-1">
-                장부와 방명록이 한 번에 정리된
+              {/* 데스크탑(>=sm): 한 줄 */}
+              <span className="hidden sm:block mt-1">
+                장부와 방명록이 한 번에 정리된{" "}
+                <span className="text-foreground/90 font-semibold whitespace-nowrap">
+                  웨딩리포트
+                </span>
+                를 바로 확인합니다.
               </span>
 
-              <span className="block mt-1">
+              {/* 모바일(<sm): 끊김 방지로 줄 분리 */}
+              <span className="block sm:hidden mt-1">
+                장부와 방명록이 한 번에 정리된
+              </span>
+              <span className="block sm:hidden mt-1">
                 <span className="text-foreground/90 font-semibold whitespace-nowrap">
                   웨딩리포트
                 </span>
