@@ -34,7 +34,7 @@ type TabKey = "messages" | "ledger";
 
 type GiftMethod = "account" | "cash" | "unknown";
 
-type CreatedSource = "manual" | "excel" | "scrape";
+type CreatedSource = "manual" | "guestpage" | "import" | "scrape";
 
 type LedgerRow = {
   id: string;
@@ -810,10 +810,10 @@ export default function ResultPage() {
                 <div className="text-right">
                   <div className="text-sm font-semibold text-gray-900">확정 상태</div>
                   <div className="mt-1 text-xs text-gray-500 max-w-[360px]">
-                    확정 이후에는 <span className="font-medium">계좌 스크래핑 자동 조회/갱신</span>이 차단됩니다.
+                    확정 이후에는 <span className="font-medium">은행 자동 반영(조회/갱신)</span>이 차단됩니다.
                     <br />
                     단, <span className="font-medium">수기/엑셀 장부는 계속 수정 가능</span>하며
-                    <span className="font-medium"> 스크래핑 내역(잠김)</span>은 항상 수정 불가입니다.
+                    <span className="font-medium"> 은행 자동 반영(조회/갱신)</span>은 항상 수정 불가입니다.
                   </div>
                   {reportFinalizedAt && (
                     <div className="mt-1 text-[11px] text-gray-400">
@@ -849,7 +849,7 @@ export default function ResultPage() {
             <span className="px-3 py-1 rounded-full bg-slate-100">메시지 {totalCount}건</span>
             <span className="px-3 py-1 rounded-full bg-slate-100">신랑측 {groomCount}건</span>
             <span className="px-3 py-1 rounded-full bg-slate-100">신부측 {brideCount}건</span>
-            <span className="px-3 py-1 rounded-full bg-slate-100">축의금(스크래핑) {txCount}건</span>
+            <span className="px-3 py-1 rounded-full bg-slate-100">은행 자동 반영 {txCount}건</span>
           </div>
 
           <div className="mt-2 text-[11px] text-gray-400">
@@ -904,7 +904,7 @@ export default function ResultPage() {
               </span>
               <span className="px-3 py-1 rounded-full bg-white border">답례 미완료 {ledgerStats.thanksPending}명</span>
               <span className="px-3 py-1 rounded-full bg-white border">
-                스크래핑(잠김) {ledgerStats.locked}건
+                은행 자동 반영(수정 불가) {ledgerStats.locked}건
               </span>
             </div>
 
@@ -916,7 +916,7 @@ export default function ResultPage() {
                   <p className="mt-1 text-xs text-gray-500">
                     축의대 지인 장부(엑셀)도 <span className="font-medium">한 번에 업로드</span>해서 통합할 수 있어요.
                     <br />
-                    스크래핑 내역은 자동 반영되며 <span className="font-medium">잠겨서 수정되지 않습니다.</span>
+                    은행 자동 반영 내역은 자동으로 들어오며<span className="font-medium">수정할 수 없습니다.</span>
                   </p>
                 </div>
 
@@ -1330,7 +1330,7 @@ export default function ResultPage() {
             <div className="text-[11px] text-gray-500">
               * 참석 여부는 <span className="font-semibold">디지털방명록(QR) 스캔 기준</span>이며, 필요 시 수기/엑셀로 보정 가능합니다.
               <br />
-              * <span className="font-semibold">스크래핑 내역은 항상 잠김</span> 상태로 수정되지 않습니다.
+              * <span className="font-semibold">은행 자동 반영 내역은</span> 수정할 수 없습니다.
             </div>
           </section>
         )}
