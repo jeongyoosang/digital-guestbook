@@ -425,60 +425,60 @@ export const ReservationForm = () => {
     }
   }, [showSuccess]);
 
-  // ✅ 성공 화면: 카톡 → 감사합니다 → (처음으로 + 인스타)
-  if (showSuccess) {
-    return (
-      <div ref={successRef} className="space-y-8">
-        {/* 1) 카카오톡 공식채널 (위로) */}
-        <div className="rounded-3xl overflow-hidden border border-border/60">
-          <KakaoSection />
+  // ✅ 성공 화면: 감사합니다 → 카톡 채널추가 → (처음으로/서비스흐름/인스타)
+    if (showSuccess) {
+      return (
+        <div ref={successRef} className="space-y-8">
+          {/* 1) 감사합니다 박스 (위로) */}
+          <section className="rounded-3xl bg-white/70 backdrop-blur-xl border border-border/60 shadow-[0_20px_60px_rgba(15,23,42,0.10)] p-8 sm:p-10 text-center">
+            <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground mb-3">
+              감사합니다 💐
+            </h2>
+            <p className="text-base sm:text-lg text-muted-foreground leading-relaxed">
+              문의가 정상 접수되었습니다.
+              <br />
+              안내 메시지는 <span className="font-semibold text-foreground">공식 카카오톡 채널</span>로 발송됩니다.
+            </p>
+          </section>
+
+          {/* 2) 카카오톡 채널추가 링크만 (박스 밖으로) */}
+          <div className="flex justify-center">
+            <KakaoSection />
+          </div>
+
+          {/* 3) 하단 CTA: 박스 없이 가운데 정렬 */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3">
+            <Button
+              variant="outline"
+              onClick={() => (window.location.href = "/")}
+              className="w-full sm:w-auto rounded-full"
+            >
+              처음으로
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={() => (window.location.href = "https://digital-guestbook-app.vercel.app/service-flow")}
+              className="w-full sm:w-auto rounded-full"
+            >
+              서비스 흐름
+            </Button>
+
+            <a
+              href="https://www.instagram.com/digital_guestbook"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Instagram"
+              className="inline-flex h-10 w-full sm:w-10 items-center justify-center rounded-full border border-border/60 bg-background/60 hover:bg-foreground/5 transition"
+              title="Instagram"
+            >
+              <Instagram className="h-5 w-5" />
+              <span className="sm:hidden ml-2 text-sm">인스타그램</span>
+            </a>
+          </div>
         </div>
-
-        {/* 2) 감사합니다 박스 (아래로) */}
-        <section className="rounded-3xl bg-white/70 backdrop-blur-xl border border-border/60 shadow-[0_20px_60px_rgba(15,23,42,0.10)] p-8 sm:p-10 text-center">
-          <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground mb-3">
-            감사합니다 💐
-          </h2>
-         <p className="text-base sm:text-lg text-muted-foreground leading-relaxed">
-          문의가 정상 접수되었습니다.
-          <br />
-          안내 메시지는 <span className="font-semibold text-foreground">공식 카카오톡 채널</span>로 발송됩니다.
-        </p>
-        </section>
-
-        {/* 3) 하단 CTA: 박스 없이 가운데 정렬 */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3">
-          <Button
-            variant="outline"
-            onClick={() => (window.location.href = "/")}
-            className="w-full sm:w-auto rounded-full"
-          >
-            처음으로
-          </Button>
-
-          <Button
-            variant="outline"
-            onClick={() => (window.location.href = "https://digital-guestbook-app.vercel.app/service-flow")}
-            className="w-full sm:w-auto rounded-full"
-          >
-            서비스 흐름
-          </Button>
-
-          <a
-            href="https://www.instagram.com/digital_guestbook"
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Instagram"
-            className="inline-flex h-10 w-full sm:w-10 items-center justify-center rounded-full border border-border/60 bg-background/60 hover:bg-foreground/5 transition"
-            title="Instagram"
-          >
-            <Instagram className="h-5 w-5" />
-            <span className="sm:hidden ml-2 text-sm">인스타그램</span>
-          </a>
-        </div>
-      </div>
-    );
-  }
+      );
+    }
 
   return (
     <>
