@@ -53,7 +53,7 @@ export default function HeroSection({
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55, ease: "easeOut" }}
-            className="max-w-xl"
+            className="max-w-xl text-center lg:text-left mx-auto lg:mx-0"
           >
             <div className="flex items-baseline gap-3">
               <span className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground/90">
@@ -69,7 +69,7 @@ export default function HeroSection({
               </span>
 
               {/* 컬러 문장: 검정 대신 "선명하지만 부드러운" 컬러 + 굵기 */}
-              <span className="mt-1 block font-semibold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-400">
+              <span className="mt-1 block font-semibold text-transparent bg-clip-text bg-gradient-to-r from-sky-500 via-violet-500 to-rose-400">
                 <span className="whitespace-nowrap">식이 끝나면</span>{" "}
                 <span className="whitespace-nowrap">장부·방명록이</span>{" "}
                 <span className="whitespace-nowrap">자동으로 정리됩니다</span>
@@ -94,7 +94,10 @@ export default function HeroSection({
               </span>
 
               <span className="block mt-1">
-                장부와 방명록이 한 번에 정리된{" "}
+                장부와 방명록이 한 번에 정리된
+              </span>
+
+              <span className="block mt-1">
                 <span className="text-foreground/90 font-semibold whitespace-nowrap">
                   웨딩리포트
                 </span>
@@ -102,7 +105,7 @@ export default function HeroSection({
               </span>
             </p>
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center justify-center lg:justify-start">
               <button
                 type="button"
                 onClick={onPrimaryCTAClick}
