@@ -69,7 +69,7 @@ export default function HeroSection({
               </span>
 
               {/* 컬러 문장: 검정 대신 "선명하지만 부드러운" 컬러 + 굵기 */}
-              <span className="mt-1 block font-semibold text-transparent bg-clip-text bg-gradient-to-r from-foreground/90 via-foreground/70 to-foreground/90">
+              <span className="mt-1 block font-semibold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-400">
                 <span className="whitespace-nowrap">식이 끝나면</span>{" "}
                 <span className="whitespace-nowrap">장부·방명록이</span>{" "}
                 <span className="whitespace-nowrap">자동으로 정리됩니다</span>
