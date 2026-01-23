@@ -2,7 +2,7 @@ import { motion, useReducedMotion } from "framer-motion";
 
 type HeroSectionProps = {
   onPrimaryCTAClick?: () => void; // 예약/문의
-  onReportClick?: () => void; // 내 리포트
+  onReportClick?: () => void; // 로그인(내 리포트)
   onServiceFlowClick?: () => void; // 서비스 흐름
 };
 
@@ -40,9 +40,9 @@ export default function HeroSection({
               className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition"
             >
               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-foreground/5">
-                📄
+                🔐
               </span>
-              <span className="font-medium">내 리포트</span>
+              <span className="font-medium">로그인</span>
             </button>
           </div>
         </div>
@@ -62,32 +62,44 @@ export default function HeroSection({
               <span className="text-sm text-muted-foreground">디지털 방명록</span>
             </div>
 
-            <h1 className="mt-6 text-4xl leading-[1.08] tracking-tight text-foreground sm:text-5xl">
-              <span className="block">결혼식 축의금, QR로 간편히</span>
-              <span className="block wedding-gradient">
-                식 종료 후 장부·방명록이 즉시 리포트로
+            {/* ✅ 헤드라인: 모바일 2~3줄로 정리 + “간편히” 줄바꿈 안정화 */}
+            <h1 className="mt-6 text-[2.15rem] leading-[1.08] tracking-tight text-foreground sm:text-5xl">
+              <span className="block">
+                결혼식 축의금,{" "}
+                <span className="whitespace-nowrap">QR로 간편히</span>
+              </span>
+              <span className="block">
+                보내고
+                <span className="text-muted-foreground">,</span>
               </span>
             </h1>
 
+            {/* ✅ 신랑/신부 가치(리포트) = 헤드라인에서 분리해서 ‘더 무겁게’ */}
+            <p className="mt-3 text-xl sm:text-2xl font-extrabold tracking-tight text-foreground">
+              식 종료 후 장부·방명록이{" "}
+              <span className="underline underline-offset-4 decoration-foreground/20">
+                즉시 리포트로
+              </span>
+            </p>
+
+            {/* ✅ 설명: bold 과다 → 키워드만 확실하게 */}
             <p className="mt-5 text-base leading-relaxed text-muted-foreground sm:text-lg">
               <span className="block">
                 하객은{" "}
-                <span className="text-foreground font-semibold">
-                  QR로 축하메시지와 축의금을 보내고
-                </span>
+                <span className="text-foreground font-bold">QR</span>로
+                축하메시지와 축의금을 남기고,
               </span>
 
               <span className="block mt-1">
                 예식이 끝나는 순간{" "}
-                <span className="text-foreground font-semibold">
-                  모든 참석자 방명록과 축의금 내역이
-                </span>
+                <span className="text-foreground font-bold">축의금 내역</span>과{" "}
+                <span className="text-foreground font-bold">방명록</span>이
               </span>
 
               <span className="block mt-1">
-                <span className="text-foreground font-semibold">
-                  하나의 리포트로 즉시 정리됩니다.
-                </span>
+                한 번에 정리된{" "}
+                <span className="text-foreground font-bold">리포트</span>를
+                바로 확인합니다.
               </span>
             </p>
 
@@ -112,18 +124,15 @@ export default function HeroSection({
                   서비스 흐름
                 </button>
 
-                {/* 얇은 구분자 */}
-                <span
-                  aria-hidden="true"
-                  className="h-4 w-px bg-foreground/15"
-                />
+                <span aria-hidden="true" className="h-4 w-px bg-foreground/15" />
 
+                {/* ✅ 모바일도 “로그인”으로 통일 */}
                 <button
                   type="button"
                   onClick={onReportClick}
                   className="underline-offset-4 hover:underline"
                 >
-                  내 리포트
+                  로그인
                 </button>
               </div>
             </div>
@@ -150,7 +159,6 @@ export default function HeroSection({
 
                 {/* ✅ 애플식 링 하이라이트: 원 안쪽 영향 0% */}
                 <div className="pointer-events-none absolute inset-0">
-                  {/* base ring */}
                   <svg
                     className="absolute inset-0 h-full w-full"
                     viewBox="0 0 100 100"
@@ -165,10 +173,7 @@ export default function HeroSection({
 
                       <linearGradient id="dgGlint" x1="0" y1="0" x2="1" y2="0">
                         <stop offset="0" stopColor="rgba(255,255,255,0)" />
-                        <stop
-                          offset="0.35"
-                          stopColor="rgba(255,255,255,0.95)"
-                        />
+                        <stop offset="0.35" stopColor="rgba(255,255,255,0.95)" />
                         <stop offset="0.7" stopColor="rgba(255,255,255,0)" />
                       </linearGradient>
 
@@ -181,7 +186,6 @@ export default function HeroSection({
                       </filter>
                     </defs>
 
-                    {/* 얇은 기본 테두리 */}
                     <circle
                       cx="50"
                       cy="50"
@@ -192,7 +196,6 @@ export default function HeroSection({
                       opacity="0.55"
                     />
 
-                    {/* 움직이는 하이라이트(짧은 스트로크만 이동) */}
                     <circle
                       className={reduceMotion ? "" : "dg-ring-glint"}
                       cx="50"
@@ -208,7 +211,6 @@ export default function HeroSection({
                     />
                   </svg>
 
-                  {/* 아주 약한 비네팅(집중도) */}
                   <div className="absolute inset-0 dg-apple-vignette" />
                 </div>
               </div>
@@ -221,7 +223,6 @@ export default function HeroSection({
         <div className="h-px bg-border/60" />
       </div>
 
-      {/* 컴포넌트 내부 CSS: 링 애니메이션(테두리만) */}
       <style>{`
         .dg-ring-glint {
           animation: dgGlintMove 4.6s linear infinite;
