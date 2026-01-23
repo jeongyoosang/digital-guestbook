@@ -2,7 +2,7 @@ import { motion, useReducedMotion } from "framer-motion";
 
 type HeroSectionProps = {
   onPrimaryCTAClick?: () => void; // 예약/문의
-  onReportClick?: () => void; // 로그인(내 리포트)
+  onReportClick?: () => void; // 로그인
   onServiceFlowClick?: () => void; // 서비스 흐름
 };
 
@@ -15,9 +15,9 @@ export default function HeroSection({
 
   return (
     <section className="relative overflow-hidden">
-      {/* Luma 같은 은은한 배경 */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(120,119,198,0.18),transparent_55%),radial-gradient(circle_at_80%_20%,rgba(244,114,182,0.18),transparent_55%),radial-gradient(circle_at_50%_80%,rgba(253,224,71,0.10),transparent_60%)]" />
-      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-background" />
+      {/* Luma 같은 은은한 배경 (조금 더 밝게) */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(120,119,198,0.20),transparent_58%),radial-gradient(circle_at_82%_18%,rgba(244,114,182,0.20),transparent_60%),radial-gradient(circle_at_55%_82%,rgba(253,224,71,0.14),transparent_62%)]" />
+      <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-b from-transparent to-background" />
 
       <div className="relative mx-auto max-w-7xl px-6 pt-16 pb-10 lg:pt-20">
         {/* Top-right actions */}
@@ -56,50 +56,49 @@ export default function HeroSection({
             className="max-w-xl"
           >
             <div className="flex items-baseline gap-3">
-              <span className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
+              <span className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground/90">
                 Digital Guestbook
               </span>
               <span className="text-sm text-muted-foreground">디지털 방명록</span>
             </div>
 
-            {/* ✅ 헤드라인: 모바일 2~3줄로 정리 + “간편히” 줄바꿈 안정화 */}
-            <h1 className="mt-6 text-[2.15rem] leading-[1.08] tracking-tight text-foreground sm:text-5xl">
+            {/* ✅ 확정 헤드라인: 밝은 톤 + 자간/행간 + 모바일 끊김 제어 */}
+            <h1 className="mt-6 text-[2.05rem] leading-[1.08] tracking-[-0.02em] text-foreground/90 sm:text-5xl sm:tracking-[-0.03em]">
               <span className="block">
-                결혼식 축의금,{" "}
-                <span className="whitespace-nowrap">QR로 간편히</span>
+                <span className="whitespace-nowrap">축의금, QR로 한 번에</span>
               </span>
-              <span className="block">
-                보내고
-                <span className="text-muted-foreground">,</span>
+
+              {/* 컬러 문장: 검정 대신 "선명하지만 부드러운" 컬러 + 굵기 */}
+              <span className="mt-1 block font-semibold text-transparent bg-clip-text bg-gradient-to-r from-foreground/90 via-foreground/70 to-foreground/90">
+                <span className="whitespace-nowrap">식이 끝나면</span>{" "}
+                <span className="whitespace-nowrap">장부·방명록이</span>{" "}
+                <span className="whitespace-nowrap">자동으로 정리됩니다</span>
               </span>
             </h1>
 
-            {/* ✅ 신랑/신부 가치(리포트) = 헤드라인에서 분리해서 ‘더 무겁게’ */}
-            <p className="mt-3 text-xl sm:text-2xl font-extrabold tracking-tight text-foreground">
-              식 종료 후 장부·방명록이{" "}
-              <span className="underline underline-offset-4 decoration-foreground/20">
-                즉시 리포트로
-              </span>
-            </p>
-
-            {/* ✅ 설명: bold 과다 → 키워드만 확실하게 */}
-            <p className="mt-5 text-base leading-relaxed text-muted-foreground sm:text-lg">
+            {/* ✅ 설명 문단: 기능 설명 유지 + 가독성(칙칙함↓) + 모바일 줄깨짐 최소화 */}
+            <p className="mt-5 text-[1.02rem] leading-relaxed text-muted-foreground sm:text-lg">
               <span className="block">
                 하객은{" "}
-                <span className="text-foreground font-bold">QR</span>로
-                축하메시지와 축의금을 남기고,
+                <span className="text-foreground/90 font-semibold">QR</span>로{" "}
+                <span className="text-foreground/90 font-semibold">
+                  축하메시지와 축의금
+                </span>
+                을 보내고,
               </span>
 
               <span className="block mt-1">
-                예식이 끝나는 순간{" "}
-                <span className="text-foreground font-bold">축의금 내역</span>과{" "}
-                <span className="text-foreground font-bold">방명록</span>이
+                <span className="text-foreground/90 font-semibold">
+                  결혼식이 끝나는 순간
+                </span>
               </span>
 
               <span className="block mt-1">
-                한 번에 정리된{" "}
-                <span className="text-foreground font-bold">리포트</span>를
-                바로 확인합니다.
+                장부와 방명록이 한 번에 정리된{" "}
+                <span className="text-foreground/90 font-semibold whitespace-nowrap">
+                  웨딩리포트
+                </span>
+                를 바로 확인합니다.
               </span>
             </p>
 
@@ -113,7 +112,7 @@ export default function HeroSection({
               </button>
             </div>
 
-            {/* Mobile quick links (lg 이상에서는 기존 상단 버튼 사용) */}
+            {/* Mobile quick links */}
             <div className="mt-4 lg:hidden">
               <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
                 <button
@@ -126,7 +125,6 @@ export default function HeroSection({
 
                 <span aria-hidden="true" className="h-4 w-px bg-foreground/15" />
 
-                {/* ✅ 모바일도 “로그인”으로 통일 */}
                 <button
                   type="button"
                   onClick={onReportClick}
@@ -146,7 +144,6 @@ export default function HeroSection({
             className="relative"
           >
             <div className="relative mx-auto w-full max-w-[620px]">
-              {/* 이미지 완전 고정 */}
               <div className="relative overflow-hidden rounded-[999px] border border-border/60 bg-background/50 shadow-[0_20px_60px_rgba(15,23,42,0.10)]">
                 <div className="aspect-[1/1] w-full">
                   <img
@@ -157,7 +154,6 @@ export default function HeroSection({
                   />
                 </div>
 
-                {/* ✅ 애플식 링 하이라이트: 원 안쪽 영향 0% */}
                 <div className="pointer-events-none absolute inset-0">
                   <svg
                     className="absolute inset-0 h-full w-full"
@@ -177,7 +173,13 @@ export default function HeroSection({
                         <stop offset="0.7" stopColor="rgba(255,255,255,0)" />
                       </linearGradient>
 
-                      <filter id="dgGlow" x="-50%" y="-50%" width="200%" height="200%">
+                      <filter
+                        id="dgGlow"
+                        x="-50%"
+                        y="-50%"
+                        width="200%"
+                        height="200%"
+                      >
                         <feGaussianBlur stdDeviation="0.7" result="blur" />
                         <feMerge>
                           <feMergeNode in="blur" />
@@ -233,8 +235,8 @@ export default function HeroSection({
           to   { stroke-dashoffset: -310; }
         }
         .dg-apple-vignette {
-          background: radial-gradient(circle at 50% 45%, rgba(0,0,0,0.00) 58%, rgba(0,0,0,0.12) 100%);
-          opacity: 0.28;
+          background: radial-gradient(circle at 50% 45%, rgba(0,0,0,0.00) 58%, rgba(0,0,0,0.10) 100%);
+          opacity: 0.24;
           mix-blend-mode: multiply;
         }
       `}</style>
