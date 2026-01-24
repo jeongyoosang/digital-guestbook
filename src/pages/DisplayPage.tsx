@@ -126,6 +126,9 @@ export default function DisplayPage() {
   const [groomName, setGroomName] = useState("");
   const [brideName, setBrideName] = useState("");
 
+  // ✅ recipients를 state로 보관 (라벨/이름 모두 여기서 컨트롤 가능)
+  const [recipients, setRecipients] = useState<Recipient[]>([]);
+
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [now, setNow] = useState(new Date());
 
@@ -218,16 +221,26 @@ export default function DisplayPage() {
         setBackgroundMode((data.background_mode as BackgroundMode) ?? "template");
         setMediaUrls(Array.isArray(data.media_urls) ? data.media_urls : []);
 
-        // ✅ (fallback 1) event_settings.recipients에서 이름 채우기
-        const recipients = Array.isArray(data.recipients)
+        // ✅ recipients 저장 (라벨/이름 커스텀용)
+        const recs = Array.isArray(data.recipients)
           ? (data.recipients as Recipient[])
           : [];
+        setRecipients(recs);
 
-        const groom = recipients.find((r) => r?.role === "신랑")?.name;
-        const bride = recipients.find((r) => r?.role === "신부")?.name;
+        // ✅ (fallback 1) event_settings.recipients에서 이름 채우기
+        // - 기본 결혼식: role이 '신랑/신부'면 그걸 우선
+        // - 특수 이벤트: role이 다르면 "1번/2번" 순서로 이름을 보조로 채움(단, 기존 이름이 비어있을 때만)
+        const groom = recs.find((r) => r?.role === "신랑")?.name;
+        const bride = recs.find((r) => r?.role === "신부")?.name;
 
-        if (!groomName && groom) setGroomName(groom);
-        if (!brideName && bride) setBrideName(bride);
+        if (!groomName) {
+          if (groom) setGroomName(groom);
+          else if (recs?.[0]?.name) setGroomName(recs[0].name);
+        }
+        if (!brideName) {
+          if (bride) setBrideName(bride);
+          else if (recs?.[1]?.name) setBrideName(recs[1].name);
+        }
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
@@ -255,6 +268,7 @@ export default function DisplayPage() {
         return;
       }
 
+      // ✅ events 값이 있으면 그게 1순위
       setGroomName(data.groom_name ?? "");
       setBrideName(data.bride_name ?? "");
 
@@ -268,14 +282,21 @@ export default function DisplayPage() {
 
         if (sErr) console.error("[DisplayPage] fallback recipients error:", sErr);
 
-        const recipients = Array.isArray(s?.recipients)
+        const recs = Array.isArray(s?.recipients)
           ? (s!.recipients as Recipient[])
           : [];
-        const groom = recipients.find((r) => r?.role === "신랑")?.name;
-        const bride = recipients.find((r) => r?.role === "신부")?.name;
 
-        if (!data.groom_name && groom) setGroomName(groom);
-        if (!data.bride_name && bride) setBrideName(bride);
+        const groom = recs.find((r) => r?.role === "신랑")?.name;
+        const bride = recs.find((r) => r?.role === "신부")?.name;
+
+        if (!data.groom_name) {
+          if (groom) setGroomName(groom);
+          else if (recs?.[0]?.name) setGroomName(recs[0].name);
+        }
+        if (!data.bride_name) {
+          if (bride) setBrideName(bride);
+          else if (recs?.[1]?.name) setBrideName(recs[1].name);
+        }
       }
     })();
   }, [eventId]);
@@ -439,6 +460,10 @@ export default function DisplayPage() {
     ? "clamp(200px, 15vw, 280px)"
     : "clamp(80px, 8vw, 120px)";
 
+  /* ---------- ✅ 라벨(역할) : 기본 신랑/신부, 있으면 Supabase recipients.role 반영 ---------- */
+  const leftRoleLabel = recipients?.[0]?.role || "신랑";
+  const rightRoleLabel = recipients?.[1]?.role || "신부";
+
   /* ---------- ✅ 한글 가독성/좌우 안전 ---------- */
   const getSafeRange = (len: number) => {
     if (isPortrait) {
@@ -564,7 +589,7 @@ export default function DisplayPage() {
               className={`${groomBrideLabelClass} ${groomBrideGapClass} text-white/70`}
               style={roleLabelStyle}
             >
-              신랑
+              {leftRoleLabel}
             </p>
             <p className="text-white font-bold" style={nameStyle}>
               {groomName}
@@ -599,7 +624,7 @@ export default function DisplayPage() {
               className={`${groomBrideLabelClass} ${groomBrideGapClass} text-white/70`}
               style={roleLabelStyle}
             >
-              신부
+              {rightRoleLabel}
             </p>
             <p className="text-white font-bold" style={nameStyle}>
               {brideName}
@@ -634,27 +659,25 @@ export default function DisplayPage() {
                 v.play().catch(() => {});
               }}
             />
+          ) : isPortrait ? (
+            <img
+              src={currentMediaUrl}
+              className="absolute inset-0 w-full h-full object-cover"
+              alt="background"
+            />
           ) : (
-            isPortrait ? (
+            <>
               <img
                 src={currentMediaUrl}
-                className="absolute inset-0 w-full h-full object-cover"
-                alt="background"
+                className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-60"
+                alt="background blur"
               />
-            ) : (
-              <>
-                <img
-                  src={currentMediaUrl}
-                  className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-60"
-                  alt="background blur"
-                />
-                <img
-                  src={currentMediaUrl}
-                  className="absolute inset-0 w-full h-full object-contain"
-                  alt="background contain"
-                />
-              </>
-            )
+              <img
+                src={currentMediaUrl}
+                className="absolute inset-0 w-full h-full object-contain"
+                alt="background contain"
+              />
+            </>
           )
         ) : (
           <div
