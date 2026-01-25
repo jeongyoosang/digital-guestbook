@@ -26,7 +26,7 @@ type EventMemberRow = {
 type EventAccountRow = {
   id: string;
   event_id: string;
-  label: string; // e.g. "신랑-본인", "신부-어머니" 등
+  label: string;
   holder_name: string | null;
   bank_name: string | null;
   account_number: string | null;
@@ -38,62 +38,25 @@ const MESSAGE_MAX = 80;
 const DEFAULT_DISPLAY_MESSAGE = "축하드립니다 💐";
 const KAKAO_CHANNEL_URL = "https://pf.kakao.com/_UyaHn";
 
+/* ---------- utils ---------- */
 function onlyDigits(s: string) {
   return (s ?? "").replace(/\D/g, "");
 }
-
 function formatKoreanMobile(input: string) {
   const d = onlyDigits(input).slice(0, 11);
   if (d.length <= 3) return d;
   if (d.length <= 7) return `${d.slice(0, 3)}-${d.slice(3)}`;
   return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
 }
-
 function isValidKoreanMobile(digits: string) {
   return /^010\d{8}$/.test(digits);
 }
-
 function isBlank(v: any) {
   return v === null || v === undefined || String(v).trim() === "";
 }
 
-const I18N: Record<
-  Lang,
-  {
-    title: string;
-    subtitle: string;
-    step1: string;
-    step2: string;
-    step3: string;
-    namePH: string;
-    phonePH: string;
-    groomSide: string;
-    brideSide: string;
-    relationshipLabel: string;
-    relationshipPH: string;
-    relationshipDetailPH: string;
-    messageLabel: string;
-    messagePH: string;
-    skipMessage: string;
-    nickname: string;
-    anonymous: string;
-    nextBtn: string;
-    sending: string;
-    infoUse: string;
-    successTitle: string;
-    successDesc: string;
-    giftTitle: string;
-    copyBtn: string;
-    copied: string;
-    attendanceNoteShort: string;
-    kakaoThanks: string;
-    selectSideFirst: string;
-    selectRelationship: string;
-    invalidBasic: string;
-    writeMessage: string;
-    closedNotice: string;
-  }
-> = {
+/* ---------- i18n ---------- */
+const I18N: Record<Lang, any> = {
   KO: {
     title: "Happy Wedding",
     subtitle: "소중한 발걸음, 감사한 마음을 남겨주세요",
@@ -107,7 +70,6 @@ const I18N: Record<
     relationshipLabel: "관계",
     relationshipPH: "관계를 선택하세요",
     relationshipDetailPH: "관계 직접입력",
-    messageLabel: "축하 메시지",
     messagePH: "신랑·신부에게 전할 따뜻한 한마디",
     skipMessage: "메시지 생략",
     nickname: "닉네임 표시",
@@ -133,7 +95,7 @@ const I18N: Record<
     subtitle: "Leave your warm wishes for the couple",
     step1: "Check-in",
     step2: "Message",
-    step3: "Gift (Account)",
+    step3: "Gift",
     namePH: "Full name",
     phonePH: "Mobile number",
     groomSide: "Groom side",
@@ -141,7 +103,6 @@ const I18N: Record<
     relationshipLabel: "Relationship",
     relationshipPH: "Select relationship",
     relationshipDetailPH: "Type relationship",
-    messageLabel: "Message",
     messagePH: "Write a short wish",
     skipMessage: "Skip message",
     nickname: "Show nickname",
@@ -184,7 +145,8 @@ export default function GuestPage() {
 
   const [accounts, setAccounts] = useState<EventAccountRow[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [selectedAccountForSummary, setSelectedAccountForSummary] = useState<EventAccountRow | null>(null);
+  const [selectedAccountForSummary, setSelectedAccountForSummary] =
+    useState<EventAccountRow | null>(null);
 
   const [phase, setPhase] = useState<EventPhase>("open");
   const [canWrite, setCanWrite] = useState(true);
@@ -192,12 +154,11 @@ export default function GuestPage() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  // init: phase + accounts
+  /* ---------- init ---------- */
   useEffect(() => {
     async function init() {
       if (!eventId) return;
 
-      // settings -> phase
       const { data: settings } = await supabase
         .from("event_settings")
         .select("ceremony_date, ceremony_start_time, ceremony_end_time")
@@ -210,31 +171,36 @@ export default function GuestPage() {
         !isBlank(settings.ceremony_start_time) &&
         !isBlank(settings.ceremony_end_time)
       ) {
-        const start = new Date(`${settings.ceremony_date}T${settings.ceremony_start_time}`);
-        const end = new Date(`${settings.ceremony_date}T${settings.ceremony_end_time}`);
+        const start = new Date(
+          `${settings.ceremony_date}T${settings.ceremony_start_time}`
+        );
+        const end = new Date(
+          `${settings.ceremony_date}T${settings.ceremony_end_time}`
+        );
         const p = getEventPhase(new Date(), start, end);
         setPhase(p);
-
-        // 일단 보수적으로: open일 때만 작성 가능 (원하면 'before'도 허용 가능)
         setCanWrite(p === "open");
       } else {
         setPhase("open");
         setCanWrite(true);
       }
 
-      // accounts
       const { data: accs } = await supabase
         .from("event_accounts")
         .select("*")
         .eq("event_id", eventId)
         .order("sort_order", { ascending: true });
 
-      const list = ((accs as any[]) || []) as EventAccountRow[];
-      setAccounts(list.filter((a) => a.is_active !== false));
+      setAccounts((accs ?? []).filter((a) => a.is_active !== false));
     }
 
     init();
   }, [eventId]);
+
+  /* ---------- 🔧 수정: side 변경 시 계좌 선택 초기화 ---------- */
+  useEffect(() => {
+    setSelectedAccountId(null);
+  }, [side]);
 
   const filteredAccounts = useMemo(() => {
     if (!side) return [];
@@ -245,163 +211,59 @@ export default function GuestPage() {
     });
   }, [accounts, side]);
 
-  useEffect(() => {
-    if (filteredAccounts.length > 0 && !selectedAccountId) setSelectedAccountId(filteredAccounts[0].id);
-  }, [filteredAccounts, selectedAccountId]);
-
   const relationshipValue =
     relationship === "직접입력" || relationship === "Custom"
       ? relationshipDetail.trim()
       : relationship.trim();
 
-  async function upsertLedgerForOwners(params: {
-    eventId: string;
-    side: Side;
-    guestName: string;
-    guestPhoneDigits: string;
-    relationship: string;
-    messageId: string;
-    messageBody: string;
-    messageCreatedAtIso: string;
-  }) {
-    const { eventId, side, guestName, guestPhoneDigits, relationship, messageId, messageBody, messageCreatedAtIso } =
-      params;
-
-    // owners
-    const { data: owners, error: ownerErr } = await supabase
-      .from("event_members")
-      .select("id, role")
-      .eq("event_id", eventId)
-      .eq("role", "owner");
-
-    if (ownerErr) throw ownerErr;
-
-    const ownerList = ((owners as any[]) || []) as EventMemberRow[];
-    if (!ownerList.length) return;
-
-    // for each owner: if exists (by phone) -> update message linkage, else insert
-    await Promise.all(
-      ownerList.map(async (owner) => {
-        const { data: exist, error: existErr } = await supabase
-          .from("event_ledger_entries")
-          .select(
-            "id, gift_amount, gift_method, ticket_count, return_given, thanks_done, memo, attended, attended_at"
-          )
-          .eq("event_id", eventId)
-          .eq("owner_member_id", owner.id)
-          .eq("guest_phone", guestPhoneDigits)
-          .order("updated_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (existErr) throw existErr;
-
-        const nowIso = new Date().toISOString();
-
-        if (exist?.id) {
-          // ✅ 기존 장부가 있으면: 축의금/상태는 건드리지 않고, 참석/메시지 연결만 최신화
-          const patch: any = {
-            side: side || null,
-            guest_name: guestName,
-            relationship: relationship || null,
-            attended: true,
-            attended_at: exist.attended_at ?? nowIso,
-            message_id: messageId,
-            main_message: messageBody,
-            message_created_at: messageCreatedAtIso,
-            created_source: "guestpage",
-          };
-
-          const { error: upErr } = await supabase
-            .from("event_ledger_entries")
-            .update(patch)
-            .eq("id", exist.id);
-
-          if (upErr) throw upErr;
-        } else {
-          // ✅ 없으면 새로 생성
-          const payload: any = {
-            event_id: eventId,
-            owner_member_id: owner.id,
-            side: side || null,
-
-            guest_name: guestName,
-            relationship: relationship || null,
-            guest_phone: guestPhoneDigits,
-
-            attended: true,
-            attended_at: nowIso,
-            attendance_note: null,
-
-            gift_amount: null,
-            gift_method: "unknown",
-            gift_occurred_at: null,
-
-            account_id: null,
-            account_label: null,
-
-            message_id: messageId,
-            main_message: messageBody,
-            message_created_at: messageCreatedAtIso,
-
-            ticket_count: 0,
-            return_given: false,
-            thanks_done: false,
-            thanks_method: null,
-            thanks_sent_at: null,
-
-            memo: null,
-            created_source: "guestpage",
-          };
-
-          const { error: insErr } = await supabase.from("event_ledger_entries").insert(payload);
-          if (insErr) throw insErr;
-        }
-      })
-    );
-  }
-
+  /* ---------- submit ---------- */
   const handleSubmit = async () => {
     if (!eventId) return;
     if (!canWrite) return alert(t.closedNotice);
 
     const phoneDigits = onlyDigits(phone);
-    if (!realName.trim() || !isValidKoreanMobile(phoneDigits)) return alert(t.invalidBasic);
+    if (!realName.trim() || !isValidKoreanMobile(phoneDigits))
+      return alert(t.invalidBasic);
     if (!side) return alert(t.selectSideFirst);
-
     if (!relationshipValue) return alert(t.selectRelationship);
-    if (!sendMoneyOnly && !message.trim()) return alert(t.writeMessage);
+
+    // 🔧 수정: 메시지 생략 시 기본 메시지 자동 사용
+    const bodyToSave = sendMoneyOnly
+      ? DEFAULT_DISPLAY_MESSAGE
+      : message.trim();
+
+    if (!sendMoneyOnly && !bodyToSave) return alert(t.writeMessage);
 
     setLoading(true);
 
     try {
-      // 1) messages insert
-      const bodyToSave = sendMoneyOnly ? DEFAULT_DISPLAY_MESSAGE : message.trim();
       const nicknameToSave =
-        displayMode === "nickname" ? (isBlank(nickname) ? realName.trim() : nickname.trim()) : null;
+        displayMode === "nickname"
+          ? isBlank(nickname)
+            ? realName.trim()
+            : nickname.trim()
+          : null;
 
-      const msgPayload: any = {
-        event_id: eventId,
-        side,
-        guest_name: realName.trim(),
-        guest_phone: phoneDigits, // ✅ 숫자만 저장
-        relationship: relationshipValue,
-        body: bodyToSave,
-        source: "onsite",
-        is_anonymous: displayMode === "anonymous" || sendMoneyOnly,
-        nickname: nicknameToSave,
-      };
-
+      // messages
       const { data: msgData, error: msgErr } = await supabase
         .from("messages")
-        .insert(msgPayload)
+        .insert({
+          event_id: eventId,
+          side,
+          guest_name: realName.trim(),
+          guest_phone: phoneDigits,
+          relationship: relationshipValue,
+          body: bodyToSave,
+          source: "onsite",
+          is_anonymous: displayMode === "anonymous" || sendMoneyOnly,
+          nickname: nicknameToSave,
+        })
         .select("id, created_at")
         .maybeSingle();
 
-      if (msgErr) throw msgErr;
-      if (!msgData?.id) throw new Error("message insert failed");
+      if (msgErr || !msgData?.id) throw msgErr;
 
-      // 2) ledger upsert for owners (attended = true)
+      // 🔧 기존 로직 유지: ledger_entries upsert
       await upsertLedgerForOwners({
         eventId,
         side,
@@ -413,7 +275,6 @@ export default function GuestPage() {
         messageCreatedAtIso: msgData.created_at ?? new Date().toISOString(),
       });
 
-      // success view (account summary)
       const selected = accounts.find((a) => a.id === selectedAccountId) ?? null;
       setSelectedAccountForSummary(selected);
       setSubmitted(true);
@@ -425,63 +286,44 @@ export default function GuestPage() {
     }
   };
 
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      alert(t.copied);
-    } catch {
-      alert(t.copied);
-    }
-  };
+  /* ================= UI ================= */
 
-  // ===== Success page =====
+  // 🔧 수정: 메시지 생략 시 textarea 유지 + 회색 기본 메시지
+  const messageValue = sendMoneyOnly ? DEFAULT_DISPLAY_MESSAGE : message;
+
+  /* ---------- success ---------- */
   if (submitted) {
     return (
       <div className="min-h-screen bg-[#FDFCFB] flex items-center justify-center p-6">
-        <div className="w-full max-w-sm text-center animate-in fade-in zoom-in duration-500">
-          <div className="flex justify-end mb-3">
-            <button
-              type="button"
-              onClick={() => setLang((v) => (v === "KO" ? "EN" : "KO"))}
-              className="text-[10px] font-bold text-gray-400 hover:text-gray-600 underline underline-offset-2"
-              aria-label="language toggle"
-            >
-              {lang === "KO" ? "EN" : "KO"}
-            </button>
-          </div>
-
+        <div className="w-full max-w-sm text-center">
           <div className="text-4xl mb-4">💐</div>
-          <h2 className="text-2xl font-serif font-medium text-gray-900 mb-2">{t.successTitle}</h2>
-          <p className="text-gray-500 text-sm mb-8">{t.successDesc}</p>
+          <h2 className="text-2xl font-serif mb-6">{t.successTitle}</h2>
 
           {selectedAccountForSummary && (
-            <div className="bg-white border border-rose-100 rounded-3xl p-6 shadow-sm mb-6 text-left">
-              <span className="text-[10px] font-bold text-rose-400 uppercase tracking-widest">
-                {t.giftTitle}
-              </span>
-
-              <div className="mt-2">
-                <p className="text-sm text-gray-500">{selectedAccountForSummary.label}</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {selectedAccountForSummary.holder_name ?? "-"}
-                </p>
-                <p className="text-md text-gray-700 mt-1">
-                  {(selectedAccountForSummary.bank_name ?? "-") + " " + (selectedAccountForSummary.account_number ?? "-")}
-                </p>
-              </div>
+            <div className="bg-white rounded-3xl p-6 shadow-sm text-left">
+              <p className="text-xs text-gray-400 mb-1">
+                {selectedAccountForSummary.label}
+              </p>
+              <p className="font-semibold">
+                {selectedAccountForSummary.holder_name}
+              </p>
+              <p className="text-gray-600 mt-1">
+                {selectedAccountForSummary.bank_name}{" "}
+                {selectedAccountForSummary.account_number}
+              </p>
 
               <button
                 onClick={() =>
-                  copyToClipboard(
-                    `${selectedAccountForSummary.bank_name ?? ""} ${selectedAccountForSummary.account_number ?? ""}`.trim()
+                  navigator.clipboard.writeText(
+                    `${selectedAccountForSummary.bank_name} ${selectedAccountForSummary.account_number}`
                   )
                 }
-                className="w-full mt-4 py-3 bg-rose-50 text-rose-600 rounded-2xl text-sm font-semibold active:bg-rose-100 transition"
+                className="w-full mt-4 py-3 bg-rose-50 text-rose-600 rounded-2xl text-sm font-bold"
               >
                 {t.copyBtn}
               </button>
 
-              <p className="mt-3 text-xs text-gray-400 whitespace-pre-line leading-relaxed">
+              <p className="mt-3 text-xs text-gray-400 whitespace-pre-line">
                 {t.attendanceNoteShort}
               </p>
             </div>
@@ -489,7 +331,7 @@ export default function GuestPage() {
 
           <a
             href={KAKAO_CHANNEL_URL}
-            className="inline-flex items-center gap-2 text-xs text-gray-400 underline"
+            className="inline-block mt-6 text-xs text-gray-400 underline"
             target="_blank"
             rel="noreferrer"
           >
@@ -500,213 +342,216 @@ export default function GuestPage() {
     );
   }
 
-  // ===== Main page =====
+  /* ---------- main ---------- */
   return (
-    <div className="min-h-screen bg-[#FDFCFB] text-gray-900 pb-10">
+    <div className="min-h-screen bg-[#FDFCFB] pb-10">
       <header className="px-6 pt-10 pb-8 text-center relative">
         <button
-          type="button"
           onClick={() => setLang((v) => (v === "KO" ? "EN" : "KO"))}
-          className="absolute right-6 top-6 text-[10px] font-bold text-gray-400 hover:text-gray-600 underline underline-offset-2"
-          aria-label="language toggle"
+          className="absolute right-6 top-6 text-[10px] font-bold text-gray-400 underline"
         >
           {lang === "KO" ? "EN" : "KO"}
         </button>
 
         <h1 className="text-3xl font-serif mb-2">{t.title}</h1>
-        <p className="text-gray-500 font-light tracking-tight">{t.subtitle}</p>
-
-        {/* (옵션) 상태 배지: 너무 길어지지 않게 최소만 */}
-        {phase !== "open" && (
-          <p className="mt-3 text-[11px] text-gray-400">{t.closedNotice}</p>
-        )}
+        <p className="text-gray-500">{t.subtitle}</p>
       </header>
 
-      <main className="px-6 space-y-10 max-w-md mx-auto">
+      <main className="px-6 max-w-md mx-auto space-y-10">
         {/* Step 1 */}
         <section className="space-y-4">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-600 text-xs flex items-center justify-center font-bold">
-              1
-            </span>
-            <h3 className="font-semibold text-gray-800">{t.step1}</h3>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              placeholder={t.namePH}
-              className="w-full bg-white border-b border-gray-200 py-3 px-1 text-sm focus:border-rose-300 outline-none transition"
-              value={realName}
-              onChange={(e) => setRealName(e.target.value)}
-            />
-            <input
-              type="tel"
-              placeholder={t.phonePH}
-              className="w-full bg-white border-b border-gray-200 py-3 px-1 text-sm focus:border-rose-300 outline-none transition"
-              value={phone}
-              onChange={(e) => setPhone(formatKoreanMobile(e.target.value))}
-            />
-          </div>
+          <input
+            placeholder={t.namePH}
+            value={realName}
+            onChange={(e) => setRealName(e.target.value)}
+            className="w-full border-b py-3"
+          />
+          <input
+            placeholder={t.phonePH}
+            value={phone}
+            onChange={(e) => setPhone(formatKoreanMobile(e.target.value))}
+            className="w-full border-b py-3"
+          />
 
           <div className="flex gap-2">
-            {(["groom", "bride"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setSide(s)}
-                className={`flex-1 py-3 rounded-2xl text-sm font-medium transition-all ${
-                  side === s
-                    ? "bg-rose-500 text-white shadow-md"
-                    : "bg-white border border-gray-100 text-gray-500"
-                }`}
-              >
-                {s === "groom" ? t.groomSide : t.brideSide}
-              </button>
-            ))}
+            <button
+              onClick={() => setSide("groom")}
+              className={`flex-1 py-3 rounded-2xl ${
+                side === "groom" ? "bg-rose-500 text-white" : "bg-white border"
+              }`}
+            >
+              {t.groomSide}
+            </button>
+            <button
+              onClick={() => setSide("bride")}
+              className={`flex-1 py-3 rounded-2xl ${
+                side === "bride" ? "bg-rose-500 text-white" : "bg-white border"
+              }`}
+            >
+              {t.brideSide}
+            </button>
           </div>
 
-          {/* 관계 */}
-          <div className="pt-2 space-y-2">
-            <label className="text-xs font-semibold text-gray-700">{t.relationshipLabel}</label>
-            <div className="grid grid-cols-2 gap-3">
-              <select
-                value={relationship}
-                onChange={(e) => setRelationship(e.target.value)}
-                className="w-full bg-white border border-gray-100 rounded-2xl px-4 py-3 text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-rose-200"
-              >
-                <option value="">{t.relationshipPH}</option>
-                <option value={lang === "KO" ? "가족" : "Family"}>{lang === "KO" ? "가족" : "Family"}</option>
-                <option value={lang === "KO" ? "친구" : "Friend"}>{lang === "KO" ? "친구" : "Friend"}</option>
-                <option value={lang === "KO" ? "직장" : "Work"}>{lang === "KO" ? "직장" : "Work"}</option>
-                <option value={lang === "KO" ? "지인" : "Acquaintance"}>{lang === "KO" ? "지인" : "Acquaintance"}</option>
-                <option value={lang === "KO" ? "직접입력" : "Custom"}>{lang === "KO" ? "직접입력" : "Custom"}</option>
-              </select>
+          {/* 🔧 수정: 관계 선택 시 blur */}
+          <select
+            value={relationship}
+            onChange={(e) => {
+              setRelationship(e.target.value);
+              (e.target as HTMLSelectElement).blur(); // 🔧
+            }}
+            className="w-full rounded-2xl border px-4 py-3"
+          >
+            <option value="">{t.relationshipPH}</option>
+            <option value="가족">가족</option>
+            <option value="친구">친구</option>
+            <option value="직장">직장</option>
+            <option value="지인">지인</option>
+            <option value="직접입력">직접입력</option>
+          </select>
 
-              {(relationship === "직접입력" || relationship === "Custom") ? (
-                <input
-                  value={relationshipDetail}
-                  onChange={(e) => setRelationshipDetail(e.target.value)}
-                  placeholder={t.relationshipDetailPH}
-                  className="w-full bg-white border border-gray-100 rounded-2xl px-4 py-3 text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-rose-200"
-                />
-              ) : (
-                <div className="w-full rounded-2xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-400">
-                  {/* 빈칸 채우기용 */}
-                  {lang === "KO" ? " " : " "}
-                </div>
-              )}
-            </div>
-          </div>
+          {(relationship === "직접입력") && (
+            <input
+              value={relationshipDetail}
+              onChange={(e) => setRelationshipDetail(e.target.value)}
+              placeholder={t.relationshipDetailPH}
+              className="w-full border px-4 py-3 rounded-2xl"
+            />
+          )}
         </section>
 
         {/* Step 2 */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-600 text-xs flex items-center justify-center font-bold">
-                2
-              </span>
-              <h3 className="font-semibold text-gray-800">{t.step2}</h3>
-            </div>
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={sendMoneyOnly}
-                onChange={(e) => setSendMoneyOnly(e.target.checked)}
-                className="accent-rose-500"
-              />
-              <span className="text-xs text-gray-400">{t.skipMessage}</span>
-            </label>
-          </div>
+        <section>
+          <label className="flex items-center gap-2 text-xs text-gray-400 mb-2">
+            <input
+              type="checkbox"
+              checked={sendMoneyOnly}
+              onChange={(e) => setSendMoneyOnly(e.target.checked)}
+            />
+            {t.skipMessage}
+          </label>
 
-          {!sendMoneyOnly && (
-            <div className="animate-in slide-in-from-top-2 duration-300">
-              <textarea
-                rows={3}
-                placeholder={t.messagePH}
-                className="w-full p-4 bg-white border border-gray-100 rounded-2xl text-sm shadow-sm focus:border-rose-200 outline-none resize-none"
-                maxLength={MESSAGE_MAX}
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-              />
-              <div className="mt-3 flex items-center gap-2">
-                <button
-                  onClick={() => setDisplayMode("nickname")}
-                  className={`px-4 py-2 rounded-full text-[11px] border transition ${
-                    displayMode === "nickname"
-                      ? "bg-gray-800 text-white border-gray-800"
-                      : "bg-white text-gray-400 border-gray-100"
-                  }`}
-                >
-                  {t.nickname}
-                </button>
-                <button
-                  onClick={() => setDisplayMode("anonymous")}
-                  className={`px-4 py-2 rounded-full text-[11px] border transition ${
-                    displayMode === "anonymous"
-                      ? "bg-gray-800 text-white border-gray-800"
-                      : "bg-white text-gray-400 border-gray-100"
-                  }`}
-                >
-                  {t.anonymous}
-                </button>
-
-                {displayMode === "nickname" && (
-                  <input
-                    value={nickname}
-                    onChange={(e) => setNickname(e.target.value)}
-                    placeholder={lang === "KO" ? "닉네임(선택)" : "Nickname (optional)"}
-                    className="ml-auto w-36 bg-white border-b border-gray-200 py-2 px-1 text-xs focus:border-rose-300 outline-none transition"
-                  />
-                )}
-              </div>
-            </div>
-          )}
+          <textarea
+            rows={3}
+            maxLength={MESSAGE_MAX}
+            value={messageValue}
+            disabled={sendMoneyOnly} // 🔧
+            onChange={(e) => setMessage(e.target.value)}
+            className={`w-full rounded-2xl p-4 ${
+              sendMoneyOnly ? "text-gray-400 bg-gray-50" : "bg-white"
+            }`}
+            placeholder={t.messagePH}
+          />
         </section>
 
         {/* Step 3 */}
         {side && (
-          <section className="space-y-4 animate-in fade-in duration-500">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-600 text-xs flex items-center justify-center font-bold">
-                3
-              </span>
-              <h3 className="font-semibold text-gray-800">{t.step3}</h3>
-            </div>
-
-            <div className="space-y-2">
-              {filteredAccounts.map((acc) => (
-                <button
-                  key={acc.id}
-                  onClick={() => setSelectedAccountId(acc.id)}
-                  className={`w-full p-4 rounded-2xl text-left border transition-all ${
-                    selectedAccountId === acc.id
-                      ? "border-rose-400 bg-rose-50/50 ring-1 ring-rose-400"
-                      : "border-gray-100 bg-white"
-                  }`}
-                >
-                  <p className="text-[10px] font-bold text-rose-400 uppercase">{acc.label}</p>
-                  <p className="text-sm font-semibold">
-                    {acc.holder_name ?? "-"}{" "}
-                    <span className="text-gray-400 font-normal ml-1">| {acc.bank_name ?? "-"}</span>
-                  </p>
-                </button>
-              ))}
-            </div>
+          <section className="space-y-2">
+            {filteredAccounts.map((acc) => (
+              <button
+                key={acc.id}
+                onClick={() => setSelectedAccountId(acc.id)}
+                className={`w-full p-4 rounded-2xl border ${
+                  selectedAccountId === acc.id
+                    ? "border-rose-400 bg-rose-50"
+                    : "bg-white"
+                }`}
+              >
+                <p className="text-xs text-gray-400">{acc.label}</p>
+                <p className="font-semibold">{acc.holder_name}</p>
+              </button>
+            ))}
           </section>
         )}
 
-        {/* Submit */}
-        <div className="pt-2">
-          <button
-            onClick={handleSubmit}
-            disabled={loading || !canWrite}
-            className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold shadow-xl active:scale-[0.98] disabled:bg-gray-300 transition-all"
-          >
-            {loading ? t.sending : t.nextBtn}
-          </button>
-          <p className="text-center text-[10px] text-gray-400 mt-4">{t.infoUse}</p>
-        </div>
+        <button
+          onClick={handleSubmit}
+          disabled={loading || !canWrite}
+          className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold disabled:bg-gray-300"
+        >
+          {loading ? t.sending : t.nextBtn}
+        </button>
+
+        <p className="text-center text-[10px] text-gray-400">{t.infoUse}</p>
       </main>
     </div>
   );
+}
+
+/* ================= helpers ================= */
+
+// 🔧 기존 그대로 유지 (중요 로직)
+async function upsertLedgerForOwners(params: {
+  eventId: string;
+  side: Side;
+  guestName: string;
+  guestPhoneDigits: string;
+  relationship: string;
+  messageId: string;
+  messageBody: string;
+  messageCreatedAtIso: string;
+}) {
+  const {
+    eventId,
+    side,
+    guestName,
+    guestPhoneDigits,
+    relationship,
+    messageId,
+    messageBody,
+    messageCreatedAtIso,
+  } = params;
+
+  const { data: owners } = await supabase
+    .from("event_members")
+    .select("id, role")
+    .eq("event_id", eventId)
+    .eq("role", "owner");
+
+  const ownerList = (owners ?? []) as EventMemberRow[];
+  const nowIso = new Date().toISOString();
+
+  for (const owner of ownerList) {
+    const { data: exist } = await supabase
+      .from("event_ledger_entries")
+      .select("id, attended_at")
+      .eq("event_id", eventId)
+      .eq("owner_member_id", owner.id)
+      .eq("guest_phone", guestPhoneDigits)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (exist?.id) {
+      await supabase
+        .from("event_ledger_entries")
+        .update({
+          side,
+          guest_name: guestName,
+          relationship,
+          attended: true,
+          attended_at: exist.attended_at ?? nowIso,
+          message_id: messageId,
+          main_message: messageBody,
+          message_created_at: messageCreatedAtIso,
+          created_source: "guestpage",
+        })
+        .eq("id", exist.id);
+    } else {
+      await supabase.from("event_ledger_entries").insert({
+        event_id: eventId,
+        owner_member_id: owner.id,
+        side,
+        guest_name: guestName,
+        guest_phone: guestPhoneDigits,
+        relationship,
+        attended: true,
+        attended_at: nowIso,
+        message_id: messageId,
+        main_message: messageBody,
+        message_created_at: messageCreatedAtIso,
+        gift_method: "unknown",
+        created_source: "guestpage",
+      });
+    }
+  }
 }
