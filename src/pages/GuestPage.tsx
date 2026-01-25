@@ -4,35 +4,42 @@ import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getEventPhase, type EventPhase } from "../lib/time";
 
+type Lang = "KO" | "EN";
 type DisplayMode = "nickname" | "anonymous";
+type Side = "" | "groom" | "bride";
 
 interface RouteParams {
   eventId: string;
 }
 
-// 디스플레이 영역(스크롤 없음)을 고려한 최대 글자 수
-const MESSAGE_MAX = 80;
+type EventSettingsRow = {
+  ceremony_date: string | null;
+  ceremony_start_time: string | null;
+  ceremony_end_time: string | null;
+};
 
-type Schedule = {
-  start: string; // ISO 문자열
-  end: string;
+type EventMemberRow = {
+  id: string;
+  role: "owner" | "member" | string;
 };
 
 type EventAccountRow = {
   id: string;
-  label: string;
-  holder_name: string;
-  bank_name: string;
-  account_number: string;
-  sort_order: number | null;
-  is_active: boolean | null;
+  event_id: string;
+  label: string; // e.g. "신랑-본인", "신부-어머니" 등
+  holder_name: string | null;
+  bank_name: string | null;
+  account_number: string | null;
+  sort_order?: number | null;
+  is_active?: boolean | null;
 };
 
-const KAKAO_CHANNEL_URL = "https://pf.kakao.com/_UyaHn";
+const MESSAGE_MAX = 80;
 const DEFAULT_DISPLAY_MESSAGE = "축하드립니다 💐";
+const KAKAO_CHANNEL_URL = "https://pf.kakao.com/_UyaHn";
 
 function onlyDigits(s: string) {
-  return s.replace(/\D/g, "");
+  return (s ?? "").replace(/\D/g, "");
 }
 
 function formatKoreanMobile(input: string) {
@@ -46,808 +53,660 @@ function isValidKoreanMobile(digits: string) {
   return /^010\d{8}$/.test(digits);
 }
 
-function friendlySupabaseError(err: any) {
-  const code = err?.code ?? "";
-  const msg = err?.message ?? "Unknown error";
-  const details = err?.details ?? "";
-  const hint = err?.hint ?? "";
-
-  // 자주 보는 케이스들
-  if (code === "42501" || /permission/i.test(msg) || /not allowed/i.test(msg)) {
-    return "권한 문제로 저장이 차단되었습니다. (RLS/Policy 설정 확인 필요)";
-  }
-  if (code === "23505") {
-    return "중복 데이터로 저장에 실패했습니다.";
-  }
-  if (code === "23502") {
-    return "필수 입력값이 누락되어 저장에 실패했습니다.";
-  }
-
-  return `${msg}${details ? `\n(${details})` : ""}${hint ? `\n힌트: ${hint}` : ""}`;
+function isBlank(v: any) {
+  return v === null || v === undefined || String(v).trim() === "";
 }
+
+const I18N: Record<
+  Lang,
+  {
+    title: string;
+    subtitle: string;
+    step1: string;
+    step2: string;
+    step3: string;
+    namePH: string;
+    phonePH: string;
+    groomSide: string;
+    brideSide: string;
+    relationshipLabel: string;
+    relationshipPH: string;
+    relationshipDetailPH: string;
+    messageLabel: string;
+    messagePH: string;
+    skipMessage: string;
+    nickname: string;
+    anonymous: string;
+    nextBtn: string;
+    sending: string;
+    infoUse: string;
+    successTitle: string;
+    successDesc: string;
+    giftTitle: string;
+    copyBtn: string;
+    copied: string;
+    attendanceNoteShort: string;
+    kakaoThanks: string;
+    selectSideFirst: string;
+    selectRelationship: string;
+    invalidBasic: string;
+    writeMessage: string;
+    closedNotice: string;
+  }
+> = {
+  KO: {
+    title: "Happy Wedding",
+    subtitle: "소중한 발걸음, 감사한 마음을 남겨주세요",
+    step1: "방문 확인",
+    step2: "축하 메시지",
+    step3: "마음 전하실 곳",
+    namePH: "성함 (실명)",
+    phonePH: "연락처",
+    groomSide: "신랑측 하객",
+    brideSide: "신부측 하객",
+    relationshipLabel: "관계",
+    relationshipPH: "관계를 선택하세요",
+    relationshipDetailPH: "관계 직접입력",
+    messageLabel: "축하 메시지",
+    messagePH: "신랑·신부에게 전할 따뜻한 한마디",
+    skipMessage: "메시지 생략",
+    nickname: "닉네임 표시",
+    anonymous: "익명으로 표시",
+    nextBtn: "전달하고 계좌 보기",
+    sending: "전송 중...",
+    infoUse: "입력하신 정보는 예식 확인 및 감사인사 목적으로만 사용됩니다.",
+    successTitle: "마음이 전달되었습니다",
+    successDesc: "두 분의 앞날을 함께 축복해주셔서 감사합니다.",
+    giftTitle: "축의금 송금하기",
+    copyBtn: "계좌번호 복사하기",
+    copied: "계좌번호가 복사되었습니다.",
+    attendanceNoteShort: "복사해서 송금하셔도\n현장 참석으로 기록됩니다.",
+    kakaoThanks: "카카오톡 알림톡으로 감사인사 받기",
+    selectSideFirst: "어느 쪽 하객이신지 선택해주세요.",
+    selectRelationship: "관계를 선택해주세요.",
+    invalidBasic: "성함과 연락처를 확인해주세요.",
+    writeMessage: "축하 메시지를 적어주세요.",
+    closedNotice: "현재는 작성 가능 시간이 아닙니다.",
+  },
+  EN: {
+    title: "Happy Wedding",
+    subtitle: "Leave your warm wishes for the couple",
+    step1: "Check-in",
+    step2: "Message",
+    step3: "Gift (Account)",
+    namePH: "Full name",
+    phonePH: "Mobile number",
+    groomSide: "Groom side",
+    brideSide: "Bride side",
+    relationshipLabel: "Relationship",
+    relationshipPH: "Select relationship",
+    relationshipDetailPH: "Type relationship",
+    messageLabel: "Message",
+    messagePH: "Write a short wish",
+    skipMessage: "Skip message",
+    nickname: "Show nickname",
+    anonymous: "Post anonymously",
+    nextBtn: "Submit & view account",
+    sending: "Sending...",
+    infoUse: "Your info is used only for check-in and thank-you messages.",
+    successTitle: "Delivered",
+    successDesc: "Thank you for celebrating with them.",
+    giftTitle: "Send a gift",
+    copyBtn: "Copy account",
+    copied: "Copied.",
+    attendanceNoteShort: "Even if you paste & send,\nyou’ll be recorded as attending.",
+    kakaoThanks: "Get thank-you via Kakao",
+    selectSideFirst: "Please select a side.",
+    selectRelationship: "Please select a relationship.",
+    invalidBasic: "Please check your name and phone.",
+    writeMessage: "Please write a message.",
+    closedNotice: "Not available right now.",
+  },
+};
 
 export default function GuestPage() {
   const { eventId } = useParams<RouteParams>();
 
-  // ✅ 운영자만 디버그(하객 노출 X) : URL에 ?debug=1
-  const debug =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("debug") === "1";
+  const [lang, setLang] = useState<Lang>("KO");
+  const t = I18N[lang];
 
-  const [side, setSide] = useState<"" | "groom" | "bride">("");
+  const [side, setSide] = useState<Side>("");
   const [realName, setRealName] = useState("");
   const [phone, setPhone] = useState("");
-
-  const [sendMoneyOnly, setSendMoneyOnly] = useState(false);
-
-  const [message, setMessage] = useState("");
-
-  const [displayMode, setDisplayMode] = useState<DisplayMode | "">("");
-  const [nickname, setNickname] = useState("");
 
   const [relationship, setRelationship] = useState("");
   const [relationshipDetail, setRelationshipDetail] = useState("");
 
+  const [sendMoneyOnly, setSendMoneyOnly] = useState(false);
+  const [message, setMessage] = useState("");
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("nickname");
+  const [nickname, setNickname] = useState("");
+
   const [accounts, setAccounts] = useState<EventAccountRow[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [selectedAccountForSummary, setSelectedAccountForSummary] =
-    useState<EventAccountRow | null>(null);
+  const [selectedAccountForSummary, setSelectedAccountForSummary] = useState<EventAccountRow | null>(null);
+
+  const [phase, setPhase] = useState<EventPhase>("open");
+  const [canWrite, setCanWrite] = useState(true);
 
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const [schedule, setSchedule] = useState<Schedule | null>(null);
-  const [phase, setPhase] = useState<EventPhase>("open");
-
-  // ✅ 디버깅/상태 안내용
-  const [canWrite, setCanWrite] = useState(true);
-  const [writeBlockedReason, setWriteBlockedReason] = useState<string | null>(null);
-
-  // ✅ 계좌 로딩 실패(하객에겐 중립 문구, 운영자만 debug=1로 상세 확인)
-  const [accountsLoadFailed, setAccountsLoadFailed] = useState(false);
-  const [debugBanner, setDebugBanner] = useState<string | null>(null);
-
-  if (!eventId) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="text-center text-sm text-gray-600">
-          잘못된 접근입니다. (eventId 없음)
-        </div>
-      </div>
-    );
-  }
-
-  // 0) event_settings에서 예식 시간 가져오기
+  // init: phase + accounts
   useEffect(() => {
-    let cancelled = false;
+    async function init() {
+      if (!eventId) return;
 
-    const fetchSchedule = async () => {
-      const { data, error } = await supabase
+      // settings -> phase
+      const { data: settings } = await supabase
         .from("event_settings")
         .select("ceremony_date, ceremony_start_time, ceremony_end_time")
         .eq("event_id", eventId)
-        .maybeSingle();
+        .maybeSingle<EventSettingsRow>();
 
-      if (error) {
-        console.error("[Guest] fetchSchedule error", error);
-        if (debug) setDebugBanner(`[fetchSchedule] ${error.message}`);
-        return;
+      if (
+        settings &&
+        !isBlank(settings.ceremony_date) &&
+        !isBlank(settings.ceremony_start_time) &&
+        !isBlank(settings.ceremony_end_time)
+      ) {
+        const start = new Date(`${settings.ceremony_date}T${settings.ceremony_start_time}`);
+        const end = new Date(`${settings.ceremony_date}T${settings.ceremony_end_time}`);
+        const p = getEventPhase(new Date(), start, end);
+        setPhase(p);
+
+        // 일단 보수적으로: open일 때만 작성 가능 (원하면 'before'도 허용 가능)
+        setCanWrite(p === "open");
+      } else {
+        setPhase("open");
+        setCanWrite(true);
       }
-      if (!data || cancelled) return;
 
-      if (data.ceremony_start_time && data.ceremony_end_time) {
-        const dateStr = (data.ceremony_date as string) ?? "";
-        const startTime = data.ceremony_start_time as string;
-        const endTime = data.ceremony_end_time as string;
-
-        const baseDate =
-          dateStr && dateStr.length === 10
-            ? dateStr
-            : new Date().toISOString().slice(0, 10);
-
-        setSchedule({
-          start: `${baseDate}T${startTime}:00`,
-          end: `${baseDate}T${endTime}:00`,
-        });
-      }
-    };
-
-    fetchSchedule();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [eventId, debug]);
-
-  // 0-1) 스케줄에 따라 phase 계산 (1분마다 갱신)
-  useEffect(() => {
-    if (!schedule) return;
-
-    const updatePhase = () => {
-      const now = new Date();
-      const start = new Date(schedule.start);
-      const end = new Date(schedule.end);
-      setPhase(getEventPhase(now, start, end));
-    };
-
-    updatePhase();
-    const timer = setInterval(updatePhase, 60 * 1000);
-
-    return () => clearInterval(timer);
-  }, [schedule]);
-
-  // 0-2) event_accounts 가져오기
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchAccounts = async () => {
-      setAccountsLoadFailed(false);
-
-      const { data, error } = await supabase
+      // accounts
+      const { data: accs } = await supabase
         .from("event_accounts")
-        .select(
-          `
-          id,
-          label,
-          holder_name,
-          bank_name,
-          account_number,
-          sort_order,
-          is_active
-        `
-        )
+        .select("*")
         .eq("event_id", eventId)
         .order("sort_order", { ascending: true });
 
-      if (error) {
-        console.error("[Guest] fetchAccounts error", error);
-        setAccountsLoadFailed(true);
-        if (debug) setDebugBanner(`[fetchAccounts] ${error.message}`);
-        return;
-      }
-      if (!data || cancelled) return;
+      const list = ((accs as any[]) || []) as EventAccountRow[];
+      setAccounts(list.filter((a) => a.is_active !== false));
+    }
 
-      // ✅ is_active=false는 숨김 처리(Null은 active로 취급)
-      const rows = (data as EventAccountRow[]).filter((a) => a.is_active !== false);
-      setAccounts(rows);
-    };
-
-    fetchAccounts();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [eventId, debug]);
-
-  // ✅ (선택) "쓰기 권한" 간단 체크: 1개 insert를 해보진 않고,
-  // 정책 문제 시 사용자에게 안내할 수 있도록 가벼운 probe를 둠.
-  // (여기서는 messages 테이블에 select 가능한지 확인만)
-  useEffect(() => {
-    let cancelled = false;
-
-    const probe = async () => {
-      const { error } = await supabase.from("messages").select("id").eq("event_id", eventId).limit(1);
-
-      if (cancelled) return;
-
-      if (error) {
-        console.error("[Guest] messages probe error", error);
-        // select까지 막혀있으면 거의 정책/권한 문제
-        setCanWrite(false);
-        setWriteBlockedReason(
-          "현재 메시지 저장/조회 권한이 차단되어 있어요. (관리자에게 정책 설정 확인 요청)"
-        );
-        if (debug) setDebugBanner(`[messages probe] ${error.message}`);
-      } else {
-        setCanWrite(true);
-        setWriteBlockedReason(null);
-      }
-    };
-
-    probe();
-    return () => {
-      cancelled = true;
-    };
-  }, [eventId, debug]);
+    init();
+  }, [eventId]);
 
   const filteredAccounts = useMemo(() => {
-    if (!side) return accounts;
-
-    if (side === "groom") return accounts.filter((a) => a.label.includes("신랑"));
-    if (side === "bride") return accounts.filter((a) => a.label.includes("신부"));
-    return accounts;
+    if (!side) return [];
+    return accounts.filter((a) => {
+      const label = (a.label ?? "").toLowerCase();
+      if (side === "groom") return label.includes("신랑") || label.includes("groom");
+      return label.includes("신부") || label.includes("bride");
+    });
   }, [accounts, side]);
 
   useEffect(() => {
-    if (!selectedAccountId) return;
-    if (!filteredAccounts.find((a) => a.id === selectedAccountId)) {
-      setSelectedAccountId(null);
-    }
+    if (filteredAccounts.length > 0 && !selectedAccountId) setSelectedAccountId(filteredAccounts[0].id);
   }, [filteredAccounts, selectedAccountId]);
 
-  // ✅ side/목록이 바뀌었고 선택이 없으면 첫 항목 자동 선택(현장 UX 안정)
-  useEffect(() => {
-    if (!selectedAccountId && filteredAccounts.length > 0) {
-      setSelectedAccountId(filteredAccounts[0].id);
-    }
-  }, [filteredAccounts, selectedAccountId]);
+  const relationshipValue =
+    relationship === "직접입력" || relationship === "Custom"
+      ? relationshipDetail.trim()
+      : relationship.trim();
 
-  useEffect(() => {
-    if (sendMoneyOnly) {
-      setMessage(DEFAULT_DISPLAY_MESSAGE);
-      setDisplayMode("anonymous");
-      setNickname("");
-    }
-  }, [sendMoneyOnly]);
+  async function upsertLedgerForOwners(params: {
+    eventId: string;
+    side: Side;
+    guestName: string;
+    guestPhoneDigits: string;
+    relationship: string;
+    messageId: string;
+    messageBody: string;
+    messageCreatedAtIso: string;
+  }) {
+    const { eventId, side, guestName, guestPhoneDigits, relationship, messageId, messageBody, messageCreatedAtIso } =
+      params;
 
-  async function handleSubmit() {
-    if (!canWrite) {
-      alert(writeBlockedReason ?? "현재 메시지를 저장할 수 없습니다.");
-      return;
-    }
+    // owners
+    const { data: owners, error: ownerErr } = await supabase
+      .from("event_members")
+      .select("id, role")
+      .eq("event_id", eventId)
+      .eq("role", "owner");
 
-    if (!realName.trim()) {
-      alert("성함(실명)을 입력해주세요. (신랑·신부에게만 전달됩니다)");
-      return;
-    }
+    if (ownerErr) throw ownerErr;
+
+    const ownerList = ((owners as any[]) || []) as EventMemberRow[];
+    if (!ownerList.length) return;
+
+    // for each owner: if exists (by phone) -> update message linkage, else insert
+    await Promise.all(
+      ownerList.map(async (owner) => {
+        const { data: exist, error: existErr } = await supabase
+          .from("event_ledger_entries")
+          .select(
+            "id, gift_amount, gift_method, ticket_count, return_given, thanks_done, memo, attended, attended_at"
+          )
+          .eq("event_id", eventId)
+          .eq("owner_member_id", owner.id)
+          .eq("guest_phone", guestPhoneDigits)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existErr) throw existErr;
+
+        const nowIso = new Date().toISOString();
+
+        if (exist?.id) {
+          // ✅ 기존 장부가 있으면: 축의금/상태는 건드리지 않고, 참석/메시지 연결만 최신화
+          const patch: any = {
+            side: side || null,
+            guest_name: guestName,
+            relationship: relationship || null,
+            attended: true,
+            attended_at: exist.attended_at ?? nowIso,
+            message_id: messageId,
+            main_message: messageBody,
+            message_created_at: messageCreatedAtIso,
+            created_source: "guestpage",
+          };
+
+          const { error: upErr } = await supabase
+            .from("event_ledger_entries")
+            .update(patch)
+            .eq("id", exist.id);
+
+          if (upErr) throw upErr;
+        } else {
+          // ✅ 없으면 새로 생성
+          const payload: any = {
+            event_id: eventId,
+            owner_member_id: owner.id,
+            side: side || null,
+
+            guest_name: guestName,
+            relationship: relationship || null,
+            guest_phone: guestPhoneDigits,
+
+            attended: true,
+            attended_at: nowIso,
+            attendance_note: null,
+
+            gift_amount: null,
+            gift_method: "unknown",
+            gift_occurred_at: null,
+
+            account_id: null,
+            account_label: null,
+
+            message_id: messageId,
+            main_message: messageBody,
+            message_created_at: messageCreatedAtIso,
+
+            ticket_count: 0,
+            return_given: false,
+            thanks_done: false,
+            thanks_method: null,
+            thanks_sent_at: null,
+
+            memo: null,
+            created_source: "guestpage",
+          };
+
+          const { error: insErr } = await supabase.from("event_ledger_entries").insert(payload);
+          if (insErr) throw insErr;
+        }
+      })
+    );
+  }
+
+  const handleSubmit = async () => {
+    if (!eventId) return;
+    if (!canWrite) return alert(t.closedNotice);
 
     const phoneDigits = onlyDigits(phone);
-    if (!phoneDigits) {
-      alert("연락처를 입력해주세요.");
-      return;
-    }
-    if (!isValidKoreanMobile(phoneDigits)) {
-      alert("연락처 형식이 올바르지 않습니다. (예: 010-1234-5678)");
-      return;
-    }
+    if (!realName.trim() || !isValidKoreanMobile(phoneDigits)) return alert(t.invalidBasic);
+    if (!side) return alert(t.selectSideFirst);
 
-    if (!sendMoneyOnly) {
-      if (!message.trim()) {
-        alert("축하메시지를 입력해주세요.");
-        return;
-      }
-      if (message.length > MESSAGE_MAX) {
-        alert(`축하메시지는 최대 ${MESSAGE_MAX}자까지 가능합니다.`);
-        return;
-      }
-      if (!displayMode) {
-        alert("디스플레이 표시 방식을 선택해주세요.");
-        return;
-      }
-      if (displayMode === "nickname" && !nickname.trim()) {
-        alert("닉네임을 입력해주세요.");
-        return;
-      }
-    }
-
-    if (!side) {
-      alert("어느 쪽 하객이신지 선택해주세요.");
-      return;
-    }
-
-    let finalRelationship = relationship;
-    if (relationship === "직접입력") {
-      if (!relationshipDetail.trim()) {
-        alert("관계를 직접 입력해주세요.");
-        return;
-      }
-      finalRelationship = relationshipDetail.trim();
-    }
-
-    if (filteredAccounts.length > 0 && !selectedAccountId) {
-      alert("축의금을 송금하실 계좌를 선택해주세요.");
-      return;
-    }
-
-    const selectedAccount = filteredAccounts.find((a) => a.id === selectedAccountId);
+    if (!relationshipValue) return alert(t.selectRelationship);
+    if (!sendMoneyOnly && !message.trim()) return alert(t.writeMessage);
 
     setLoading(true);
 
-    const finalBody = sendMoneyOnly ? DEFAULT_DISPLAY_MESSAGE : message.trim();
-    const finalIsAnonymous = sendMoneyOnly ? true : displayMode === "anonymous";
-    const finalNickname =
-      sendMoneyOnly ? null : displayMode === "nickname" ? nickname.trim() : null;
+    try {
+      // 1) messages insert
+      const bodyToSave = sendMoneyOnly ? DEFAULT_DISPLAY_MESSAGE : message.trim();
+      const nicknameToSave =
+        displayMode === "nickname" ? (isBlank(nickname) ? realName.trim() : nickname.trim()) : null;
 
-    const payload = {
-      event_id: eventId,
-      side,
-      guest_name: realName.trim(),
-      guest_phone: phoneDigits,
-      nickname: finalNickname,
-      is_anonymous: finalIsAnonymous,
-      relationship: finalRelationship || null,
-      body: finalBody,
-      source: "onsite",
-    };
+      const msgPayload: any = {
+        event_id: eventId,
+        side,
+        guest_name: realName.trim(),
+        guest_phone: phoneDigits, // ✅ 숫자만 저장
+        relationship: relationshipValue,
+        body: bodyToSave,
+        source: "onsite",
+        is_anonymous: displayMode === "anonymous" || sendMoneyOnly,
+        nickname: nicknameToSave,
+      };
 
-    const { error } = await supabase.from("messages").insert(payload);
+      const { data: msgData, error: msgErr } = await supabase
+        .from("messages")
+        .insert(msgPayload)
+        .select("id, created_at")
+        .maybeSingle();
 
-    setLoading(false);
+      if (msgErr) throw msgErr;
+      if (!msgData?.id) throw new Error("message insert failed");
 
-    if (error) {
-      // ✅ 로그를 아주 자세히 (원인 추적용)
-      console.error("[Guest] messages insert error:", {
-        message: error.message,
-        details: (error as any).details,
-        hint: (error as any).hint,
-        code: (error as any).code,
-        payload,
+      // 2) ledger upsert for owners (attended = true)
+      await upsertLedgerForOwners({
+        eventId,
+        side,
+        guestName: realName.trim(),
+        guestPhoneDigits: phoneDigits,
+        relationship: relationshipValue,
+        messageId: msgData.id,
+        messageBody: bodyToSave,
+        messageCreatedAtIso: msgData.created_at ?? new Date().toISOString(),
       });
-      if (debug) {
-        setDebugBanner(
-          `[messages insert] ${error.message}\ncode=${(error as any)?.code ?? ""}`
-        );
-      }
 
-      const friendly = friendlySupabaseError(error);
-      alert(`메시지 전송 중 오류가 발생했습니다.\n\n${friendly}`);
-
-      // 권한 문제면 UI도 막아줌
-      const code = (error as any)?.code ?? "";
-      if (code === "42501" || /permission/i.test(error.message || "")) {
-        setCanWrite(false);
-        setWriteBlockedReason("현재 메시지 저장 권한이 차단되어 있어요. (RLS/Policy 설정 확인 필요)");
-      }
-
-      return;
+      // success view (account summary)
+      const selected = accounts.find((a) => a.id === selectedAccountId) ?? null;
+      setSelectedAccountForSummary(selected);
+      setSubmitted(true);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
     }
+  };
 
-    setSelectedAccountForSummary(selectedAccount ?? null);
-    setSubmitted(true);
-  }
-
-  function copyAccountNumber() {
-    if (!selectedAccountForSummary) return;
-
-    const bank = (selectedAccountForSummary.bank_name ?? "").trim();
-    const acct = (selectedAccountForSummary.account_number ?? "").trim();
-
-    // ✅ 은행명 + 계좌번호를 함께 복사
-    const text = [bank, acct].filter(Boolean).join(" ");
-    if (!text) return;
-
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(
-        () => alert("은행명 + 계좌번호가 복사되었습니다."),
-        () => alert("복사에 실패했습니다. 직접 입력해 주세요.")
-      );
-    } else {
-      alert("복사가 지원되지 않는 브라우저입니다. 직접 입력해 주세요.");
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert(t.copied);
+    } catch {
+      alert(t.copied);
     }
-  }
+  };
 
+  // ===== Success page =====
   if (submitted) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center">
-        <div className="max-w-md mx-auto w-full px-4 py-8">
-          <div className="bg-white rounded-2xl shadow-md px-6 py-7 text-center space-y-4">
-            <p className="text-sm font-medium text-pink-500">
-              메시지가 전송되었어요 💐
-            </p>
-            <p className="text-lg font-semibold">
-              이제 선택하신 계좌로
-              <br />
-              축의금을 보내실 수 있어요.
-            </p>
+      <div className="min-h-screen bg-[#FDFCFB] flex items-center justify-center p-6">
+        <div className="w-full max-w-sm text-center animate-in fade-in zoom-in duration-500">
+          <div className="flex justify-end mb-3">
+            <button
+              type="button"
+              onClick={() => setLang((v) => (v === "KO" ? "EN" : "KO"))}
+              className="text-[10px] font-bold text-gray-400 hover:text-gray-600 underline underline-offset-2"
+              aria-label="language toggle"
+            >
+              {lang === "KO" ? "EN" : "KO"}
+            </button>
+          </div>
 
-            {selectedAccountForSummary ? (
-              <div className="mt-4 text-left border rounded-2xl bg-pink-50/60 border-pink-100 px-4 py-3 space-y-1">
-                <p className="text-xs font-semibold text-pink-600">
-                  축의금 수취 계좌
+          <div className="text-4xl mb-4">💐</div>
+          <h2 className="text-2xl font-serif font-medium text-gray-900 mb-2">{t.successTitle}</h2>
+          <p className="text-gray-500 text-sm mb-8">{t.successDesc}</p>
+
+          {selectedAccountForSummary && (
+            <div className="bg-white border border-rose-100 rounded-3xl p-6 shadow-sm mb-6 text-left">
+              <span className="text-[10px] font-bold text-rose-400 uppercase tracking-widest">
+                {t.giftTitle}
+              </span>
+
+              <div className="mt-2">
+                <p className="text-sm text-gray-500">{selectedAccountForSummary.label}</p>
+                <p className="text-lg font-semibold text-gray-900">
+                  {selectedAccountForSummary.holder_name ?? "-"}
                 </p>
-                <p className="text-sm font-semibold">
-                  {selectedAccountForSummary.label} · {selectedAccountForSummary.holder_name}
-                </p>
-                <p className="text-sm text-gray-700">
-                  {selectedAccountForSummary.bank_name} {selectedAccountForSummary.account_number}
-                </p>
-                <button
-                  type="button"
-                  onClick={copyAccountNumber}
-                  className="mt-2 inline-flex items-center justify-center rounded-full border border-pink-400 px-4 py-1.5 text-xs font-medium text-pink-700 bg-white hover:bg-pink-50 transition"
-                >
-                  은행+계좌번호 복사하기
-                </button>
-                <p className="mt-1 text-[10px] text-gray-500">
-                  복사된 정보로 사용하는 은행/간편결제 앱에서 송금해 주세요.
+                <p className="text-md text-gray-700 mt-1">
+                  {(selectedAccountForSummary.bank_name ?? "-") + " " + (selectedAccountForSummary.account_number ?? "-")}
                 </p>
               </div>
-            ) : (
-              <p className="mt-4 text-xs text-gray-500">
-                축의금 계좌 정보가 아직 준비되지 않았습니다.
-                <br />
-                예식장 안내에 따라 송금해 주세요.
-              </p>
-            )}
 
-            <div className="pt-3 border-t border-gray-100 mt-4 space-y-2">
-              <p className="text-[11px] text-gray-500">
-                신랑·신부의 감사 인사를 카카오톡으로 받고 싶다면
-                <br className="sm:hidden" /> 아래 채널을 친구추가해 주세요.
-              </p>
-              <a
-                href={KAKAO_CHANNEL_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center justify-center rounded-full px-4 py-2 text-xs font-semibold bg-[#FEE500] text-black hover:bg-yellow-300 transition"
+              <button
+                onClick={() =>
+                  copyToClipboard(
+                    `${selectedAccountForSummary.bank_name ?? ""} ${selectedAccountForSummary.account_number ?? ""}`.trim()
+                  )
+                }
+                className="w-full mt-4 py-3 bg-rose-50 text-rose-600 rounded-2xl text-sm font-semibold active:bg-rose-100 transition"
               >
-                카카오톡 채널 친구추가
-              </a>
+                {t.copyBtn}
+              </button>
+
+              <p className="mt-3 text-xs text-gray-400 whitespace-pre-line leading-relaxed">
+                {t.attendanceNoteShort}
+              </p>
             </div>
+          )}
 
-            {/* ✅ 운영자 디버그 배너(하객에게는 절대 안 보이게) */}
-            {debug && debugBanner && (
-              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-left">
-                <p className="text-[12px] font-semibold text-red-800">DEBUG</p>
-                <p className="mt-1 text-[11px] text-red-700 whitespace-pre-wrap">
-                  {debugBanner}
-                </p>
-              </div>
-            )}
-          </div>
+          <a
+            href={KAKAO_CHANNEL_URL}
+            className="inline-flex items-center gap-2 text-xs text-gray-400 underline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t.kakaoThanks}
+          </a>
         </div>
       </div>
     );
   }
 
-  if (phase === "before_wait") {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center">
-        <div className="max-w-md mx-auto w-full px-4">
-          <div className="bg-white rounded-2xl shadow-md px-6 py-8 text-center space-y-4">
-            <p className="text-sm font-medium text-pink-500">
-              아직 조금 이른 시간이에요
-            </p>
-            <p className="text-lg font-semibold">
-              예식 1시간 전부터
-              <br />
-              작성이 가능합니다.
-            </p>
-            <p className="text-xs text-gray-500">
-              잠시 후 다시 접속하시거나,
-              <br className="sm:hidden" /> 잠깐 후에 새로고침해 주세요.
-            </p>
-
-            {debug && debugBanner && (
-              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-left">
-                <p className="text-[12px] font-semibold text-red-800">DEBUG</p>
-                <p className="mt-1 text-[11px] text-red-700 whitespace-pre-wrap">
-                  {debugBanner}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (phase === "closed") {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center">
-        <div className="max-w-md mx-auto w-full px-4">
-          <div className="bg-white rounded-2xl shadow-md px-6 py-8 text-center space-y-4">
-            <p className="text-lg font-semibold">
-              메시지 접수가 모두 종료되었습니다.
-            </p>
-            <p className="text-sm text-gray-600">
-              오늘 남겨주신 모든 축하메시지는
-              <br className="sm:hidden" /> 신랑·신부에게 잘 전달될 예정입니다.
-            </p>
-            <p className="text-xs text-gray-400">
-              소중한 축하의 마음을 전해주셔서 감사합니다.
-            </p>
-
-            {debug && debugBanner && (
-              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-left">
-                <p className="text-[12px] font-semibold text-red-800">DEBUG</p>
-                <p className="mt-1 text-[11px] text-red-700 whitespace-pre-wrap">
-                  {debugBanner}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  // ===== Main page =====
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-md mx-auto w-full px-4 py-6 sm:py-10">
-        <header className="mb-6 text-center">
-          <p className="text-xs font-medium tracking-wide text-pink-500 uppercase">
-            DIGITAL GUESTBOOK
-          </p>
+    <div className="min-h-screen bg-[#FDFCFB] text-gray-900 pb-10">
+      <header className="px-6 pt-10 pb-8 text-center relative">
+        <button
+          type="button"
+          onClick={() => setLang((v) => (v === "KO" ? "EN" : "KO"))}
+          className="absolute right-6 top-6 text-[10px] font-bold text-gray-400 hover:text-gray-600 underline underline-offset-2"
+          aria-label="language toggle"
+        >
+          {lang === "KO" ? "EN" : "KO"}
+        </button>
 
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            축하 메시지를 남겨주세요 💌
-          </h1>
-          <p className="mt-1 text-sm font-medium text-gray-800">
-            축하의 마음을 전하세요
-          </p>
+        <h1 className="text-3xl font-serif mb-2">{t.title}</h1>
+        <p className="text-gray-500 font-light tracking-tight">{t.subtitle}</p>
 
-          <p className="mt-2 text-xs text-gray-500">
-            메시지를 남기면 축의금도 바로 보낼 수 있어요.
-            <br className="sm:hidden" /> 작성하신 메시지는 디스플레이에 표시되고,
-            예식 후 신랑·신부에게 전달됩니다.
-          </p>
+        {/* (옵션) 상태 배지: 너무 길어지지 않게 최소만 */}
+        {phase !== "open" && (
+          <p className="mt-3 text-[11px] text-gray-400">{t.closedNotice}</p>
+        )}
+      </header>
 
-          {/* ✅ “대체” 인지 고정용 한 줄 (무의식 신호) */}
-          <p className="mt-2 text-[11px] text-gray-500">
-            이 화면은 <span className="font-semibold">현장 방명록</span>을 대신합니다.
-          </p>
+      <main className="px-6 space-y-10 max-w-md mx-auto">
+        {/* Step 1 */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-600 text-xs flex items-center justify-center font-bold">
+              1
+            </span>
+            <h3 className="font-semibold text-gray-800">{t.step1}</h3>
+          </div>
 
-          {/* ✅ 권한/정책 문제 시 사용자 안내 */}
-          {!canWrite && (
-            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left">
-              <p className="text-[12px] font-semibold text-amber-800">
-                현재 메시지 저장이 일시적으로 불가능해요
-              </p>
-              <p className="mt-1 text-[11px] text-amber-700">
-                {writeBlockedReason ??
-                  "관리자 설정(RLS/Policy)을 확인한 뒤 다시 시도해 주세요."}
-              </p>
-            </div>
-          )}
-
-          {/* ✅ 계좌 로딩 실패 시: 하객에게는 중립 문구만 */}
-          {accountsLoadFailed && (
-            <div className="mt-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left">
-              <p className="text-[12px] font-semibold text-gray-800">
-                축의금 계좌 정보를 불러오지 못했어요
-              </p>
-              <p className="mt-1 text-[11px] text-gray-600">
-                잠시 후 새로고침해 주세요. 계속 문제가 있으면 예식장 안내에 따라 송금해 주세요.
-              </p>
-            </div>
-          )}
-
-          {/* ✅ 운영자 디버그 배너(하객 노출 X) */}
-          {debug && debugBanner && (
-            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-left">
-              <p className="text-[12px] font-semibold text-red-800">DEBUG</p>
-              <p className="mt-1 text-[11px] text-red-700 whitespace-pre-wrap">
-                {debugBanner}
-              </p>
-            </div>
-          )}
-        </header>
-
-        <div className="bg-white rounded-2xl shadow-sm px-4 py-5 sm:px-6 sm:py-7 space-y-5">
-          <section>
-            <label className="block text-sm font-semibold">성함(실명)</label>
+          <div className="grid grid-cols-2 gap-3">
             <input
-              className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
-              placeholder="신랑·신부에게만 전달되는 실명"
+              placeholder={t.namePH}
+              className="w-full bg-white border-b border-gray-200 py-3 px-1 text-sm focus:border-rose-300 outline-none transition"
               value={realName}
               onChange={(e) => setRealName(e.target.value)}
             />
-            <p className="mt-1 text-[11px] text-gray-500">
-              실명은 신랑·신부에게만 전달되며 디스플레이에는 노출되지 않습니다.
-              <br className="sm:hidden" />
-              축의금 송금 시, 보내는 분 이름과 동일하게 입력해 주세요.
-            </p>
-          </section>
-
-          <section>
-            <label className="block text-sm font-semibold">연락처</label>
             <input
-              inputMode="tel"
-              className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
-              placeholder="010-1234-5678"
+              type="tel"
+              placeholder={t.phonePH}
+              className="w-full bg-white border-b border-gray-200 py-3 px-1 text-sm focus:border-rose-300 outline-none transition"
               value={phone}
               onChange={(e) => setPhone(formatKoreanMobile(e.target.value))}
             />
-            <p className="mt-1 text-[11px] text-gray-500">
-              신랑·신부가 축하 메시지/축의금을 확인하면, 이 연락처로 감사 인사가 전해집니다.
-            </p>
-          </section>
+          </div>
 
-          <section>
-            <label className="inline-flex items-start gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                className="mt-0.5 h-4 w-4 accent-pink-500"
-                checked={sendMoneyOnly}
-                onChange={(e) => setSendMoneyOnly(e.target.checked)}
-              />
-              <span className="text-sm font-semibold text-gray-800">
-                메시지 없이 축의금만 송금할게요{" "}
-                <span className="text-gray-400 text-xs">(선택)</span>
-              </span>
-            </label>
-            {sendMoneyOnly && (
-              <p className="mt-2 text-[11px] text-gray-500">
-                디스플레이에는 “{DEFAULT_DISPLAY_MESSAGE}”로 표시됩니다.
-              </p>
-            )}
-          </section>
-
-          {!sendMoneyOnly && (
-            <>
-              <section>
-                <div className="flex items-center justify-between">
-                  <label className="block text-sm font-semibold">축하메시지</label>
-                  <span className="text-[11px] text-gray-400">
-                    {message.length} / {MESSAGE_MAX}자
-                  </span>
-                </div>
-                <textarea
-                  className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
-                  rows={4}
-                  maxLength={MESSAGE_MAX}
-                  placeholder="따뜻한 축하의 말을 남겨주세요 💐"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                />
-                <p className="mt-1 text-[11px] text-gray-400 text-right">
-                  예: 오늘 두 분 결혼 너무 축하해요!
-                </p>
-              </section>
-
-              <section>
-                <label className="block text-sm font-semibold">
-                  디스플레이 표시 방식
-                </label>
-                <p className="mt-1 text-[11px] text-gray-500">
-                  축하 메시지만 표시되며, 실명·전화번호·축의금액 화면에 나오지 않아요.
-                </p>
-
-                <div className="mt-3 grid grid-cols-1 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setDisplayMode("nickname")}
-                    className={`flex h-11 items-center justify-between rounded-xl border px-3 text-sm transition ${
-                      displayMode === "nickname"
-                        ? "border-pink-500 bg-pink-500 text-white"
-                        : "border-gray-300 bg-white text-gray-800"
-                    }`}
-                  >
-                    <span>닉네임과 함께 보이기</span>
-                    <span className="text-[11px] opacity-80">예: 잠보기, 고래</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setDisplayMode("anonymous")}
-                    className={`flex h-11 items-center justify-between rounded-xl border px-3 text-sm transition ${
-                      displayMode === "anonymous"
-                        ? "border-pink-500 bg-pink-500 text-white"
-                        : "border-gray-300 bg-white text-gray-800"
-                    }`}
-                  >
-                    <span>축하 메시지만 보이기</span>
-                    <span className="text-[11px] opacity-80">이름 없이 메시지만</span>
-                  </button>
-                </div>
-
-                {displayMode === "nickname" && (
-                  <div className="mt-3">
-                    <label className="block text-xs font-medium">닉네임</label>
-                    <input
-                      className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
-                      placeholder="예: 잠보기, 깐부, 고래"
-                      value={nickname}
-                      onChange={(e) => setNickname(e.target.value)}
-                    />
-                  </div>
-                )}
-              </section>
-            </>
-          )}
-
-          <section>
-            <label className="block text-sm font-semibold">어느 쪽 하객이신가요?</label>
-            <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="flex gap-2">
+            {(["groom", "bride"] as const).map((s) => (
               <button
-                type="button"
-                onClick={() => setSide("groom")}
-                className={`h-11 rounded-full border text-sm font-medium transition ${
-                  side === "groom"
-                    ? "bg-pink-500 text-white border-pink-500"
-                    : "bg-white text-gray-800 border-gray-300"
+                key={s}
+                onClick={() => setSide(s)}
+                className={`flex-1 py-3 rounded-2xl text-sm font-medium transition-all ${
+                  side === s
+                    ? "bg-rose-500 text-white shadow-md"
+                    : "bg-white border border-gray-100 text-gray-500"
                 }`}
               >
-                신랑측
+                {s === "groom" ? t.groomSide : t.brideSide}
               </button>
-              <button
-                type="button"
-                onClick={() => setSide("bride")}
-                className={`h-11 rounded-full border text-sm font-medium transition ${
-                  side === "bride"
-                    ? "bg-pink-500 text-white border-pink-500"
-                    : "bg-white text-gray-800 border-gray-300"
-                }`}
+            ))}
+          </div>
+
+          {/* 관계 */}
+          <div className="pt-2 space-y-2">
+            <label className="text-xs font-semibold text-gray-700">{t.relationshipLabel}</label>
+            <div className="grid grid-cols-2 gap-3">
+              <select
+                value={relationship}
+                onChange={(e) => setRelationship(e.target.value)}
+                className="w-full bg-white border border-gray-100 rounded-2xl px-4 py-3 text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-rose-200"
               >
-                신부측
-              </button>
-            </div>
-          </section>
+                <option value="">{t.relationshipPH}</option>
+                <option value={lang === "KO" ? "가족" : "Family"}>{lang === "KO" ? "가족" : "Family"}</option>
+                <option value={lang === "KO" ? "친구" : "Friend"}>{lang === "KO" ? "친구" : "Friend"}</option>
+                <option value={lang === "KO" ? "직장" : "Work"}>{lang === "KO" ? "직장" : "Work"}</option>
+                <option value={lang === "KO" ? "지인" : "Acquaintance"}>{lang === "KO" ? "지인" : "Acquaintance"}</option>
+                <option value={lang === "KO" ? "직접입력" : "Custom"}>{lang === "KO" ? "직접입력" : "Custom"}</option>
+              </select>
 
-          <section>
-            <label className="block text-sm font-semibold">
-              관계 <span className="text-gray-400 text-xs">(선택)</span>
-            </label>
-            <select
-              className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none bg-white focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
-              value={relationship}
-              onChange={(e) => setRelationship(e.target.value)}
-            >
-              <option value="">선택 안 함</option>
-              <option value="친구">친구</option>
-              <option value="직장">직장</option>
-              <option value="가족">가족/친척</option>
-              <option value="동창">동창</option>
-              <option value="직접입력">직접입력</option>
-            </select>
-
-            {relationship === "직접입력" && (
-              <div className="mt-3">
-                <label className="block text-xs font-medium">관계 직접입력</label>
+              {(relationship === "직접입력" || relationship === "Custom") ? (
                 <input
-                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
-                  placeholder="예: 대학교 선배, 동호회"
                   value={relationshipDetail}
                   onChange={(e) => setRelationshipDetail(e.target.value)}
+                  placeholder={t.relationshipDetailPH}
+                  className="w-full bg-white border border-gray-100 rounded-2xl px-4 py-3 text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-rose-200"
                 />
+              ) : (
+                <div className="w-full rounded-2xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-400">
+                  {/* 빈칸 채우기용 */}
+                  {lang === "KO" ? " " : " "}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* Step 2 */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-600 text-xs flex items-center justify-center font-bold">
+                2
+              </span>
+              <h3 className="font-semibold text-gray-800">{t.step2}</h3>
+            </div>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={sendMoneyOnly}
+                onChange={(e) => setSendMoneyOnly(e.target.checked)}
+                className="accent-rose-500"
+              />
+              <span className="text-xs text-gray-400">{t.skipMessage}</span>
+            </label>
+          </div>
+
+          {!sendMoneyOnly && (
+            <div className="animate-in slide-in-from-top-2 duration-300">
+              <textarea
+                rows={3}
+                placeholder={t.messagePH}
+                className="w-full p-4 bg-white border border-gray-100 rounded-2xl text-sm shadow-sm focus:border-rose-200 outline-none resize-none"
+                maxLength={MESSAGE_MAX}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+              />
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  onClick={() => setDisplayMode("nickname")}
+                  className={`px-4 py-2 rounded-full text-[11px] border transition ${
+                    displayMode === "nickname"
+                      ? "bg-gray-800 text-white border-gray-800"
+                      : "bg-white text-gray-400 border-gray-100"
+                  }`}
+                >
+                  {t.nickname}
+                </button>
+                <button
+                  onClick={() => setDisplayMode("anonymous")}
+                  className={`px-4 py-2 rounded-full text-[11px] border transition ${
+                    displayMode === "anonymous"
+                      ? "bg-gray-800 text-white border-gray-800"
+                      : "bg-white text-gray-400 border-gray-100"
+                  }`}
+                >
+                  {t.anonymous}
+                </button>
+
+                {displayMode === "nickname" && (
+                  <input
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    placeholder={lang === "KO" ? "닉네임(선택)" : "Nickname (optional)"}
+                    className="ml-auto w-36 bg-white border-b border-gray-200 py-2 px-1 text-xs focus:border-rose-300 outline-none transition"
+                  />
+                )}
               </div>
-            )}
-          </section>
+            </div>
+          )}
+        </section>
 
-          <section>
-            <label className="block text-sm font-semibold">축의금 받으실 분</label>
-            <p className="mt-1 text-[11px] text-gray-500">
-              다음 단계에서 선택하신 계좌번호로 축의금을 보내실 수 있어요.
-            </p>
+        {/* Step 3 */}
+        {side && (
+          <section className="space-y-4 animate-in fade-in duration-500">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-600 text-xs flex items-center justify-center font-bold">
+                3
+              </span>
+              <h3 className="font-semibold text-gray-800">{t.step3}</h3>
+            </div>
 
-            {!side ? (
-              <p className="mt-3 text-xs text-gray-400">
-                먼저 위에서 <span className="font-semibold">어느 쪽 하객인지</span>{" "}
-                선택해 주세요. 선택 후 축의금 계좌가 보여집니다.
-              </p>
-            ) : filteredAccounts.length === 0 ? (
-              <p className="mt-3 text-xs text-gray-400">
-                선택하신 쪽에 등록된 축의금 계좌가 없습니다.
-              </p>
-            ) : (
-              <div className="mt-3 space-y-2">
-                {filteredAccounts.map((acct) => (
-                  <button
-                    type="button"
-                    key={acct.id}
-                    onClick={() => setSelectedAccountId(acct.id)}
-                    className={`w-full text-left rounded-xl border px-3 py-2.5 text-sm transition ${
-                      selectedAccountId === acct.id
-                        ? "border-pink-500 bg-pink-50"
-                        : "border-gray-200 bg-white"
-                    }`}
-                  >
-                    <p className="text-xs font-semibold text-gray-700">{acct.label}</p>
-                    <p className="text-xs text-gray-600">
-                      {acct.holder_name} · {acct.bank_name}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="space-y-2">
+              {filteredAccounts.map((acc) => (
+                <button
+                  key={acc.id}
+                  onClick={() => setSelectedAccountId(acc.id)}
+                  className={`w-full p-4 rounded-2xl text-left border transition-all ${
+                    selectedAccountId === acc.id
+                      ? "border-rose-400 bg-rose-50/50 ring-1 ring-rose-400"
+                      : "border-gray-100 bg-white"
+                  }`}
+                >
+                  <p className="text-[10px] font-bold text-rose-400 uppercase">{acc.label}</p>
+                  <p className="text-sm font-semibold">
+                    {acc.holder_name ?? "-"}{" "}
+                    <span className="text-gray-400 font-normal ml-1">| {acc.bank_name ?? "-"}</span>
+                  </p>
+                </button>
+              ))}
+            </div>
           </section>
+        )}
 
-          <section className="pt-1">
-            <button
-              className="w-full h-12 rounded-xl bg-pink-500 text-white text-sm font-semibold disabled:opacity-60 active:scale-[0.99] transition shadow-sm hover:bg-pink-600"
-              disabled={loading || !canWrite}
-              onClick={handleSubmit}
-            >
-              {!canWrite ? "현재 전송 불가" : loading ? "전송 중..." : "다음 단계로"}
-            </button>
-          </section>
+        {/* Submit */}
+        <div className="pt-2">
+          <button
+            onClick={handleSubmit}
+            disabled={loading || !canWrite}
+            className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold shadow-xl active:scale-[0.98] disabled:bg-gray-300 transition-all"
+          >
+            {loading ? t.sending : t.nextBtn}
+          </button>
+          <p className="text-center text-[10px] text-gray-400 mt-4">{t.infoUse}</p>
         </div>
-
-        <p className="mt-4 text-[11px] text-center text-gray-400">
-          전송 버튼을 누르시면 이용약관 및 개인정보 처리방침에 동의한 것으로 간주됩니다.
-        </p>
-      </div>
+      </main>
     </div>
   );
 }
