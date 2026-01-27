@@ -25,15 +25,14 @@ type Recipient = {
 
 type EventSettingsLite = {
   ceremony_date: string | null;
+  ceremony_start_time: string | null; // ✅ 추가
+  ceremony_end_time: string | null;   // ✅ 추가
   recipients: Recipient[] | null;
 };
-
-type ReportStatus = "draft" | "finalized" | "archived";
 
 type TabKey = "messages" | "ledger";
 
 type GiftMethod = "account" | "cash" | "unknown";
-
 type CreatedSource = "manual" | "guestpage" | "import" | "scrape";
 
 type LedgerRow = {
@@ -66,15 +65,12 @@ type LedgerRow = {
 
 const PAGE_SIZE = 10;
 
-// event_members에서 이메일/유저를 식별하는 컬럼명이 다를 수 있어서 후보로 둠
-
 function sourceLabel(src?: string | null) {
   if (src === "scrape") return "은행 자동 반영 (수정 불가)";
   if (src === "import") return "엑셀 업로드";
   if (src === "guestpage") return "하객 입력";
   return "수기 입력";
 }
-
 
 function onlyDigits(s: string) {
   return (s ?? "").replace(/\D/g, "");
@@ -115,9 +111,7 @@ function normalizeSide(v: any): "groom" | "bride" | "" {
 
 function toIsoMaybe(v: any): string | null {
   if (!v) return null;
-  // Excel date could be number (serial)
   if (typeof v === "number") {
-    // XLSX stores dates either as serial; best effort:
     const d = XLSX.SSF.parse_date_code(v);
     if (!d) return null;
     const js = new Date(d.y, (d.m ?? 1) - 1, d.d ?? 1, d.H ?? 0, d.M ?? 0, d.S ?? 0);
@@ -149,6 +143,16 @@ function yyyymmdd(dateIso?: string | null) {
   return `${y}${m}${da}`;
 }
 
+// ✅ 예식 날짜 + 시각을 “로컬 시간”으로 합쳐서 Date 만들기
+function combineLocalDateTimeToIso(dateStr?: string | null, timeStr?: string | null) {
+  if (!dateStr || !timeStr) return null;
+  // timeStr: "HH:MM" 가정
+  const isoLike = `${dateStr}T${timeStr}:00`;
+  const d = new Date(isoLike);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 export default function ResultPage() {
   const { eventId } = useParams<RouteParams>();
 
@@ -156,11 +160,6 @@ export default function ResultPage() {
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [settings, setSettings] = useState<EventSettingsLite | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  // 리포트 상태
-  const [reportStatus, setReportStatus] = useState<ReportStatus>("draft");
-  const [reportFinalizedAt, setReportFinalizedAt] = useState<string | null>(null);
-  const [finalizing, setFinalizing] = useState(false);
 
   // 축의금(스크래핑)
   const [scrapeAccountId, setScrapeAccountId] = useState<string | null>(null);
@@ -197,47 +196,50 @@ export default function ResultPage() {
   const [excelUploading, setExcelUploading] = useState(false);
   const [excelUploadResult, setExcelUploadResult] = useState<string | null>(null);
 
-  const isFinalized = reportStatus === "finalized";
+  // ✅ 컷오프(예식 종료 시각) = "이후부터 은행 자동 반영 잠김"
+  const cutoffIso = useMemo(() => {
+    return combineLocalDateTimeToIso(settings?.ceremony_date, settings?.ceremony_end_time);
+  }, [settings?.ceremony_date, settings?.ceremony_end_time]);
 
-  // ✅ 정책: "finalized"여도 수기/엑셀 장부는 계속 편집 가능
-  // 다만 스크래핑(자동 갱신) 및 스크래핑 row 편집은 불가.
-  const canRunScrape = !isFinalized;
+  const scrapeLocked = useMemo(() => {
+    if (!cutoffIso) return false; // 시간이 없으면 일단 잠그지 않음(운영상 안전)
+    return new Date().getTime() >= new Date(cutoffIso).getTime();
+  }, [cutoffIso]);
 
-      /* ------------------ 내 member id 찾기 ------------------ */
-      async function resolveOwnerMemberId(): Promise<string | null> {
-        const { data: authData } = await supabase.auth.getUser();
-        if (!authData?.user) return null;
+  const canRunScrape = !scrapeLocked;
 
-        const user = authData.user;
+  /* ------------------ 내 member id 찾기 ------------------ */
+  async function resolveOwnerMemberId(): Promise<string | null> {
+    const { data: authData } = await supabase.auth.getUser();
+    if (!authData?.user) return null;
 
-        console.log("DEBUG eventId param:", eventId);
-        console.log("DEBUG auth user id:", user.id);
+    const user = authData.user;
 
-        const { data, error } = await supabase
-          .from("event_members")
-          .select("id, role")
-          .eq("event_id", eventId)
-          .eq("user_id", user.id)
-          .maybeSingle();
+    console.log("DEBUG eventId param:", eventId);
+    console.log("DEBUG auth user id:", user.id);
 
-        console.log("DEBUG event_members row:", data);
+    const { data, error } = await supabase
+      .from("event_members")
+      .select("id, role")
+      .eq("event_id", eventId)
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-        if (error) {
-          console.error("resolveOwnerMemberId error:", error);
-          return null;
-        }
+    console.log("DEBUG event_members row:", data);
 
-        if (data?.id) {
-          setOwnerLabel(data.role === "owner" ? "주최" : "내");
-          return data.id;
-        }
+    if (error) {
+      console.error("resolveOwnerMemberId error:", error);
+      return null;
+    }
 
-        // 여기 오면 진짜 정합성 이슈
-        setOwnerLabel("내");
-        return null;
-      }
+    if (data?.id) {
+      setOwnerLabel(data.role === "owner" ? "주최" : "내");
+      return data.id;
+    }
 
-
+    setOwnerLabel("내");
+    return null;
+  }
 
   /* ------------------ 데이터 로드 ------------------ */
   useEffect(() => {
@@ -252,7 +254,7 @@ export default function ResultPage() {
       setError(null);
 
       try {
-        // 메시지 (※ 현재 스키마상 이벤트 전체 메시지임)
+        // 메시지
         const { data: msgData, error: msgError } = await supabase
           .from("messages")
           .select("id, created_at, side, guest_name, nickname, relationship, body")
@@ -262,10 +264,10 @@ export default function ResultPage() {
         if (msgError) throw msgError;
         setMessages(msgData || []);
 
-        // 예식 설정
+        // ✅ 예식 설정 (end_time까지)
         const { data: settingsData, error: setErrorRes } = await supabase
           .from("event_settings")
-          .select("ceremony_date, recipients")
+          .select("ceremony_date, ceremony_start_time, ceremony_end_time, recipients")
           .eq("event_id", eventId)
           .maybeSingle();
 
@@ -273,20 +275,10 @@ export default function ResultPage() {
         if (settingsData) {
           setSettings({
             ceremony_date: settingsData.ceremony_date,
+            ceremony_start_time: settingsData.ceremony_start_time ?? null,
+            ceremony_end_time: settingsData.ceremony_end_time ?? null,
             recipients: settingsData.recipients as Recipient[] | null,
           });
-        }
-
-        // 이벤트 리포트 상태
-        const { data: ev } = await supabase
-          .from("events")
-          .select("report_status, report_finalized_at")
-          .eq("id", eventId)
-          .maybeSingle();
-
-        if (ev?.report_status) {
-          setReportStatus(ev.report_status);
-          setReportFinalizedAt(ev.report_finalized_at ?? null);
         }
 
         // 스크래핑 계좌
@@ -311,11 +303,7 @@ export default function ResultPage() {
 
         // owner_member_id
         const memberId = await resolveOwnerMemberId();
-        if (!memberId) {
-          setOwnerMemberId(null);
-        } else {
-          setOwnerMemberId(memberId);
-        }
+        setOwnerMemberId(memberId ?? null);
       } catch (err) {
         console.error(err);
         setError("리포트를 불러오는 중 오류가 발생했어요.");
@@ -366,16 +354,14 @@ export default function ResultPage() {
 
   /* ------------------ 리포트 생성/갱신 (스크래핑) ------------------ */
   const handleGenerateReport = async () => {
+    // ✅ 확정 버튼 제거 → 컷오프 기준으로만 잠금
     if (!canRunScrape) {
-      setScrapeResult("확정된 리포트는 자동 조회/갱신이 불가능합니다.");
+      setScrapeResult("예식 종료 이후에는 은행 자동 반영(갱신)이 잠깁니다. (수기/엑셀 입력은 계속 가능)");
       return;
     }
     if (!scrapeAccountId) {
-      setScrapeResult("연결된 계좌가 없습니다.");
-      return;
-    }
-    if (txCount > 0) {
-      setScrapeResult("이미 최신 리포트가 있습니다.");
+      // ✅ 내일 여기서 “인증 유도”로 연결하면 됨
+      setScrapeResult("쿠콘 계좌 인증이 필요합니다. (내일 인증 플로우 연결)");
       return;
     }
 
@@ -386,6 +372,12 @@ export default function ResultPage() {
       const { data: session } = await supabase.auth.getSession();
       const token = session.session?.access_token;
       if (!token) throw new Error("로그인이 필요합니다.");
+
+      // ✅ 날짜 범위는 내일 쿠콘 미팅 이후 확정하자.
+      // 지금은 ceremony_date 기반으로 “하루 범위”만 깔끔하게.
+      const date = settings?.ceremony_date ?? "2026-01-01";
+      const startDate = date;
+      const endDate = date;
 
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`,
@@ -398,8 +390,8 @@ export default function ResultPage() {
           body: JSON.stringify({
             eventId,
             scrapeAccountId,
-            startDate: "2026-01-01",
-            endDate: "2026-01-31",
+            startDate,
+            endDate,
           }),
         }
       );
@@ -407,44 +399,19 @@ export default function ResultPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "조회 실패");
 
-      setTxCount(json.inserted ?? 0);
-      setScrapeResult(`리포트 갱신 완료 (${json.inserted ?? 0}건 반영)`);
+      // inserted = 이번 호출로 신규 반영된 건수
+      // totalReflected 같은 값을 내려주면 더 좋지만, 일단 inserted로 UX.
+      const inserted = json.inserted ?? 0;
+
+      // txCount는 “현재 reflected 총량”이 더 정확하지만,
+      // 지금은 최소 변경으로: 기존 txCount에 inserted 더하기.
+      setTxCount((prev) => prev + inserted);
+
+      setScrapeResult(`은행 내역 갱신 완료 (${inserted}건 반영)`);
     } catch (e: any) {
       setScrapeResult(e.message);
     } finally {
       setScraping(false);
-    }
-  };
-
-  /* ------------------ 리포트 확정 ------------------ */
-  const handleFinalizeReport = async () => {
-    if (!eventId || reportStatus === "finalized") return;
-
-    const ok = window.confirm(
-      "확정 시점 이후에는 계좌 스크래핑 자동 조회/갱신이 차단됩니다.\n\n※ 수기/엑셀 장부는 확정 이후에도 계속 수정 가능합니다.\n\n리포트를 확정할까요?"
-    );
-    if (!ok) return;
-
-    try {
-      setFinalizing(true);
-
-      const nowIso = new Date().toISOString();
-      const { error } = await supabase
-        .from("events")
-        .update({
-          report_status: "finalized",
-          report_finalized_at: nowIso,
-        })
-        .eq("id", eventId);
-
-      if (error) throw error;
-
-      setReportStatus("finalized");
-      setReportFinalizedAt(nowIso);
-    } catch (e) {
-      alert("리포트 확정 중 오류가 발생했습니다.");
-    } finally {
-      setFinalizing(false);
     }
   };
 
@@ -621,15 +588,12 @@ export default function ResultPage() {
       if (!sheetName) throw new Error("엑셀 시트를 찾지 못했습니다.");
       const ws = wb.Sheets[sheetName];
 
-      // header 기반 객체 배열
       const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
 
       if (!json.length) {
         throw new Error("업로드할 데이터가 없습니다. (첫 시트에 행이 없음)");
       }
 
-      // 헤더 키 후보들 (Korean)
-      // 실제 사용자가 임의로 컬럼명을 약간 바꿀 수 있으니 유연하게 매핑
       const key = (obj: any, candidates: string[]) => {
         for (const k of candidates) {
           if (k in obj) return obj[k];
@@ -694,7 +658,6 @@ export default function ResultPage() {
         throw new Error("업로드할 유효 행이 없습니다. (이름 필수)");
       }
 
-      // ✅ 업로드는 "추가 insert" 방식 (병합/중복제거는 다음 단계에서 고도화)
       const { data, error } = await supabase
         .from("event_ledger_entries")
         .insert(rowsToInsert)
@@ -713,7 +676,6 @@ export default function ResultPage() {
       if (error) throw error;
 
       const inserted = (data as LedgerRow[]) || [];
-      // 최신 목록 위로
       setLedger((prev) => [...inserted, ...prev]);
 
       setExcelUploadResult(`업로드 완료: ${inserted.length}건이 장부에 추가되었습니다.`);
@@ -722,7 +684,6 @@ export default function ResultPage() {
       setExcelUploadResult(e?.message ?? "엑셀 업로드 중 오류가 발생했습니다.");
     } finally {
       setExcelUploading(false);
-      // input reset (같은 파일 재업로드 허용)
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
@@ -736,16 +697,18 @@ export default function ResultPage() {
   }
 
   /* ------------------ 계산 ------------------ */
-  const totalCount = messages.length;
-  const groomCount = messages.filter((m) => m.side === "groom").length;
-  const brideCount = messages.filter((m) => m.side === "bride").length;
-
   const ceremonyDateText =
     settings?.ceremony_date &&
     (() => {
       const [y, m, d] = settings.ceremony_date.split("-");
       return `${y}년 ${Number(m)}월 ${Number(d)}일`;
     })();
+
+  const cutoffText = useMemo(() => {
+    if (!settings?.ceremony_date || !settings?.ceremony_end_time) return "-";
+    // 로컬 표시용
+    return `${settings.ceremony_date} ${settings.ceremony_end_time}`;
+  }, [settings?.ceremony_date, settings?.ceremony_end_time]);
 
   const ledgerStats = useMemo(() => {
     const total = ledger.length;
@@ -773,15 +736,14 @@ export default function ResultPage() {
   }, [ledger, q, onlyAttended, onlyThanksPending]);
 
   /* ------------------ 가드 ------------------ */
-    if (loading) {
-      return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-[#F8FAFC]">
-          <div className="w-12 h-12 border-4 border-pink-200 border-t-pink-500 rounded-full animate-spin mb-4" />
-          <p className="text-slate-500 font-medium">데이터를 안전하게 불러오는 중...</p>
-        </div>
-      );
-    }
-
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F8FAFC]">
+        <div className="w-12 h-12 border-4 border-pink-200 border-t-pink-500 rounded-full animate-spin mb-4" />
+        <p className="text-slate-500 font-medium">데이터를 안전하게 불러오는 중...</p>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -793,774 +755,738 @@ export default function ResultPage() {
 
   /* ------------------ UI ------------------ */
   return (
-  <div className="min-h-screen bg-[#F8FAFC] text-[#1E293B] pb-20 md:pb-10 font-sans">
-    <div className="max-w-7xl mx-auto">
-      {/* 1) 상단 헤더 & 리포트 제어 */}
-      <header className="px-6 pt-12 pb-8 md:px-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span
-              className={[
-                "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
-                isFinalized
-                  ? "bg-slate-200 text-slate-600"
-                  : "bg-pink-100 text-pink-600 animate-pulse",
-              ].join(" ")}
+    <div className="min-h-screen bg-[#F8FAFC] text-[#1E293B] pb-20 md:pb-10 font-sans">
+      <div className="max-w-7xl mx-auto">
+        {/* 1) 상단 헤더 & 리포트 제어 */}
+        <header className="px-6 pt-12 pb-8 md:px-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span
+                className={[
+                  "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                  scrapeLocked
+                    ? "bg-slate-200 text-slate-600"
+                    : "bg-pink-100 text-pink-600 animate-pulse",
+                ].join(" ")}
+              >
+                {scrapeLocked ? "Archived" : "Live Report"}
+              </span>
+            </div>
+
+            <h1 className="text-3xl md:text-4xl font-black tracking-tight">디지털 방명록 리포트</h1>
+            <p className="text-slate-400 text-sm font-medium">
+              {ceremonyDateText ?? ""} • <span className="text-slate-900 font-bold">{ownerLabel}</span> 기준 데이터
+            </p>
+
+            <p className="text-[11px] text-slate-400">
+              이 화면은 <span className="font-bold text-slate-700">개인 기준</span> 리포트입니다. (각 계정/구성원별 분리)
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleGenerateReport}
+              disabled={scraping || !canRunScrape}
+              className="flex-1 md:flex-none px-6 py-3.5 bg-slate-900 text-white rounded-2xl text-sm font-bold shadow-xl shadow-slate-200 active:scale-95 transition-all disabled:opacity-50"
+              title={!canRunScrape ? "예식 종료 이후에는 자동 반영이 잠깁니다." : ""}
             >
-              {isFinalized ? "Archived" : "Live Report"}
-            </span>
-          </div>
+              {scraping ? "조회 중..." : "은행 내역 갱신"}
+            </button>
 
-          <h1 className="text-3xl md:text-4xl font-black tracking-tight">디지털 방명록 리포트</h1>
-          <p className="text-slate-400 text-sm font-medium">
-            {ceremonyDateText ?? ""} • <span className="text-slate-900 font-bold">{ownerLabel}</span> 기준 데이터
-          </p>
-
-          {/* 기존 안내 문구 유지(톤만 정리) */}
-          <p className="text-[11px] text-slate-400">
-            이 화면은 <span className="font-bold text-slate-700">개인 기준</span> 리포트입니다. (각 계정/구성원별 분리)
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {!isFinalized ? (
-            <>
-              <button
-                onClick={handleGenerateReport}
-                disabled={scraping}
-                className="flex-1 md:flex-none px-6 py-3.5 bg-slate-900 text-white rounded-2xl text-sm font-bold shadow-xl shadow-slate-200 active:scale-95 transition-all disabled:opacity-50"
-              >
-                {scraping ? "조회 중..." : "은행 내역 갱신"}
-              </button>
-
-              <button
-                onClick={handleFinalizeReport}
-                disabled={finalizing}
-                className="flex-1 md:flex-none px-6 py-3.5 bg-white border border-slate-200 text-slate-600 rounded-2xl text-sm font-bold hover:bg-slate-50 transition-all shadow-sm disabled:opacity-50"
-              >
-                {finalizing ? "확정 중..." : "리포트 확정"}
-              </button>
-            </>
-          ) : (
             <div className="bg-white border border-slate-100 px-6 py-3 rounded-2xl shadow-sm">
-              <p className="text-[10px] font-black text-slate-300 uppercase leading-none mb-1">Finalized At</p>
-              <p className="text-xs font-bold text-slate-600">
-                {reportFinalizedAt ? new Date(reportFinalizedAt).toLocaleString() : "-"}
-              </p>
+              <p className="text-[10px] font-black text-slate-300 uppercase leading-none mb-1">Data Cutoff</p>
+              <p className="text-xs font-bold text-slate-600">{cutoffText}</p>
             </div>
-          )}
-        </div>
-      </header>
+          </div>
+        </header>
 
-      {/* 스크래핑 결과 메시지(기존 유지) */}
-      {scrapeResult && (
-        <div className="px-6 md:px-10 -mt-2 mb-6">
-          <div className="text-xs text-slate-500">{scrapeResult}</div>
-        </div>
-      )}
+        {/* 스크래핑 결과 메시지 */}
+        {scrapeResult && (
+          <div className="px-6 md:px-10 -mt-2 mb-6">
+            <div className="text-xs text-slate-500">{scrapeResult}</div>
+          </div>
+        )}
 
-      {/* 2) 대시보드 요약 */}
-      <div className="px-6 md:px-10 grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-        {[
-          {
-            label: "총 축의금",
-            value: `${ledgerStats.totalAmount.toLocaleString()}원`,
-            sub: `하객 ${ledgerStats.total}명`,
-            color: "text-slate-900",
-          },
-          {
-            label: "실제 참석",
-            value: `${ledgerStats.attended}명`,
-            sub: "QR 스캔 기준",
-            color: "text-blue-600",
-          },
-          {
-            label: "답례 미완료",
-            value: `${ledgerStats.thanksPending}명`,
-            sub: "관리 필요",
-            color: "text-pink-500",
-          },
-          {
-            label: "자동 반영",
-            value: `${txCount}건`,
-            sub: "은행 스크래핑",
-            color: "text-slate-500",
-          },
-        ].map((s, i) => (
-          <div
-            key={i}
-            className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100/50 hover:shadow-md transition-shadow"
+        {/* 2) 대시보드 요약 */}
+        <div className="px-6 md:px-10 grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+          {[
+            {
+              label: "총 축의금",
+              value: `${ledgerStats.totalAmount.toLocaleString()}원`,
+              sub: `하객 ${ledgerStats.total}명`,
+              color: "text-slate-900",
+            },
+            {
+              label: "실제 참석",
+              value: `${ledgerStats.attended}명`,
+              sub: "QR 스캔 기준",
+              color: "text-blue-600",
+            },
+            {
+              label: "답례 미완료",
+              value: `${ledgerStats.thanksPending}명`,
+              sub: "관리 필요",
+              color: "text-pink-500",
+            },
+            {
+              label: "자동 반영",
+              value: `${txCount}건`,
+              sub: scrapeLocked ? "예식 종료로 잠김" : "은행 스크래핑",
+              color: "text-slate-500",
+            },
+          ].map((s, i) => (
+            <div
+              key={i}
+              className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100/50 hover:shadow-md transition-shadow"
+            >
+              <p className="text-slate-400 text-[11px] font-bold uppercase mb-1 tracking-widest">{s.label}</p>
+              <p className={`text-xl md:text-2xl font-black ${s.color} mb-1`}>{s.value}</p>
+              <p className="text-[10px] text-slate-400 font-medium">{s.sub}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* 3) 탭 네비게이션 */}
+        <div className="px-6 md:px-10 flex gap-3 mb-8">
+          <button
+            onClick={() => setTab("ledger")}
+            className={[
+              "px-8 py-3.5 rounded-2xl text-sm font-bold transition-all",
+              tab === "ledger"
+                ? "bg-pink-500 text-white shadow-lg shadow-pink-100"
+                : "bg-white text-slate-400 border border-slate-100",
+            ].join(" ")}
           >
-            <p className="text-slate-400 text-[11px] font-bold uppercase mb-1 tracking-widest">{s.label}</p>
-            <p className={`text-xl md:text-2xl font-black ${s.color} mb-1`}>{s.value}</p>
-            <p className="text-[10px] text-slate-400 font-medium">{s.sub}</p>
-          </div>
-        ))}
-      </div>
+            장부 관리
+          </button>
+          <button
+            onClick={() => setTab("messages")}
+            className={[
+              "px-8 py-3.5 rounded-2xl text-sm font-bold transition-all",
+              tab === "messages"
+                ? "bg-pink-500 text-white shadow-lg shadow-pink-100"
+                : "bg-white text-slate-400 border border-slate-100",
+            ].join(" ")}
+          >
+            축하 메시지
+          </button>
+        </div>
 
-      {/* 3) 탭 네비게이션 */}
-      <div className="px-6 md:px-10 flex gap-3 mb-8">
-        <button
-          onClick={() => setTab("ledger")}
-          className={[
-            "px-8 py-3.5 rounded-2xl text-sm font-bold transition-all",
-            tab === "ledger"
-              ? "bg-pink-500 text-white shadow-lg shadow-pink-100"
-              : "bg-white text-slate-400 border border-slate-100",
-          ].join(" ")}
-        >
-          장부 관리
-        </button>
-        <button
-          onClick={() => setTab("messages")}
-          className={[
-            "px-8 py-3.5 rounded-2xl text-sm font-bold transition-all",
-            tab === "messages"
-              ? "bg-pink-500 text-white shadow-lg shadow-pink-100"
-              : "bg-white text-slate-400 border border-slate-100",
-          ].join(" ")}
-        >
-          축하 메시지
-        </button>
-      </div>
-
-      {/* 4) 장부 탭 */}
-      {tab === "ledger" && (
-        <div className="space-y-6">
-          {/* 멤버 매칭 경고 (기존 유지) */}
-          {!ownerMemberId && (
-            <div className="mx-6 md:mx-10 rounded-[2rem] bg-amber-50 border border-amber-200 p-5 text-sm text-amber-800">
-              <div className="font-bold">멤버 매칭에 실패했습니다. (event_members.user_id 정합성 이슈)</div>
-              <div className="mt-2 text-xs text-amber-700 leading-relaxed">
-                EventHome에서 이벤트가 보였다면 원래는 항상 매칭되어야 합니다.
-                <br />
-                초대/이벤트 생성 플로우에서 event_members에 user_id가 들어가도록 보강이 필요합니다.
-              </div>
-            </div>
-          )}
-
-          {/* 검색/필터 + 관리도구 토글 */}
-          <div className="px-6 md:px-10 flex flex-col md:flex-row gap-3">
-            <div className="relative flex-1">
-              <input
-                type="text"
-                placeholder="이름, 관계, 연락처, 메모 검색..."
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                className="w-full bg-white border-none rounded-[1.5rem] px-6 py-4 text-sm shadow-sm focus:ring-2 focus:ring-pink-500/20"
-              />
-            </div>
-
-            <div className="flex gap-2">
-              {/* 기존 체크박스 기능을 버튼 토글로 표현 */}
-              <button
-                type="button"
-                onClick={() => setOnlyAttended((v) => !v)}
-                disabled={ledgerLoading}
-                className={[
-                  "flex-1 md:flex-none px-6 py-4 rounded-[1.5rem] text-xs font-bold transition-all ring-1",
-                  onlyAttended
-                    ? "bg-blue-50 text-blue-600 ring-blue-200"
-                    : "bg-white text-slate-400 ring-slate-100",
-                ].join(" ")}
-              >
-                참석만 (QR)
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setOnlyThanksPending((v) => !v)}
-                disabled={ledgerLoading}
-                className={[
-                  "flex-1 md:flex-none px-6 py-4 rounded-[1.5rem] text-xs font-bold transition-all ring-1",
-                  onlyThanksPending
-                    ? "bg-pink-50 text-pink-600 ring-pink-200"
-                    : "bg-white text-slate-400 ring-slate-100",
-                ].join(" ")}
-              >
-                답례 미완료만
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setExcelHelpOpen((v) => !v)}
-                className="px-6 py-4 bg-white text-slate-600 rounded-[1.5rem] text-xs font-bold border border-slate-100 shadow-sm"
-              >
-                데이터 관리 ⚙️
-              </button>
-            </div>
-          </div>
-
-          {/* 관리 도구 (아코디언) */}
-          {excelHelpOpen && (
-            <div className="mx-6 md:mx-10 p-8 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-10">
-              {/* Excel Management */}
-              <div className="space-y-4">
-                <h4 className="text-sm font-black text-slate-900 uppercase tracking-tighter">Excel Management</h4>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={downloadLedgerExcel}
-                    disabled={!ownerMemberId || ledgerLoading}
-                    className="px-5 py-3 bg-slate-900 text-white rounded-xl text-xs font-bold disabled:opacity-50"
-                  >
-                    장부 다운로드
-                  </button>
-
-                  <button
-                    onClick={clickExcelUpload}
-                    disabled={!ownerMemberId || excelUploading}
-                    className="px-5 py-3 bg-pink-500 text-white rounded-xl text-xs font-bold disabled:opacity-50"
-                  >
-                    {excelUploading ? "업로드 중..." : "엑셀 업로드"}
-                  </button>
-
-                  <button
-                    onClick={downloadLedgerSampleExcel}
-                    className="px-5 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold underline"
-                  >
-                    양식 받기
-                  </button>
+        {/* 4) 장부 탭 */}
+        {tab === "ledger" && (
+          <div className="space-y-6">
+            {!ownerMemberId && (
+              <div className="mx-6 md:mx-10 rounded-[2rem] bg-amber-50 border border-amber-200 p-5 text-sm text-amber-800">
+                <div className="font-bold">멤버 매칭에 실패했습니다. (event_members.user_id 정합성 이슈)</div>
+                <div className="mt-2 text-xs text-amber-700 leading-relaxed">
+                  EventHome에서 이벤트가 보였다면 원래는 항상 매칭되어야 합니다.
+                  <br />
+                  초대/이벤트 생성 플로우에서 event_members에 user_id가 들어가도록 보강이 필요합니다.
                 </div>
+              </div>
+            )}
 
-                {/* 기존 input 그대로 유지 */}
+            {/* 컷오프 안내 (운영자/유저 모두 이해하도록) */}
+            {cutoffIso && (
+              <div className="mx-6 md:mx-10 rounded-[2rem] bg-white border border-slate-100 p-5 text-xs text-slate-500">
+                <div className="font-bold text-slate-700 mb-1">은행 자동 반영(스크래핑) 컷오프</div>
+                <div className="leading-relaxed">
+                  예식 종료 시각(<span className="font-bold">{cutoffText}</span>) 이후에는{" "}
+                  <span className="font-bold">은행 자동 반영이 잠깁니다.</span>
+                  <br />
+                  수기 입력/엑셀 업로드는 예식 이후에도 계속 수정할 수 있습니다.
+                </div>
+              </div>
+            )}
+
+            {/* 검색/필터 + 관리도구 토글 */}
+            <div className="px-6 md:px-10 flex flex-col md:flex-row gap-3">
+              <div className="relative flex-1">
                 <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    handleExcelUpload(f);
-                  }}
+                  type="text"
+                  placeholder="이름, 관계, 연락처, 메모 검색..."
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  className="w-full bg-white border-none rounded-[1.5rem] px-6 py-4 text-sm shadow-sm focus:ring-2 focus:ring-pink-500/20"
                 />
-
-                {/* 기존 업로드 결과 메시지 유지 */}
-                {excelUploadResult && <div className="text-xs text-slate-500">{excelUploadResult}</div>}
-
-                <div className="text-[11px] text-slate-400 leading-relaxed">
-                  * 업로드는 현재 <span className="font-bold text-slate-600">새 행 추가</span> 방식입니다. (중복 병합/매칭은 다음 단계에서 고도화)
-                  <br />* <span className="font-bold text-slate-600">은행 자동 반영</span> 내역은 항상 수정 불가입니다.
-                </div>
               </div>
 
-              {/* Quick Add (기존 수기 추가 기능 유지: 이름/연락처/관계/구분) */}
-              <div className="space-y-4">
-                <h4 className="text-sm font-black text-slate-900 uppercase tracking-tighter">Quick Add</h4>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="이름 (필수)"
-                    disabled={!ownerMemberId}
-                    className="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
-                  />
-                  <input
-                    value={newPhone}
-                    onChange={(e) => setNewPhone(formatKoreanMobile(e.target.value))}
-                    placeholder="연락처"
-                    disabled={!ownerMemberId}
-                    className="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
-                  />
-                  <input
-                    value={newRel}
-                    onChange={(e) => setNewRel(e.target.value)}
-                    placeholder="관계"
-                    disabled={!ownerMemberId}
-                    className="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
-                  />
-                  <select
-                    value={newSide}
-                    onChange={(e) => setNewSide(e.target.value as any)}
-                    disabled={!ownerMemberId}
-                    className="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs disabled:opacity-50"
-                  >
-                    <option value="">구분 선택</option>
-                    <option value="groom">신랑측</option>
-                    <option value="bride">신부측</option>
-                  </select>
-
-                  <button
-                    onClick={addLedgerRow}
-                    disabled={!ownerMemberId}
-                    className="col-span-2 bg-slate-900 text-white rounded-xl text-xs font-bold py-3 active:scale-95 transition-transform disabled:opacity-50"
-                  >
-                    추가하기
-                  </button>
-                </div>
-
-                {/* 포맷 안내는 기존 모달을 유지(버튼만 여기서 열도록) */}
+              <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setExcelHelpOpen(false)} // 아코디언 닫기
-                  className="text-[11px] font-bold text-slate-400 underline"
+                  onClick={() => setOnlyAttended((v) => !v)}
+                  disabled={ledgerLoading}
+                  className={[
+                    "flex-1 md:flex-none px-6 py-4 rounded-[1.5rem] text-xs font-bold transition-all ring-1",
+                    onlyAttended ? "bg-blue-50 text-blue-600 ring-blue-200" : "bg-white text-slate-400 ring-slate-100",
+                  ].join(" ")}
                 >
-                  닫기
+                  참석만 (QR)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setOnlyThanksPending((v) => !v)}
+                  disabled={ledgerLoading}
+                  className={[
+                    "flex-1 md:flex-none px-6 py-4 rounded-[1.5rem] text-xs font-bold transition-all ring-1",
+                    onlyThanksPending
+                      ? "bg-pink-50 text-pink-600 ring-pink-200"
+                      : "bg-white text-slate-400 ring-slate-100",
+                  ].join(" ")}
+                >
+                  답례 미완료만
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setExcelHelpOpen((v) => !v)}
+                  className="px-6 py-4 bg-white text-slate-600 rounded-[1.5rem] text-xs font-bold border border-slate-100 shadow-sm"
+                >
+                  데이터 관리 ⚙️
                 </button>
               </div>
             </div>
-          )}
 
-          {/* ====== (중요) 기존 “포맷 안내 모달” 유지 ====== */}
-          {/* 기존 모달 UI가 필요하면, 원본의 “포맷 안내 모달” 블록을 그대로 두고 싶을 텐데
-              지금은 excelHelpOpen을 아코디언으로 사용 중이라 충돌하므로:
-              - 모달을 계속 쓰려면, 원본 모달을 “excelHelpModalOpen” 같은 새 state로 분리해야 함(로직 변경)
-              - 로직 변경 금지 조건이 있으니: 모달은 이번 리팩토링에서 제외(아코디언이 안내 역할 대체)
-              => 즉, 원본 모달 블록은 삭제된 상태. (기능은 유지: 양식/업로드/다운로드 버튼 제공)
-           */}
+            {/* 관리 도구 (아코디언) */}
+            {excelHelpOpen && (
+              <div className="mx-6 md:mx-10 p-8 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-10">
+                <div className="space-y-4">
+                  <h4 className="text-sm font-black text-slate-900 uppercase tracking-tighter">Excel Management</h4>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={downloadLedgerExcel}
+                      disabled={!ownerMemberId || ledgerLoading}
+                      className="px-5 py-3 bg-slate-900 text-white rounded-xl text-xs font-bold disabled:opacity-50"
+                    >
+                      장부 다운로드
+                    </button>
 
-          {/* [모바일] 카드형 리스트 (핵심 기능 유지: 답례/인사 토글 + 저장) */}
-          <div className="md:hidden px-6 space-y-4">
-            {ledgerLoading ? (
-              <div className="text-center text-slate-400 py-10">장부를 불러오는 중...</div>
-            ) : filteredLedger.length === 0 ? (
-              <div className="text-center text-slate-400 py-10">표시할 데이터가 없습니다.</div>
-            ) : (
-              filteredLedger.map((r) => {
-                const locked = isLockedRow(r);
-                return (
-                  <div
-                    key={r.id}
-                    className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden"
-                  >
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xl font-black text-slate-900">{r.guest_name}</span>
-                          <span
-                            className={[
-                              "text-[10px] px-2 py-0.5 rounded-full font-black uppercase",
-                              r.side === "groom"
-                                ? "bg-blue-50 text-blue-500"
-                                : r.side === "bride"
-                                ? "bg-pink-50 text-pink-500"
-                                : "bg-slate-50 text-slate-400",
-                            ].join(" ")}
-                          >
-                            {r.side === "groom" ? "Groom" : r.side === "bride" ? "Bride" : "Side"}
-                          </span>
-                          {locked && <span className="text-[10px] font-bold text-slate-300">자동</span>}
-                        </div>
-                        <p className="text-xs text-slate-400 font-medium">
-                          {(r.relationship || "관계 미입력") + " • " + (r.guest_phone || "연락처 없음")}
-                        </p>
-                      </div>
+                    <button
+                      onClick={clickExcelUpload}
+                      disabled={!ownerMemberId || excelUploading}
+                      className="px-5 py-3 bg-pink-500 text-white rounded-xl text-xs font-bold disabled:opacity-50"
+                    >
+                      {excelUploading ? "업로드 중..." : "엑셀 업로드"}
+                    </button>
 
-                      <div className="text-right">
-                        <p className="text-xl font-black text-slate-900">
-                          {(r.gift_amount ?? 0).toLocaleString()}원
-                        </p>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase">
-                          {r.gift_method === "cash" ? "CASH" : r.gift_method === "account" ? "ACCOUNT" : "UNKNOWN"}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* 참석 토글(기존 기능 유지) */}
-                    <div className="mb-3">
-                      <button
-                        type="button"
-                        disabled={locked}
-                        className={[
-                          "w-full py-3.5 rounded-2xl text-[11px] font-black transition-all border",
-                          r.attended
-                            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                            : "bg-slate-50 border-slate-100 text-slate-400",
-                          locked ? "opacity-50" : "",
-                        ].join(" ")}
-                        onClick={() => {
-                          const next = !(r.attended === true);
-                          patchLedger(r.id, {
-                            attended: next,
-                            attended_at: next ? new Date().toISOString() : null,
-                          });
-                          saveLedgerRow(getLatestLedgerRow(r.id));
-                        }}
-                      >
-                        참석 {r.attended ? "확인" : "미확인"}{" "}
-                        <span className="ml-2 text-[10px] font-bold text-slate-300">
-                          {r.attended_at ? new Date(r.attended_at).toLocaleString() : ""}
-                        </span>
-                      </button>
-                    </div>
-
-                    {/* 답례/인사 토글(기존 기능 유지) */}
-                    <div className="flex gap-2">
-                      <button
-                        disabled={locked}
-                        onClick={() => {
-                          const next = !r.return_given;
-                          patchLedger(r.id, { return_given: next });
-                          saveLedgerRow(getLatestLedgerRow(r.id));
-                        }}
-                        className={[
-                          "flex-1 py-3.5 rounded-2xl text-[11px] font-black transition-all",
-                          r.return_given
-                            ? "bg-pink-500 text-white shadow-md shadow-pink-100"
-                            : "bg-slate-50 text-slate-400",
-                          locked ? "opacity-50" : "",
-                        ].join(" ")}
-                      >
-                        답례 {r.return_given ? "완료" : "대기"}
-                      </button>
-
-                      <button
-                        disabled={locked}
-                        onClick={() => {
-                          const next = !r.thanks_done;
-                          patchLedger(r.id, { thanks_done: next });
-                          saveLedgerRow(getLatestLedgerRow(r.id));
-                        }}
-                        className={[
-                          "flex-1 py-3.5 rounded-2xl text-[11px] font-black transition-all",
-                          r.thanks_done
-                            ? "bg-pink-500 text-white shadow-md shadow-pink-100"
-                            : "bg-slate-50 text-slate-400",
-                          locked ? "opacity-50" : "",
-                        ].join(" ")}
-                      >
-                        인사 {r.thanks_done ? "완료" : "대기"}
-                      </button>
-                    </div>
-
-                    {/* 메모 편집(기존 기능 유지) */}
-                    <div className="mt-3">
-                      <input
-                        value={r.memo ?? ""}
-                        disabled={locked}
-                        onChange={(e) => patchLedger(r.id, { memo: e.target.value })}
-                        onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
-                        placeholder="메모"
-                        className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-xs text-slate-600 placeholder:text-slate-300 disabled:opacity-50"
-                      />
-                    </div>
-
-                    {/* 저장 버튼(기존 기능 유지) */}
-                    <div className="mt-3 flex justify-between items-center text-[11px]">
-                      <div className="text-slate-400">{sourceLabel(r.created_source ?? null)}</div>
-                      <button
-                        className="px-4 py-2 rounded-xl border text-[11px] font-bold hover:bg-slate-50 disabled:opacity-50"
-                        disabled={locked || savingId === r.id}
-                        onClick={() => saveLedgerRow(getLatestLedgerRow(r.id))}
-                      >
-                        {savingId === r.id ? "저장중" : locked ? "잠김" : "저장"}
-                      </button>
-                    </div>
+                    <button
+                      onClick={downloadLedgerSampleExcel}
+                      className="px-5 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold underline"
+                    >
+                      양식 받기
+                    </button>
                   </div>
-                );
-              })
-            )}
-          </div>
 
-          {/* [PC] 기존 테이블 기능 유지 + Gemini 스타일 */}
-          <div className="hidden md:block px-10 pb-10">
-            <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-50/50 border-b border-slate-50">
-                  <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    <th className="px-8 py-5">하객 정보</th>
-                    <th className="px-8 py-5">참석</th>
-                    <th className="px-8 py-5">축의금/방식</th>
-                    <th className="px-8 py-5 text-center">식권</th>
-                    <th className="px-8 py-5 text-center">상태</th>
-                    <th className="px-8 py-5">메모</th>
-                    <th className="px-8 py-5 text-right">저장</th>
-                  </tr>
-                </thead>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      handleExcelUpload(f);
+                    }}
+                  />
 
-                <tbody className="divide-y divide-slate-50">
-                  {ledgerLoading ? (
-                    <tr>
-                      <td colSpan={7} className="px-8 py-12 text-center text-slate-400">
-                        장부를 불러오는 중...
-                      </td>
-                    </tr>
-                  ) : filteredLedger.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-8 py-12 text-center text-slate-400">
-                        표시할 데이터가 없습니다.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredLedger.map((r) => {
-                      const locked = isLockedRow(r);
+                  {excelUploadResult && <div className="text-xs text-slate-500">{excelUploadResult}</div>}
 
-                      return (
-                        <tr key={r.id} className="hover:bg-slate-50/30 transition-colors">
-                          {/* 하객 정보(기존 편집 기능 유지: 이름/관계/연락처/구분 표시) */}
-                          <td className="px-8 py-5">
-                            <div className="flex items-center gap-3">
-                              <input
-                                className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs font-bold text-slate-900 w-44 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
-                                value={r.guest_name}
-                                disabled={locked}
-                                onChange={(e) => patchLedger(r.id, { guest_name: e.target.value })}
-                                onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
-                              />
-
-                              <span
-                                className={[
-                                  "text-[9px] px-2 py-0.5 rounded-full font-black uppercase",
-                                  r.side === "groom"
-                                    ? "bg-blue-50 text-blue-500"
-                                    : r.side === "bride"
-                                    ? "bg-pink-50 text-pink-500"
-                                    : "bg-slate-50 text-slate-400",
-                                ].join(" ")}
-                              >
-                                {r.side === "groom" ? "Groom" : r.side === "bride" ? "Bride" : "Side"}
-                              </span>
-                            </div>
-
-                            <div className="mt-2 flex gap-2">
-                              <input
-                                className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-32 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
-                                value={r.relationship ?? ""}
-                                disabled={locked}
-                                placeholder="관계"
-                                onChange={(e) => patchLedger(r.id, { relationship: e.target.value })}
-                                onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
-                              />
-                              <input
-                                className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-40 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
-                                value={r.guest_phone ?? ""}
-                                disabled={locked}
-                                placeholder="연락처"
-                                onChange={(e) => patchLedger(r.id, { guest_phone: formatKoreanMobile(e.target.value) })}
-                                onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
-                              />
-                            </div>
-
-                            <div className="mt-2 text-[10px] text-slate-400 font-bold uppercase">
-                              {sourceLabel(r.created_source ?? null)}
-                            </div>
-                          </td>
-
-                          {/* 참석(기존 토글 유지) */}
-                          <td className="px-8 py-5">
-                            <button
-                              type="button"
-                              disabled={locked}
-                              className={[
-                                "h-9 px-4 rounded-2xl text-[11px] font-black border transition-all",
-                                r.attended
-                                  ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                                  : "bg-white border-slate-200 text-slate-400",
-                                locked ? "opacity-50" : "",
-                              ].join(" ")}
-                              onClick={() => {
-                                const next = !(r.attended === true);
-                                patchLedger(r.id, {
-                                  attended: next,
-                                  attended_at: next ? new Date().toISOString() : null,
-                                });
-                                saveLedgerRow(getLatestLedgerRow(r.id));
-                              }}
-                            >
-                              {r.attended ? "참석" : "미참석"}
-                            </button>
-
-                            <div className="mt-2 text-[10px] text-slate-300 font-bold">
-                              {r.attended_at ? new Date(r.attended_at).toLocaleString() : ""}
-                            </div>
-                          </td>
-
-                          {/* 축의금/방식(기존 편집 유지: 금액) */}
-                          <td className="px-8 py-5">
-                            <input
-                              inputMode="numeric"
-                              className="w-32 text-right bg-slate-50 border-none rounded-xl px-3 py-2 text-xs font-black text-slate-900 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
-                              value={r.gift_amount ?? ""}
-                              disabled={locked}
-                              placeholder="0"
-                              onChange={(e) => {
-                                const v = onlyDigits(e.target.value);
-                                patchLedger(r.id, { gift_amount: v ? Number(v) : null });
-                              }}
-                              onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
-                            />
-                            <div className="mt-2 text-[10px] text-slate-400 font-bold uppercase">
-                              {r.gift_method === "cash"
-                                ? "CASH"
-                                : r.gift_method === "account"
-                                ? "ACCOUNT"
-                                : "UNKNOWN"}
-                            </div>
-                          </td>
-
-                          {/* 식권(기존 편집 유지) */}
-                          <td className="px-8 py-5 text-center">
-                            <input
-                              inputMode="numeric"
-                              className="w-14 text-center bg-slate-50 border-none rounded-xl py-2 text-xs font-bold focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
-                              value={r.ticket_count ?? 0}
-                              disabled={locked}
-                              onChange={(e) => {
-                                const v = onlyDigits(e.target.value);
-                                patchLedger(r.id, { ticket_count: v ? Number(v) : 0 });
-                              }}
-                              onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
-                            />
-                          </td>
-
-                          {/* 상태(기존 토글 유지: 답례/인사) */}
-                          <td className="px-8 py-5">
-                            <div className="flex gap-2 justify-center">
-                              <button
-                                disabled={locked}
-                                onClick={() => {
-                                  patchLedger(r.id, { return_given: !r.return_given });
-                                  saveLedgerRow(getLatestLedgerRow(r.id));
-                                }}
-                                className={[
-                                  "px-4 py-2 rounded-2xl text-[10px] font-black border transition-all",
-                                  r.return_given
-                                    ? "bg-pink-500 border-pink-500 text-white shadow-sm"
-                                    : "bg-white border-slate-200 text-slate-400 hover:border-slate-300",
-                                  locked ? "opacity-50" : "",
-                                ].join(" ")}
-                              >
-                                답례
-                              </button>
-
-                              <button
-                                disabled={locked}
-                                onClick={() => {
-                                  patchLedger(r.id, { thanks_done: !r.thanks_done });
-                                  saveLedgerRow(getLatestLedgerRow(r.id));
-                                }}
-                                className={[
-                                  "px-4 py-2 rounded-2xl text-[10px] font-black border transition-all",
-                                  r.thanks_done
-                                    ? "bg-pink-500 border-pink-500 text-white shadow-sm"
-                                    : "bg-white border-slate-200 text-slate-400 hover:border-slate-300",
-                                  locked ? "opacity-50" : "",
-                                ].join(" ")}
-                              >
-                                인사
-                              </button>
-                            </div>
-                          </td>
-
-                          {/* 메모(기존 편집 유지) */}
-                          <td className="px-8 py-5">
-                            <input
-                              value={r.memo ?? ""}
-                              disabled={locked}
-                              onChange={(e) => patchLedger(r.id, { memo: e.target.value })}
-                              onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
-                              placeholder="비고 입력..."
-                              className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 placeholder:text-slate-300 focus:ring-1 focus:ring-pink-500 w-full disabled:opacity-50"
-                            />
-                          </td>
-
-                          {/* 저장 버튼(기존 유지) */}
-                          <td className="px-8 py-5 text-right">
-                            <button
-                              className="px-4 py-2 rounded-2xl border text-[11px] font-bold hover:bg-slate-50 disabled:opacity-50"
-                              disabled={locked || savingId === r.id}
-                              onClick={() => saveLedgerRow(getLatestLedgerRow(r.id))}
-                            >
-                              {savingId === r.id ? "저장중" : locked ? "잠김" : "저장"}
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="mt-3 text-[11px] text-slate-400 leading-relaxed">
-              * 참석 여부는 <span className="font-bold text-slate-600">디지털방명록(QR) 스캔 기준</span>이며, 필요 시 수기/엑셀로 보정 가능합니다.
-              <br />* <span className="font-bold text-slate-600">은행 자동 반영 내역</span>은 수정할 수 없습니다.
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 5) 메시지 탭 (기존 페이지네이션 유지) */}
-      {tab === "messages" && (
-        <div className="px-6 md:px-10">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {messages.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((m) => (
-              <div
-                key={m.id}
-                className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 flex flex-col justify-between min-h-[220px] hover:shadow-md transition-shadow"
-              >
-                <p className="text-slate-600 text-[15px] leading-relaxed font-medium">“{m.body}”</p>
-                <div className="mt-8 flex justify-between items-end border-t border-slate-50 pt-5">
-                  <div>
-                    <span className="font-black text-slate-900 text-base block mb-0.5">
-                      {m.nickname || m.guest_name || "익명"}
-                    </span>
-                    <span className="text-[10px] text-slate-300 font-black uppercase tracking-widest">
-                      {m.relationship || "Guest"}
-                    </span>
+                  <div className="text-[11px] text-slate-400 leading-relaxed">
+                    * 업로드는 현재 <span className="font-bold text-slate-600">새 행 추가</span> 방식입니다. (중복 병합/매칭은 다음 단계에서 고도화)
+                    <br />* <span className="font-bold text-slate-600">은행 자동 반영</span> 내역은 항상 수정 불가입니다.
                   </div>
-                  <span
-                    className={[
-                      "text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-tighter",
-                      m.side === "groom"
-                        ? "bg-blue-50 text-blue-500"
-                        : m.side === "bride"
-                        ? "bg-pink-50 text-pink-500"
-                        : "bg-slate-50 text-slate-400",
-                    ].join(" ")}
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="text-sm font-black text-slate-900 uppercase tracking-tighter">Quick Add</h4>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      placeholder="이름 (필수)"
+                      disabled={!ownerMemberId}
+                      className="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                    />
+                    <input
+                      value={newPhone}
+                      onChange={(e) => setNewPhone(formatKoreanMobile(e.target.value))}
+                      placeholder="연락처"
+                      disabled={!ownerMemberId}
+                      className="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                    />
+                    <input
+                      value={newRel}
+                      onChange={(e) => setNewRel(e.target.value)}
+                      placeholder="관계"
+                      disabled={!ownerMemberId}
+                      className="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                    />
+                    <select
+                      value={newSide}
+                      onChange={(e) => setNewSide(e.target.value as any)}
+                      disabled={!ownerMemberId}
+                      className="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs disabled:opacity-50"
+                    >
+                      <option value="">구분 선택</option>
+                      <option value="groom">신랑측</option>
+                      <option value="bride">신부측</option>
+                    </select>
+
+                    <button
+                      onClick={addLedgerRow}
+                      disabled={!ownerMemberId}
+                      className="col-span-2 bg-slate-900 text-white rounded-xl text-xs font-bold py-3 active:scale-95 transition-transform disabled:opacity-50"
+                    >
+                      추가하기
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setExcelHelpOpen(false)}
+                    className="text-[11px] font-bold text-slate-400 underline"
                   >
-                    {m.side === "groom" ? "Groom side" : m.side === "bride" ? "Bride side" : "Side"}
-                  </span>
+                    닫기
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
+            )}
 
-          {/* 페이지네이션(기존 로직 유지) */}
-          <div className="mt-8 flex items-center justify-between">
+            {/* [모바일] 카드형 리스트 */}
+            <div className="md:hidden px-6 space-y-4">
+              {ledgerLoading ? (
+                <div className="text-center text-slate-400 py-10">장부를 불러오는 중...</div>
+              ) : filteredLedger.length === 0 ? (
+                <div className="text-center text-slate-400 py-10">표시할 데이터가 없습니다.</div>
+              ) : (
+                filteredLedger.map((r) => {
+                  const locked = isLockedRow(r);
+                  return (
+                    <div
+                      key={r.id}
+                      className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden"
+                    >
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xl font-black text-slate-900">{r.guest_name}</span>
+                            <span
+                              className={[
+                                "text-[10px] px-2 py-0.5 rounded-full font-black uppercase",
+                                r.side === "groom"
+                                  ? "bg-blue-50 text-blue-500"
+                                  : r.side === "bride"
+                                  ? "bg-pink-50 text-pink-500"
+                                  : "bg-slate-50 text-slate-400",
+                              ].join(" ")}
+                            >
+                              {r.side === "groom" ? "Groom" : r.side === "bride" ? "Bride" : "Side"}
+                            </span>
+                            {locked && <span className="text-[10px] font-bold text-slate-300">자동</span>}
+                          </div>
+                          <p className="text-xs text-slate-400 font-medium">
+                            {(r.relationship || "관계 미입력") + " • " + (r.guest_phone || "연락처 없음")}
+                          </p>
+                        </div>
+
+                        <div className="text-right">
+                          <p className="text-xl font-black text-slate-900">{(r.gift_amount ?? 0).toLocaleString()}원</p>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase">
+                            {r.gift_method === "cash" ? "CASH" : r.gift_method === "account" ? "ACCOUNT" : "UNKNOWN"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mb-3">
+                        <button
+                          type="button"
+                          disabled={locked}
+                          className={[
+                            "w-full py-3.5 rounded-2xl text-[11px] font-black transition-all border",
+                            r.attended
+                              ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                              : "bg-slate-50 border-slate-100 text-slate-400",
+                            locked ? "opacity-50" : "",
+                          ].join(" ")}
+                          onClick={() => {
+                            const next = !(r.attended === true);
+                            patchLedger(r.id, {
+                              attended: next,
+                              attended_at: next ? new Date().toISOString() : null,
+                            });
+                            saveLedgerRow(getLatestLedgerRow(r.id));
+                          }}
+                        >
+                          참석 {r.attended ? "확인" : "미확인"}{" "}
+                          <span className="ml-2 text-[10px] font-bold text-slate-300">
+                            {r.attended_at ? new Date(r.attended_at).toLocaleString() : ""}
+                          </span>
+                        </button>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          disabled={locked}
+                          onClick={() => {
+                            const next = !r.return_given;
+                            patchLedger(r.id, { return_given: next });
+                            saveLedgerRow(getLatestLedgerRow(r.id));
+                          }}
+                          className={[
+                            "flex-1 py-3.5 rounded-2xl text-[11px] font-black transition-all",
+                            r.return_given
+                              ? "bg-pink-500 text-white shadow-md shadow-pink-100"
+                              : "bg-slate-50 text-slate-400",
+                            locked ? "opacity-50" : "",
+                          ].join(" ")}
+                        >
+                          답례 {r.return_given ? "완료" : "대기"}
+                        </button>
+
+                        <button
+                          disabled={locked}
+                          onClick={() => {
+                            const next = !r.thanks_done;
+                            patchLedger(r.id, { thanks_done: next });
+                            saveLedgerRow(getLatestLedgerRow(r.id));
+                          }}
+                          className={[
+                            "flex-1 py-3.5 rounded-2xl text-[11px] font-black transition-all",
+                            r.thanks_done
+                              ? "bg-pink-500 text-white shadow-md shadow-pink-100"
+                              : "bg-slate-50 text-slate-400",
+                            locked ? "opacity-50" : "",
+                          ].join(" ")}
+                        >
+                          인사 {r.thanks_done ? "완료" : "대기"}
+                        </button>
+                      </div>
+
+                      <div className="mt-3">
+                        <input
+                          value={r.memo ?? ""}
+                          disabled={locked}
+                          onChange={(e) => patchLedger(r.id, { memo: e.target.value })}
+                          onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                          placeholder="메모"
+                          className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-xs text-slate-600 placeholder:text-slate-300 disabled:opacity-50"
+                        />
+                      </div>
+
+                      <div className="mt-3 flex justify-between items-center text-[11px]">
+                        <div className="text-slate-400">{sourceLabel(r.created_source ?? null)}</div>
+                        <button
+                          className="px-4 py-2 rounded-xl border text-[11px] font-bold hover:bg-slate-50 disabled:opacity-50"
+                          disabled={locked || savingId === r.id}
+                          onClick={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                        >
+                          {savingId === r.id ? "저장중" : locked ? "잠김" : "저장"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* [PC] 테이블 */}
+            <div className="hidden md:block px-10 pb-10">
+              <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-slate-50/50 border-b border-slate-50">
+                    <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <th className="px-8 py-5">하객 정보</th>
+                      <th className="px-8 py-5">참석</th>
+                      <th className="px-8 py-5">축의금/방식</th>
+                      <th className="px-8 py-5 text-center">식권</th>
+                      <th className="px-8 py-5 text-center">상태</th>
+                      <th className="px-8 py-5">메모</th>
+                      <th className="px-8 py-5 text-right">저장</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-50">
+                    {ledgerLoading ? (
+                      <tr>
+                        <td colSpan={7} className="px-8 py-12 text-center text-slate-400">
+                          장부를 불러오는 중...
+                        </td>
+                      </tr>
+                    ) : filteredLedger.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-8 py-12 text-center text-slate-400">
+                          표시할 데이터가 없습니다.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredLedger.map((r) => {
+                        const locked = isLockedRow(r);
+
+                        return (
+                          <tr key={r.id} className="hover:bg-slate-50/30 transition-colors">
+                            <td className="px-8 py-5">
+                              <div className="flex items-center gap-3">
+                                <input
+                                  className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs font-bold text-slate-900 w-44 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                                  value={r.guest_name}
+                                  disabled={locked}
+                                  onChange={(e) => patchLedger(r.id, { guest_name: e.target.value })}
+                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                />
+
+                                <span
+                                  className={[
+                                    "text-[9px] px-2 py-0.5 rounded-full font-black uppercase",
+                                    r.side === "groom"
+                                      ? "bg-blue-50 text-blue-500"
+                                      : r.side === "bride"
+                                      ? "bg-pink-50 text-pink-500"
+                                      : "bg-slate-50 text-slate-400",
+                                  ].join(" ")}
+                                >
+                                  {r.side === "groom" ? "Groom" : r.side === "bride" ? "Bride" : "Side"}
+                                </span>
+                              </div>
+
+                              <div className="mt-2 flex gap-2">
+                                <input
+                                  className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-32 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                                  value={r.relationship ?? ""}
+                                  disabled={locked}
+                                  placeholder="관계"
+                                  onChange={(e) => patchLedger(r.id, { relationship: e.target.value })}
+                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                />
+                                <input
+                                  className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-40 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                                  value={r.guest_phone ?? ""}
+                                  disabled={locked}
+                                  placeholder="연락처"
+                                  onChange={(e) => patchLedger(r.id, { guest_phone: formatKoreanMobile(e.target.value) })}
+                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                />
+                              </div>
+
+                              <div className="mt-2 text-[10px] text-slate-400 font-bold uppercase">
+                                {sourceLabel(r.created_source ?? null)}
+                              </div>
+                            </td>
+
+                            <td className="px-8 py-5">
+                              <button
+                                type="button"
+                                disabled={locked}
+                                className={[
+                                  "h-9 px-4 rounded-2xl text-[11px] font-black border transition-all",
+                                  r.attended
+                                    ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                                    : "bg-white border-slate-200 text-slate-400",
+                                  locked ? "opacity-50" : "",
+                                ].join(" ")}
+                                onClick={() => {
+                                  const next = !(r.attended === true);
+                                  patchLedger(r.id, {
+                                    attended: next,
+                                    attended_at: next ? new Date().toISOString() : null,
+                                  });
+                                  saveLedgerRow(getLatestLedgerRow(r.id));
+                                }}
+                              >
+                                {r.attended ? "참석" : "미참석"}
+                              </button>
+
+                              <div className="mt-2 text-[10px] text-slate-300 font-bold">
+                                {r.attended_at ? new Date(r.attended_at).toLocaleString() : ""}
+                              </div>
+                            </td>
+
+                            <td className="px-8 py-5">
+                              <input
+                                inputMode="numeric"
+                                className="w-32 text-right bg-slate-50 border-none rounded-xl px-3 py-2 text-xs font-black text-slate-900 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                                value={r.gift_amount ?? ""}
+                                disabled={locked}
+                                placeholder="0"
+                                onChange={(e) => {
+                                  const v = onlyDigits(e.target.value);
+                                  patchLedger(r.id, { gift_amount: v ? Number(v) : null });
+                                }}
+                                onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                              />
+                              <div className="mt-2 text-[10px] text-slate-400 font-bold uppercase">
+                                {r.gift_method === "cash" ? "CASH" : r.gift_method === "account" ? "ACCOUNT" : "UNKNOWN"}
+                              </div>
+                            </td>
+
+                            <td className="px-8 py-5 text-center">
+                              <input
+                                inputMode="numeric"
+                                className="w-14 text-center bg-slate-50 border-none rounded-xl py-2 text-xs font-bold focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                                value={r.ticket_count ?? 0}
+                                disabled={locked}
+                                onChange={(e) => {
+                                  const v = onlyDigits(e.target.value);
+                                  patchLedger(r.id, { ticket_count: v ? Number(v) : 0 });
+                                }}
+                                onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                              />
+                            </td>
+
+                            <td className="px-8 py-5">
+                              <div className="flex gap-2 justify-center">
+                                <button
+                                  disabled={locked}
+                                  onClick={() => {
+                                    patchLedger(r.id, { return_given: !r.return_given });
+                                    saveLedgerRow(getLatestLedgerRow(r.id));
+                                  }}
+                                  className={[
+                                    "px-4 py-2 rounded-2xl text-[10px] font-black border transition-all",
+                                    r.return_given
+                                      ? "bg-pink-500 border-pink-500 text-white shadow-sm"
+                                      : "bg-white border-slate-200 text-slate-400 hover:border-slate-300",
+                                    locked ? "opacity-50" : "",
+                                  ].join(" ")}
+                                >
+                                  답례
+                                </button>
+
+                                <button
+                                  disabled={locked}
+                                  onClick={() => {
+                                    patchLedger(r.id, { thanks_done: !r.thanks_done });
+                                    saveLedgerRow(getLatestLedgerRow(r.id));
+                                  }}
+                                  className={[
+                                    "px-4 py-2 rounded-2xl text-[10px] font-black border transition-all",
+                                    r.thanks_done
+                                      ? "bg-pink-500 border-pink-500 text-white shadow-sm"
+                                      : "bg-white border-slate-200 text-slate-400 hover:border-slate-300",
+                                    locked ? "opacity-50" : "",
+                                  ].join(" ")}
+                                >
+                                  인사
+                                </button>
+                              </div>
+                            </td>
+
+                            <td className="px-8 py-5">
+                              <input
+                                value={r.memo ?? ""}
+                                disabled={locked}
+                                onChange={(e) => patchLedger(r.id, { memo: e.target.value })}
+                                onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                placeholder="비고 입력..."
+                                className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 placeholder:text-slate-300 focus:ring-1 focus:ring-pink-500 w-full disabled:opacity-50"
+                              />
+                            </td>
+
+                            <td className="px-8 py-5 text-right">
+                              <button
+                                className="px-4 py-2 rounded-2xl border text-[11px] font-bold hover:bg-slate-50 disabled:opacity-50"
+                                disabled={locked || savingId === r.id}
+                                onClick={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                              >
+                                {savingId === r.id ? "저장중" : locked ? "잠김" : "저장"}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-3 text-[11px] text-slate-400 leading-relaxed">
+                * 참석 여부는 <span className="font-bold text-slate-600">디지털방명록(QR) 스캔 기준</span>이며, 필요 시 수기/엑셀로 보정 가능합니다.
+                <br />* <span className="font-bold text-slate-600">은행 자동 반영 내역</span>은 수정할 수 없습니다.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 5) 메시지 탭 */}
+        {tab === "messages" && (
+          <div className="px-6 md:px-10">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {messages.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((m) => (
+                <div
+                  key={m.id}
+                  className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 flex flex-col justify-between min-h-[220px] hover:shadow-md transition-shadow"
+                >
+                  <p className="text-slate-600 text-[15px] leading-relaxed font-medium">“{m.body}”</p>
+                  <div className="mt-8 flex justify-between items-end border-t border-slate-50 pt-5">
+                    <div>
+                      <span className="font-black text-slate-900 text-base block mb-0.5">
+                        {m.nickname || m.guest_name || "익명"}
+                      </span>
+                      <span className="text-[10px] text-slate-300 font-black uppercase tracking-widest">
+                        {m.relationship || "Guest"}
+                      </span>
+                    </div>
+                    <span
+                      className={[
+                        "text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-tighter",
+                        m.side === "groom"
+                          ? "bg-blue-50 text-blue-500"
+                          : m.side === "bride"
+                          ? "bg-pink-50 text-pink-500"
+                          : "bg-slate-50 text-slate-400",
+                      ].join(" ")}
+                    >
+                      {m.side === "groom" ? "Groom side" : m.side === "bride" ? "Bride side" : "Side"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8 flex items-center justify-between">
+              <button
+                className="px-5 py-3 rounded-2xl border text-xs font-bold bg-white hover:bg-slate-50 disabled:opacity-50"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+              >
+                이전
+              </button>
+              <div className="text-xs text-slate-400 font-bold">page {page}</div>
+              <button
+                className="px-5 py-3 rounded-2xl border text-xs font-bold bg-white hover:bg-slate-50 disabled:opacity-50"
+                onClick={() => setPage((p) => p + 1)}
+                disabled={page * PAGE_SIZE >= messages.length}
+              >
+                다음
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 모바일 하단 플로팅 바 */}
+      {tab === "ledger" && (
+        <div className="md:hidden fixed bottom-6 left-6 right-6 bg-slate-900/90 backdrop-blur-xl rounded-[2rem] px-8 py-5 flex justify-between items-center z-50 shadow-2xl shadow-slate-400">
+          <div>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total</p>
+            <p className="text-xl font-black text-white">{ledgerStats.totalAmount.toLocaleString()}원</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="text-[9px] font-black text-pink-400 uppercase tracking-widest mb-1">Pending</p>
+              <p className="text-sm font-black text-white">{ledgerStats.thanksPending}명</p>
+            </div>
             <button
-              className="px-5 py-3 rounded-2xl border text-xs font-bold bg-white hover:bg-slate-50 disabled:opacity-50"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
+              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+              className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-white"
+              aria-label="scroll to top"
             >
-              이전
-            </button>
-            <div className="text-xs text-slate-400 font-bold">page {page}</div>
-            <button
-              className="px-5 py-3 rounded-2xl border text-xs font-bold bg-white hover:bg-slate-50 disabled:opacity-50"
-              onClick={() => setPage((p) => p + 1)}
-              disabled={page * PAGE_SIZE >= messages.length}
-            >
-              다음
+              ↑
             </button>
           </div>
         </div>
       )}
     </div>
-
-    {/* 모바일 하단 플로팅 바 */}
-    {tab === "ledger" && (
-      <div className="md:hidden fixed bottom-6 left-6 right-6 bg-slate-900/90 backdrop-blur-xl rounded-[2rem] px-8 py-5 flex justify-between items-center z-50 shadow-2xl shadow-slate-400">
-        <div>
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total</p>
-          <p className="text-xl font-black text-white">{ledgerStats.totalAmount.toLocaleString()}원</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <p className="text-[9px] font-black text-pink-400 uppercase tracking-widest mb-1">Pending</p>
-            <p className="text-sm font-black text-white">{ledgerStats.thanksPending}명</p>
-          </div>
-          <button
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-            className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-white"
-            aria-label="scroll to top"
-          >
-            ↑
-          </button>
-        </div>
-      </div>
-    )}
-  </div>
-);
+  );
 }
