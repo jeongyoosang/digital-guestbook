@@ -179,17 +179,18 @@ export default function ResultPage() {
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
 
-  // ✅ 최신 ledger 스냅샷을 저장해서 stale row 저장 버그 방지
-  const ledgerRef = useRef<LedgerRow[]>([]);
+  // ✅ (중요) 최신 ledger row를 ref에 보관 (stale 방지) — 하나만 유지
+  const ledgerRef = useRef<Record<string, LedgerRow>>({});
   useEffect(() => {
-    ledgerRef.current = ledger;
+    const map: Record<string, LedgerRow> = {};
+    for (const r of ledger) map[r.id] = r;
+    ledgerRef.current = map;
   }, [ledger]);
 
   // 장부 필터/검색
   const [q, setQ] = useState("");
   const [onlyAttended, setOnlyAttended] = useState(false);
   const [onlyThanksPending, setOnlyThanksPending] = useState(false);
-
 
   // 장부 수기 추가
   const [newName, setNewName] = useState("");
@@ -439,51 +440,55 @@ export default function ResultPage() {
   /* ------------------ 장부: 업데이트/추가 ------------------ */
   function patchLedger(id: string, nextRow: LedgerRow) {
     setLedger((prev) => prev.map((r) => (r.id === id ? nextRow : r)));
+    // ✅ patch 시점에 ref도 같이 업데이트 (stale 방지)
+    ledgerRef.current[id] = nextRow;
   }
 
   function isLockedRow(row: LedgerRow) {
     return (row.created_source ?? "manual") === "scrape";
   }
 
-  async function saveLedgerRow(row: LedgerRow) {
-    // ✅ stale 방지: 현재 ledger에서 최신 row를 찾아 사용
-    const latest = ledgerRef.current.find((r) => r.id === row.id) ?? row;
+ // ✅ onBlur / 버튼 클릭에서 “row 그대로” 받아서 저장 (stale 완전 차단)
+// - 기존처럼 id(string)로도 호출 가능
+async function saveLedgerRow(rowOrId: string | LedgerRow) {
+  const row: LedgerRow | undefined =
+    typeof rowOrId === "string" ? ledgerRef.current[rowOrId] : rowOrId;
 
-    if (isLockedRow(latest)) return;
+  if (!row) return;
+  if (isLockedRow(row)) return;
 
-    setSavingId(latest.id);
+  // ref도 즉시 동기화 (최신값 보장)
+  ledgerRef.current[row.id] = row;
 
-    const payload = {
-      side: latest.side,
-      guest_name: latest.guest_name,
-      relationship: latest.relationship,
-      guest_phone: latest.guest_phone,
+  setSavingId(row.id);
 
-      attended: latest.attended,
-      attended_at: latest.attended_at,
+  const payload = {
+    side: row.side,
+    guest_name: row.guest_name,
+    relationship: row.relationship,
+    guest_phone: row.guest_phone,
 
-      gift_amount: latest.gift_amount,
-      gift_method: latest.gift_method,
+    attended: row.attended,
+    attended_at: row.attended_at,
 
-      ticket_count: latest.ticket_count,
-      return_given: latest.return_given,
-      thanks_done: latest.thanks_done,
-      memo: latest.memo,
-    };
+    gift_amount: row.gift_amount,
+    gift_method: row.gift_method,
 
-    const { error } = await supabase
-      .from("event_ledger_entries")
-      .update(payload)
-      .eq("id", latest.id);
+    ticket_count: row.ticket_count,
+    return_given: row.return_given,
+    thanks_done: row.thanks_done,
+    memo: row.memo,
+  };
 
-    setSavingId(null);
+  const { error } = await supabase.from("event_ledger_entries").update(payload).eq("id", row.id);
 
-    if (error) {
-      console.error(error);
-      alert(`저장 실패: ${error.message}`);
-      return;
-    }
+  setSavingId(null);
+
+  if (error) {
+    console.error(error);
+    alert(`저장 실패: ${error.message}`);
   }
+}
 
 
   async function addLedgerRow() {

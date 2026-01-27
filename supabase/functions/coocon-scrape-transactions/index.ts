@@ -24,10 +24,12 @@ type NormalizedTx = {
 };
 
 // ✅ CORS (브라우저에서 functions/v1 호출 시 필수)
-const corsHeaders = {
+const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Max-Age": "86400",
+  "Vary": "Origin",
 };
 
 function json(data: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
@@ -80,13 +82,14 @@ async function makeTxHash(input: {
   return sha256Hex(key);
 }
 
+// ✅ Preflight는 무조건 200으로 통과시켜야 함
 Deno.serve(async (req) => {
-  // ✅ Preflight (이게 없으면 브라우저에서 "Failed to fetch" / CORS 발생)
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { status: 200, headers: corsHeaders });
   }
 
   try {
+
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
