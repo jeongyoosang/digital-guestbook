@@ -168,9 +168,8 @@ export default function ResultPage() {
   const [scraping, setScraping] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<string | null>(null);
 
+  // 탭/페이지
   const [page, setPage] = useState(1);
-
-  // 탭
   const [tab, setTab] = useState<TabKey>("ledger");
 
   // 장부(원장)
@@ -180,10 +179,17 @@ export default function ResultPage() {
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
 
+  // ✅ 최신 ledger 스냅샷을 저장해서 stale row 저장 버그 방지
+  const ledgerRef = useRef<LedgerRow[]>([]);
+  useEffect(() => {
+    ledgerRef.current = ledger;
+  }, [ledger]);
+
   // 장부 필터/검색
   const [q, setQ] = useState("");
   const [onlyAttended, setOnlyAttended] = useState(false);
   const [onlyThanksPending, setOnlyThanksPending] = useState(false);
+
 
   // 장부 수기 추가
   const [newName, setNewName] = useState("");
@@ -207,6 +213,7 @@ export default function ResultPage() {
     return new Date().getTime() >= new Date(cutoffIso).getTime();
   }, [cutoffIso]);
 
+  // ✅ 종료 이후에도 버튼은 눌리게 두고, 클릭 시 안내만(UX)
   const canRunScrape = !scrapeLocked;
 
   /* ------------------ 내 member id 찾기 ------------------ */
@@ -235,6 +242,17 @@ export default function ResultPage() {
 
     setOwnerLabel("내");
     return null;
+  }
+
+  async function refreshTxCount() {
+    if (!eventId) return;
+    const { count, error } = await supabase
+      .from("event_scrape_transactions")
+      .select("*", { count: "exact", head: true })
+      .eq("event_id", eventId)
+      .eq("is_reflected", true);
+
+    if (!error) setTxCount(count ?? 0);
   }
 
   /* ------------------ 데이터 로드 ------------------ */
@@ -289,13 +307,7 @@ export default function ResultPage() {
         if (acc?.id) setScrapeAccountId(acc.id);
 
         // 스크래핑 반영건 수
-        const { count } = await supabase
-          .from("event_scrape_transactions")
-          .select("*", { count: "exact", head: true })
-          .eq("event_id", eventId)
-          .eq("is_reflected", true);
-
-        setTxCount(count ?? 0);
+        await refreshTxCount();
 
         // owner_member_id
         const memberId = await resolveOwnerMemberId();
@@ -352,7 +364,7 @@ export default function ResultPage() {
   const handleGenerateReport = async () => {
     if (!eventId) return;
 
-    // 컷오프 잠금
+    // 컷오프 잠금: 종료 이후엔 안내만(버튼은 눌리게)
     if (!canRunScrape) {
       setScrapeResult("예식 종료 이후에는 은행 자동 반영(갱신)이 잠깁니다. (수기/엑셀 입력은 계속 가능)");
       return;
@@ -371,7 +383,8 @@ export default function ResultPage() {
         ...(endDate ? { endDate } : {}),
       });
 
-      // ✅ App.tsx에 /coocon-scrape 라우트가 있어야 함
+      // ✅ App.tsx 라우트와 반드시 일치시켜야 함!
+      // 현재는 /coocon/scrape 로 통일
       navigate(`/coocon/scrape?${qs.toString()}`);
       return;
     }
@@ -411,7 +424,9 @@ export default function ResultPage() {
       if (!res.ok) throw new Error(json?.error ?? "조회 실패");
 
       const inserted = json.inserted ?? 0;
-      setTxCount((prev) => prev + inserted);
+
+      // ✅ 안전: count 재조회
+      await refreshTxCount();
 
       setScrapeResult(`은행 내역 갱신 완료 (${inserted}건 반영)`);
     } catch (e: any) {
@@ -422,12 +437,8 @@ export default function ResultPage() {
   };
 
   /* ------------------ 장부: 업데이트/추가 ------------------ */
-  function patchLedger(id: string, patch: Partial<LedgerRow>) {
-    setLedger((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  }
-
-  function getLatestLedgerRow(id: string) {
-    return ledger.find((r) => r.id === id)!;
+  function patchLedger(id: string, nextRow: LedgerRow) {
+    setLedger((prev) => prev.map((r) => (r.id === id ? nextRow : r)));
   }
 
   function isLockedRow(row: LedgerRow) {
@@ -435,29 +446,35 @@ export default function ResultPage() {
   }
 
   async function saveLedgerRow(row: LedgerRow) {
-    if (isLockedRow(row)) return;
+    // ✅ stale 방지: 현재 ledger에서 최신 row를 찾아 사용
+    const latest = ledgerRef.current.find((r) => r.id === row.id) ?? row;
 
-    setSavingId(row.id);
+    if (isLockedRow(latest)) return;
+
+    setSavingId(latest.id);
 
     const payload = {
-      side: row.side,
-      guest_name: row.guest_name,
-      relationship: row.relationship,
-      guest_phone: row.guest_phone,
+      side: latest.side,
+      guest_name: latest.guest_name,
+      relationship: latest.relationship,
+      guest_phone: latest.guest_phone,
 
-      attended: row.attended,
-      attended_at: row.attended_at,
+      attended: latest.attended,
+      attended_at: latest.attended_at,
 
-      gift_amount: row.gift_amount,
-      gift_method: row.gift_method,
+      gift_amount: latest.gift_amount,
+      gift_method: latest.gift_method,
 
-      ticket_count: row.ticket_count,
-      return_given: row.return_given,
-      thanks_done: row.thanks_done,
-      memo: row.memo,
+      ticket_count: latest.ticket_count,
+      return_given: latest.return_given,
+      thanks_done: latest.thanks_done,
+      memo: latest.memo,
     };
 
-    const { error } = await supabase.from("event_ledger_entries").update(payload).eq("id", row.id);
+    const { error } = await supabase
+      .from("event_ledger_entries")
+      .update(payload)
+      .eq("id", latest.id);
 
     setSavingId(null);
 
@@ -467,6 +484,7 @@ export default function ResultPage() {
       return;
     }
   }
+
 
   async function addLedgerRow() {
     if (!eventId || !ownerMemberId) return;
@@ -787,7 +805,7 @@ export default function ResultPage() {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={handleGenerateReport}
-              disabled={scraping || !canRunScrape}
+              disabled={scraping}
               className="flex-1 md:flex-none px-6 py-3.5 bg-slate-900 text-white rounded-2xl text-sm font-bold shadow-xl shadow-slate-200 active:scale-95 transition-all disabled:opacity-50"
               title={!canRunScrape ? "예식 종료 이후에는 자동 반영이 잠깁니다." : ""}
             >
@@ -850,7 +868,10 @@ export default function ResultPage() {
         {/* 3) 탭 네비게이션 */}
         <div className="px-6 md:px-10 flex gap-3 mb-8">
           <button
-            onClick={() => setTab("ledger")}
+            onClick={() => {
+              setTab("ledger");
+              setPage(1);
+            }}
             className={[
               "px-8 py-3.5 rounded-2xl text-sm font-bold transition-all",
               tab === "ledger"
@@ -861,7 +882,10 @@ export default function ResultPage() {
             장부 관리
           </button>
           <button
-            onClick={() => setTab("messages")}
+            onClick={() => {
+              setTab("messages");
+              setPage(1);
+            }}
             className={[
               "px-8 py-3.5 rounded-2xl text-sm font-bold transition-all",
               tab === "messages"
@@ -1110,12 +1134,14 @@ export default function ResultPage() {
                             locked ? "opacity-50" : "",
                           ].join(" ")}
                           onClick={() => {
-                            const next = !(r.attended === true);
-                            patchLedger(r.id, {
-                              attended: next,
-                              attended_at: next ? new Date().toISOString() : null,
-                            });
-                            saveLedgerRow(getLatestLedgerRow(r.id));
+                            const nextAttended = !(r.attended === true);
+                            const nextRow: LedgerRow = {
+                              ...r,
+                              attended: nextAttended,
+                              attended_at: nextAttended ? new Date().toISOString() : null,
+                            };
+                            patchLedger(r.id, nextRow);
+                            saveLedgerRow(nextRow);
                           }}
                         >
                           참석 {r.attended ? "확인" : "미확인"}{" "}
@@ -1129,9 +1155,9 @@ export default function ResultPage() {
                         <button
                           disabled={locked}
                           onClick={() => {
-                            const next = !r.return_given;
-                            patchLedger(r.id, { return_given: next });
-                            saveLedgerRow(getLatestLedgerRow(r.id));
+                            const nextRow: LedgerRow = { ...r, return_given: !r.return_given };
+                            patchLedger(r.id, nextRow);
+                            saveLedgerRow(nextRow);
                           }}
                           className={[
                             "flex-1 py-3.5 rounded-2xl text-[11px] font-black transition-all",
@@ -1145,9 +1171,9 @@ export default function ResultPage() {
                         <button
                           disabled={locked}
                           onClick={() => {
-                            const next = !r.thanks_done;
-                            patchLedger(r.id, { thanks_done: next });
-                            saveLedgerRow(getLatestLedgerRow(r.id));
+                            const nextRow: LedgerRow = { ...r, thanks_done: !r.thanks_done };
+                            patchLedger(r.id, nextRow);
+                            saveLedgerRow(nextRow);
                           }}
                           className={[
                             "flex-1 py-3.5 rounded-2xl text-[11px] font-black transition-all",
@@ -1163,8 +1189,11 @@ export default function ResultPage() {
                         <input
                           value={r.memo ?? ""}
                           disabled={locked}
-                          onChange={(e) => patchLedger(r.id, { memo: e.target.value })}
-                          onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                          onChange={(e) => {
+                            const nextRow: LedgerRow = { ...r, memo: e.target.value };
+                            patchLedger(r.id, nextRow);
+                          }}
+                          onBlur={() => saveLedgerRow({ ...r, memo: r.memo ?? "" })}
                           placeholder="메모"
                           className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-xs text-slate-600 placeholder:text-slate-300 disabled:opacity-50"
                         />
@@ -1175,7 +1204,7 @@ export default function ResultPage() {
                         <button
                           className="px-4 py-2 rounded-xl border text-[11px] font-bold hover:bg-slate-50 disabled:opacity-50"
                           disabled={locked || savingId === r.id}
-                          onClick={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                          onClick={() => saveLedgerRow(r)}
                         >
                           {savingId === r.id ? "저장중" : locked ? "잠김" : "저장"}
                         </button>
@@ -1227,8 +1256,11 @@ export default function ResultPage() {
                                   className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs font-bold text-slate-900 w-44 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
                                   value={r.guest_name}
                                   disabled={locked}
-                                  onChange={(e) => patchLedger(r.id, { guest_name: e.target.value })}
-                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                  onChange={(e) => {
+                                    const nextRow: LedgerRow = { ...r, guest_name: e.target.value };
+                                    patchLedger(r.id, nextRow);
+                                  }}
+                                  onBlur={() => saveLedgerRow(r)}
                                 />
 
                                 <span
@@ -1251,16 +1283,25 @@ export default function ResultPage() {
                                   value={r.relationship ?? ""}
                                   disabled={locked}
                                   placeholder="관계"
-                                  onChange={(e) => patchLedger(r.id, { relationship: e.target.value })}
-                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                  onChange={(e) => {
+                                    const nextRow: LedgerRow = { ...r, relationship: e.target.value };
+                                    patchLedger(r.id, nextRow);
+                                  }}
+                                  onBlur={() => saveLedgerRow(r)}
                                 />
                                 <input
                                   className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-40 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
                                   value={r.guest_phone ?? ""}
                                   disabled={locked}
                                   placeholder="연락처"
-                                  onChange={(e) => patchLedger(r.id, { guest_phone: formatKoreanMobile(e.target.value) })}
-                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                  onChange={(e) => {
+                                    const nextRow: LedgerRow = {
+                                      ...r,
+                                      guest_phone: formatKoreanMobile(e.target.value),
+                                    };
+                                    patchLedger(r.id, nextRow);
+                                  }}
+                                  onBlur={() => saveLedgerRow(r)}
                                 />
                               </div>
 
@@ -1275,16 +1316,20 @@ export default function ResultPage() {
                                 disabled={locked}
                                 className={[
                                   "h-9 px-4 rounded-2xl text-[11px] font-black border transition-all",
-                                  r.attended ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-white border-slate-200 text-slate-400",
+                                  r.attended
+                                    ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                                    : "bg-white border-slate-200 text-slate-400",
                                   locked ? "opacity-50" : "",
                                 ].join(" ")}
                                 onClick={() => {
-                                  const next = !(r.attended === true);
-                                  patchLedger(r.id, {
-                                    attended: next,
-                                    attended_at: next ? new Date().toISOString() : null,
-                                  });
-                                  saveLedgerRow(getLatestLedgerRow(r.id));
+                                  const nextAttended = !(r.attended === true);
+                                  const nextRow: LedgerRow = {
+                                    ...r,
+                                    attended: nextAttended,
+                                    attended_at: nextAttended ? new Date().toISOString() : null,
+                                  };
+                                  patchLedger(r.id, nextRow);
+                                  saveLedgerRow(nextRow);
                                 }}
                               >
                                 {r.attended ? "참석" : "미참석"}
@@ -1296,31 +1341,29 @@ export default function ResultPage() {
                             </td>
 
                             <td className="px-8 py-5">
-                             <input
-                              inputMode="numeric"
-                              className="w-32 text-right bg-slate-50 border-none rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
-                              value={r.gift_amount ?? ""}
-                              disabled={locked}
-                              placeholder="금액"
-                              onChange={(e) =>
-                                patchLedger(r.id, {
-                                  gift_amount: safeNumber(e.target.value),
-                                })
-                              }
-                              onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
-                            />
+                              <input
+                                inputMode="numeric"
+                                className="w-32 text-right bg-slate-50 border-none rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                                value={r.gift_amount ?? ""}
+                                disabled={locked}
+                                placeholder="금액"
+                                onChange={(e) => {
+                                  const nextRow: LedgerRow = { ...r, gift_amount: safeNumber(e.target.value) };
+                                  patchLedger(r.id, nextRow);
+                                }}
+                                onBlur={() => saveLedgerRow(r)}
+                              />
 
                               <div className="mt-2 flex gap-2">
                                 <select
                                   className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-32 disabled:opacity-50"
                                   value={r.gift_method}
                                   disabled={locked}
-                                  onChange={(e) =>
-                                    patchLedger(r.id, {
-                                      gift_method: e.target.value as GiftMethod,
-                                    })
-                                  }
-                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                  onChange={(e) => {
+                                    const nextRow: LedgerRow = { ...r, gift_method: e.target.value as GiftMethod };
+                                    patchLedger(r.id, nextRow);
+                                  }}
+                                  onBlur={() => saveLedgerRow(r)}
                                 >
                                   <option value="unknown">미지정</option>
                                   <option value="account">계좌</option>
@@ -1331,12 +1374,14 @@ export default function ResultPage() {
                                   className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-32 disabled:opacity-50"
                                   value={r.side ?? ""}
                                   disabled={locked}
-                                  onChange={(e) =>
-                                    patchLedger(r.id, {
+                                  onChange={(e) => {
+                                    const nextRow: LedgerRow = {
+                                      ...r,
                                       side: (e.target.value || null) as any,
-                                    })
-                                  }
-                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                    };
+                                    patchLedger(r.id, nextRow);
+                                  }}
+                                  onBlur={() => saveLedgerRow(r)}
                                 >
                                   <option value="">구분 없음</option>
                                   <option value="groom">신랑측</option>
@@ -1351,12 +1396,14 @@ export default function ResultPage() {
                                 className="w-16 text-center bg-slate-50 border-none rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
                                 value={r.ticket_count ?? 0}
                                 disabled={locked}
-                                onChange={(e) =>
-                                  patchLedger(r.id, {
+                                onChange={(e) => {
+                                  const nextRow: LedgerRow = {
+                                    ...r,
                                     ticket_count: safeNumber(e.target.value) ?? 0,
-                                  })
-                                }
-                                onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                  };
+                                  patchLedger(r.id, nextRow);
+                                }}
+                                onBlur={() => saveLedgerRow(r)}
                               />
                             </td>
 
@@ -1365,9 +1412,9 @@ export default function ResultPage() {
                                 <button
                                   disabled={locked}
                                   onClick={() => {
-                                    const next = !r.return_given;
-                                    patchLedger(r.id, { return_given: next });
-                                    saveLedgerRow(getLatestLedgerRow(r.id));
+                                    const nextRow: LedgerRow = { ...r, return_given: !r.return_given };
+                                    patchLedger(r.id, nextRow);
+                                    saveLedgerRow(nextRow);
                                   }}
                                   className={[
                                     "h-9 px-4 rounded-2xl text-[11px] font-black transition-all",
@@ -1383,9 +1430,9 @@ export default function ResultPage() {
                                 <button
                                   disabled={locked}
                                   onClick={() => {
-                                    const next = !r.thanks_done;
-                                    patchLedger(r.id, { thanks_done: next });
-                                    saveLedgerRow(getLatestLedgerRow(r.id));
+                                    const nextRow: LedgerRow = { ...r, thanks_done: !r.thanks_done };
+                                    patchLedger(r.id, nextRow);
+                                    saveLedgerRow(nextRow);
                                   }}
                                   className={[
                                     "h-9 px-4 rounded-2xl text-[11px] font-black transition-all",
@@ -1399,19 +1446,18 @@ export default function ResultPage() {
                                 </button>
                               </div>
 
-                              {locked && (
-                                <div className="mt-2 text-[10px] text-slate-300 font-bold">
-                                  자동 반영 내역은 잠김
-                                </div>
-                              )}
+                              {locked && <div className="mt-2 text-[10px] text-slate-300 font-bold">자동 반영 내역은 잠김</div>}
                             </td>
 
                             <td className="px-8 py-5">
                               <input
                                 value={r.memo ?? ""}
                                 disabled={locked}
-                                onChange={(e) => patchLedger(r.id, { memo: e.target.value })}
-                                onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                onChange={(e) => {
+                                  const nextRow: LedgerRow = { ...r, memo: e.target.value };
+                                  patchLedger(r.id, nextRow);
+                                }}
+                                onBlur={() => saveLedgerRow(r)}
                                 placeholder="메모"
                                 className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-xs text-slate-600 placeholder:text-slate-300 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
                               />
@@ -1421,7 +1467,7 @@ export default function ResultPage() {
                               <button
                                 className="h-9 px-4 rounded-2xl border text-[11px] font-black hover:bg-slate-50 disabled:opacity-50"
                                 disabled={locked || savingId === r.id}
-                                onClick={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                onClick={() => saveLedgerRow(r)}
                               >
                                 {savingId === r.id ? "저장중" : locked ? "잠김" : "저장"}
                               </button>
@@ -1450,13 +1496,9 @@ export default function ResultPage() {
               <div className="flex items-end justify-between gap-4 mb-6">
                 <div>
                   <h2 className="text-lg md:text-xl font-black text-slate-900">축하 메시지</h2>
-                  <p className="text-xs text-slate-400 mt-1">
-                    하객이 남긴 메시지를 시간순으로 확인할 수 있어요.
-                  </p>
+                  <p className="text-xs text-slate-400 mt-1">하객이 남긴 메시지를 시간순으로 확인할 수 있어요.</p>
                 </div>
-                <div className="text-xs font-bold text-slate-400">
-                  총 {messages.length.toLocaleString()}개
-                </div>
+                <div className="text-xs font-bold text-slate-400">총 {messages.length.toLocaleString()}개</div>
               </div>
 
               {messages.length === 0 ? (
@@ -1472,15 +1514,10 @@ export default function ResultPage() {
                     <>
                       <div className="space-y-3">
                         {slice.map((m) => (
-                          <div
-                            key={m.id}
-                            className="p-5 rounded-[2rem] border border-slate-100 bg-slate-50/40"
-                          >
+                          <div key={m.id} className="p-5 rounded-[2rem] border border-slate-100 bg-slate-50/40">
                             <div className="flex items-center justify-between gap-3">
                               <div className="flex items-center gap-2">
-                                <span className="text-sm font-black text-slate-900">
-                                  {m.guest_name || m.nickname || "익명"}
-                                </span>
+                                <span className="text-sm font-black text-slate-900">{m.guest_name || m.nickname || "익명"}</span>
                                 <span className="text-[10px] font-bold text-slate-400">
                                   {m.relationship ? `(${m.relationship})` : ""}
                                 </span>
@@ -1504,9 +1541,7 @@ export default function ResultPage() {
                               </div>
                             </div>
 
-                            <div className="mt-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-                              {m.body}
-                            </div>
+                            <div className="mt-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{m.body}</div>
                           </div>
                         ))}
                       </div>
@@ -1521,7 +1556,7 @@ export default function ResultPage() {
                           이전
                         </button>
 
-                        <div className="text-xs font-bold text-slate-400">
+                                                <div className="text-xs font-black text-slate-500">
                           {safePage} / {totalPages}
                         </div>
 
@@ -1540,25 +1575,8 @@ export default function ResultPage() {
             </div>
           </div>
         )}
-
-        {/* 하단 네비 (모바일에서 유용) */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur border-t border-slate-100">
-          <div className="max-w-7xl mx-auto px-4 py-3 flex gap-2">
-            <button
-              onClick={() => navigate("/app")}
-              className="flex-1 py-3 rounded-2xl bg-slate-900 text-white text-xs font-black"
-            >
-              이벤트 홈
-            </button>
-            <button
-              onClick={() => navigate(`/app/event/${eventId}/settings`)}
-              className="flex-1 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-xs font-black"
-            >
-              예식 설정
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );
 }
+
