@@ -137,15 +137,11 @@ function safeNumber(v: any): number | null {
 }
 
 function yyyymmdd(dateStr?: string | null) {
-  if (!dateStr) {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const da = String(d.getDate()).padStart(2, "0");
-    return `${y}${m}${da}`;
-  }
-  const [y, m, d] = dateStr.split("-");
-  return `${y}${m}${d}`;
+  const d = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const da = String(d.getDate()).padStart(2, "0");
+  return `${y}${m}${da}`;
 }
 
 // ✅ 예식 날짜 + 시각을 “로컬 시간”으로 합쳐서 Date 만들기
@@ -166,71 +162,52 @@ export default function ResultPage() {
   const [settings, setSettings] = useState<EventSettingsLite | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ 쿠콘 스크래핑 상태
+  // 축의금(스크래핑)
   const [scrapeAccountId, setScrapeAccountId] = useState<string | null>(null);
   const [txCount, setTxCount] = useState<number>(0);
   const [scraping, setScraping] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<string | null>(null);
 
-  // ✅ 페이징/탭
   const [page, setPage] = useState(1);
+
+  // 탭
   const [tab, setTab] = useState<TabKey>("ledger");
 
-  // ✅ 장부
+  // 장부(원장)
   const [ownerMemberId, setOwnerMemberId] = useState<string | null>(null);
   const [ownerLabel, setOwnerLabel] = useState<string>("내");
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
 
-  // ✅ 장부 필터/검색
+  // 장부 필터/검색
   const [q, setQ] = useState("");
   const [onlyAttended, setOnlyAttended] = useState(false);
   const [onlyThanksPending, setOnlyThanksPending] = useState(false);
 
-  // ✅ 장부 수기 추가
+  // 장부 수기 추가
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newRel, setNewRel] = useState("");
   const [newSide, setNewSide] = useState<"" | "groom" | "bride">("");
 
-  // ✅ Excel UI
+  // Excel UI
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [excelHelpOpen, setExcelHelpOpen] = useState(false);
   const [excelUploading, setExcelUploading] = useState(false);
   const [excelUploadResult, setExcelUploadResult] = useState<string | null>(null);
 
-  // ✅ 컷오프(예식 종료 시각) = 이후부터 은행 자동 반영 잠금
+  // ✅ 컷오프(예식 종료 시각) = 이후부터 스크래핑 잠금
   const cutoffIso = useMemo(() => {
     return combineLocalDateTimeToIso(settings?.ceremony_date, settings?.ceremony_end_time);
   }, [settings?.ceremony_date, settings?.ceremony_end_time]);
 
   const scrapeLocked = useMemo(() => {
-    if (!cutoffIso) return false; // 시간이 없으면 잠그지 않음(운영상 안전)
+    if (!cutoffIso) return false; // 시간이 없으면 일단 잠그지 않음(운영상 안전)
     return new Date().getTime() >= new Date(cutoffIso).getTime();
   }, [cutoffIso]);
 
   const canRunScrape = !scrapeLocked;
-
-  const cutoffText = useMemo(() => {
-    if (!settings?.ceremony_date || !settings?.ceremony_end_time) return "-";
-    return `${settings.ceremony_date} ${settings.ceremony_end_time}`;
-  }, [settings?.ceremony_date, settings?.ceremony_end_time]);
-
-  const ceremonyDateText =
-    settings?.ceremony_date &&
-    (() => {
-      const [y, m, d] = settings.ceremony_date.split("-");
-      return `${y}년 ${Number(m)}월 ${Number(d)}일`;
-    })();
-
-  function isLockedRow(row: LedgerRow) {
-    return (row.created_source ?? "manual") === "scrape";
-  }
-
-  function patchLedger(id: string, patch: Partial<LedgerRow>) {
-    setLedger((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  }
 
   /* ------------------ 내 member id 찾기 ------------------ */
   async function resolveOwnerMemberId(): Promise<string | null> {
@@ -260,7 +237,7 @@ export default function ResultPage() {
     return null;
   }
 
-  /* ------------------ 초기 로드 ------------------ */
+  /* ------------------ 데이터 로드 ------------------ */
   useEffect(() => {
     if (!eventId) {
       setError("잘못된 접근입니다.");
@@ -283,7 +260,7 @@ export default function ResultPage() {
         if (msgError) throw msgError;
         setMessages(msgData || []);
 
-        // 예식 설정(종료시각 포함)
+        // 예식 설정
         const { data: settingsData, error: setErrorRes } = await supabase
           .from("event_settings")
           .select("ceremony_date, ceremony_start_time, ceremony_end_time, recipients")
@@ -296,11 +273,11 @@ export default function ResultPage() {
             ceremony_date: settingsData.ceremony_date,
             ceremony_start_time: settingsData.ceremony_start_time ?? null,
             ceremony_end_time: settingsData.ceremony_end_time ?? null,
-            recipients: settingsData.recipients as Recipient[] | null,
+            recipients: (settingsData.recipients as Recipient[] | null) ?? null,
           });
         }
 
-        // 스크래핑 계좌(가장 최근)
+        // 스크래핑 계좌(최신)
         const { data: acc } = await supabase
           .from("event_scrape_accounts")
           .select("id")
@@ -309,9 +286,9 @@ export default function ResultPage() {
           .limit(1)
           .maybeSingle();
 
-        setScrapeAccountId(acc?.id ?? null);
+        if (acc?.id) setScrapeAccountId(acc.id);
 
-        // 스크래핑 반영 건수
+        // 스크래핑 반영건 수
         const { count } = await supabase
           .from("event_scrape_transactions")
           .select("*", { count: "exact", head: true })
@@ -371,7 +348,92 @@ export default function ResultPage() {
     fetchLedger();
   }, [eventId, ownerMemberId]);
 
-  /* ------------------ 저장 ------------------ */
+  /* ------------------ 은행 내역 갱신 (스크래핑) ------------------ */
+  const handleGenerateReport = async () => {
+    if (!eventId) return;
+
+    // 컷오프 잠금
+    if (!canRunScrape) {
+      setScrapeResult("예식 종료 이후에는 은행 자동 반영(갱신)이 잠깁니다. (수기/엑셀 입력은 계속 가능)");
+      return;
+    }
+
+    // 인증 전이면 쿠콘 인증 페이지로 유도(PC에서만 의미 있음)
+    if (!scrapeAccountId) {
+      const date = settings?.ceremony_date ?? "";
+      const startDate = date;
+      const endDate = date;
+
+      const qs = new URLSearchParams({
+        eventId,
+        mode: "connect_then_scrape",
+        ...(startDate ? { startDate } : {}),
+        ...(endDate ? { endDate } : {}),
+      });
+
+      // ✅ App.tsx에 /coocon-scrape 라우트가 있어야 함
+      navigate(`/coocon-scrape?${qs.toString()}`);
+      return;
+    }
+
+    // 인증되어 있으면: Edge Function으로 “반영/정규화” 스크래핑 실행
+    try {
+      setScraping(true);
+      setScrapeResult(null);
+
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token;
+      if (!token) throw new Error("로그인이 필요합니다.");
+
+      // 날짜 범위: 우선 예식일 하루
+      const date = settings?.ceremony_date ?? "2026-01-01";
+      const startDate = date;
+      const endDate = date;
+
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            eventId,
+            scrapeAccountId,
+            startDate,
+            endDate,
+          }),
+        }
+      );
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error ?? "조회 실패");
+
+      const inserted = json.inserted ?? 0;
+      setTxCount((prev) => prev + inserted);
+
+      setScrapeResult(`은행 내역 갱신 완료 (${inserted}건 반영)`);
+    } catch (e: any) {
+      setScrapeResult(e?.message ?? "갱신 중 오류가 발생했습니다.");
+    } finally {
+      setScraping(false);
+    }
+  };
+
+  /* ------------------ 장부: 업데이트/추가 ------------------ */
+  function patchLedger(id: string, patch: Partial<LedgerRow>) {
+    setLedger((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
+
+  function getLatestLedgerRow(id: string) {
+    return ledger.find((r) => r.id === id)!;
+  }
+
+  function isLockedRow(row: LedgerRow) {
+    return (row.created_source ?? "manual") === "scrape";
+  }
+
   async function saveLedgerRow(row: LedgerRow) {
     if (isLockedRow(row)) return;
 
@@ -458,7 +520,7 @@ export default function ResultPage() {
     setNewSide("");
   }
 
-  /* ------------------ 엑셀: 샘플 다운로드 ------------------ */
+  /* ------------------ 엑셀: 샘플 다운로드 (항상 활성) ------------------ */
   function downloadLedgerSampleExcel() {
     const sample = [
       {
@@ -532,10 +594,15 @@ export default function ResultPage() {
       const ws = wb.Sheets[sheetName];
 
       const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
-      if (!json.length) throw new Error("업로드할 데이터가 없습니다. (첫 시트에 행이 없음)");
+
+      if (!json.length) {
+        throw new Error("업로드할 데이터가 없습니다. (첫 시트에 행이 없음)");
+      }
 
       const key = (obj: any, candidates: string[]) => {
-        for (const k of candidates) if (k in obj) return obj[k];
+        for (const k of candidates) {
+          if (k in obj) return obj[k];
+        }
         return "";
       };
 
@@ -591,7 +658,9 @@ export default function ResultPage() {
         })
         .filter(Boolean) as any[];
 
-      if (!rowsToInsert.length) throw new Error("업로드할 유효 행이 없습니다. (이름 필수)");
+      if (!rowsToInsert.length) {
+        throw new Error("업로드할 유효 행이 없습니다. (이름 필수)");
+      }
 
       const { data, error } = await supabase
         .from("event_ledger_entries")
@@ -631,74 +700,19 @@ export default function ResultPage() {
     fileInputRef.current?.click();
   }
 
-  /* ------------------ 스크래핑: 인증 유도 + 갱신 ------------------ */
-  const goToCooconConnect = () => {
-    // ✅ 너가 만든 쿠콘 인증 페이지 라우트에 맞춰서 여기만 바꾸면 됨
-    // 예: navigate(`/coocon?eventId=${eventId}`)
-    // 예: navigate(`/coocon/connect/${eventId}`)
-    navigate(`/coocon?eventId=${encodeURIComponent(eventId ?? "")}`);
-  };
-
-  const handleGenerateReport = async () => {
-    // ✅ 확정 버튼 제거 → 컷오프 기준으로만 잠금
-    if (!canRunScrape) {
-      setScrapeResult("예식 종료 이후에는 은행 자동 반영(갱신)이 잠깁니다. (수기/엑셀 입력은 계속 가능)");
-      return;
-    }
-
-    // ✅ 인증 전: 버튼 누르면 인증 유도
-    if (!scrapeAccountId) {
-      setScrapeResult("쿠콘 계좌 인증이 필요합니다. 잠시 후 인증 화면으로 이동합니다.");
-      goToCooconConnect();
-      return;
-    }
-
-    try {
-      setScraping(true);
-      setScrapeResult(null);
-
-      const { data: session } = await supabase.auth.getSession();
-      const token = session.session?.access_token;
-      if (!token) throw new Error("로그인이 필요합니다.");
-
-      // ✅ 날짜 범위: 우선 예식일 하루로 (필요하면 확장)
-      const date = settings?.ceremony_date ?? new Date().toISOString().slice(0, 10);
-      const startDate = date;
-      const endDate = date;
-
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            eventId,
-            scrapeAccountId,
-            startDate,
-            endDate,
-          }),
-        }
-      );
-
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "조회 실패");
-
-      const inserted = json.inserted ?? 0;
-
-      // ✅ reflected 총량을 다시 세는 게 가장 정확하지만, 최소변경으로 inserted 누적
-      setTxCount((prev) => prev + inserted);
-      setScrapeResult(`은행 내역 갱신 완료 (${inserted}건 반영)`);
-    } catch (e: any) {
-      setScrapeResult(e.message);
-    } finally {
-      setScraping(false);
-    }
-  };
-
   /* ------------------ 계산 ------------------ */
+  const ceremonyDateText =
+    settings?.ceremony_date &&
+    (() => {
+      const [y, m, d] = settings.ceremony_date.split("-");
+      return `${y}년 ${Number(m)}월 ${Number(d)}일`;
+    })();
+
+  const cutoffText = useMemo(() => {
+    if (!settings?.ceremony_date || !settings?.ceremony_end_time) return "-";
+    return `${settings.ceremony_date} ${settings.ceremony_end_time}`;
+  }, [settings?.ceremony_date, settings?.ceremony_end_time]);
+
   const ledgerStats = useMemo(() => {
     const total = ledger.length;
     const attended = ledger.filter((r) => r.attended === true).length;
@@ -753,9 +767,7 @@ export default function ResultPage() {
               <span
                 className={[
                   "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
-                  scrapeLocked
-                    ? "bg-slate-200 text-slate-600"
-                    : "bg-pink-100 text-pink-600 animate-pulse",
+                  scrapeLocked ? "bg-slate-200 text-slate-600" : "bg-pink-100 text-pink-600 animate-pulse",
                 ].join(" ")}
               >
                 {scrapeLocked ? "Archived" : "Live Report"}
@@ -888,7 +900,7 @@ export default function ResultPage() {
               </div>
             )}
 
-            {/* 검색/필터 + 관리도구 */}
+            {/* 검색/필터 + 관리도구 토글 */}
             <div className="px-6 md:px-10 flex flex-col md:flex-row gap-3">
               <div className="relative flex-1">
                 <input
@@ -942,6 +954,7 @@ export default function ResultPage() {
               <div className="mx-6 md:mx-10 p-8 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-10">
                 <div className="space-y-4">
                   <h4 className="text-sm font-black text-slate-900 uppercase tracking-tighter">Excel Management</h4>
+
                   <div className="flex flex-wrap gap-2">
                     <button
                       onClick={downloadLedgerExcel}
@@ -959,7 +972,6 @@ export default function ResultPage() {
                       {excelUploading ? "업로드 중..." : "엑셀 업로드"}
                     </button>
 
-                    {/* ✅ 샘플은 권한 없이 항상 가능 */}
                     <button
                       onClick={downloadLedgerSampleExcel}
                       className="px-5 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold underline"
@@ -1053,12 +1065,8 @@ export default function ResultPage() {
               ) : (
                 filteredLedger.map((r) => {
                   const locked = isLockedRow(r);
-
                   return (
-                    <div
-                      key={r.id}
-                      className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden"
-                    >
+                    <div key={r.id} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
                       <div className="flex justify-between items-start mb-4">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
@@ -1103,13 +1111,11 @@ export default function ResultPage() {
                           ].join(" ")}
                           onClick={() => {
                             const next = !(r.attended === true);
-                            const nextRow: LedgerRow = {
-                              ...r,
+                            patchLedger(r.id, {
                               attended: next,
                               attended_at: next ? new Date().toISOString() : null,
-                            };
-                            patchLedger(r.id, { attended: nextRow.attended, attended_at: nextRow.attended_at });
-                            saveLedgerRow(nextRow);
+                            });
+                            saveLedgerRow(getLatestLedgerRow(r.id));
                           }}
                         >
                           참석 {r.attended ? "확인" : "미확인"}{" "}
@@ -1123,15 +1129,13 @@ export default function ResultPage() {
                         <button
                           disabled={locked}
                           onClick={() => {
-                            const nextRow: LedgerRow = { ...r, return_given: !r.return_given };
-                            patchLedger(r.id, { return_given: nextRow.return_given });
-                            saveLedgerRow(nextRow);
+                            const next = !r.return_given;
+                            patchLedger(r.id, { return_given: next });
+                            saveLedgerRow(getLatestLedgerRow(r.id));
                           }}
                           className={[
                             "flex-1 py-3.5 rounded-2xl text-[11px] font-black transition-all",
-                            r.return_given
-                              ? "bg-pink-500 text-white shadow-md shadow-pink-100"
-                              : "bg-slate-50 text-slate-400",
+                            r.return_given ? "bg-pink-500 text-white shadow-md shadow-pink-100" : "bg-slate-50 text-slate-400",
                             locked ? "opacity-50" : "",
                           ].join(" ")}
                         >
@@ -1141,15 +1145,13 @@ export default function ResultPage() {
                         <button
                           disabled={locked}
                           onClick={() => {
-                            const nextRow: LedgerRow = { ...r, thanks_done: !r.thanks_done };
-                            patchLedger(r.id, { thanks_done: nextRow.thanks_done });
-                            saveLedgerRow(nextRow);
+                            const next = !r.thanks_done;
+                            patchLedger(r.id, { thanks_done: next });
+                            saveLedgerRow(getLatestLedgerRow(r.id));
                           }}
                           className={[
                             "flex-1 py-3.5 rounded-2xl text-[11px] font-black transition-all",
-                            r.thanks_done
-                              ? "bg-pink-500 text-white shadow-md shadow-pink-100"
-                              : "bg-slate-50 text-slate-400",
+                            r.thanks_done ? "bg-pink-500 text-white shadow-md shadow-pink-100" : "bg-slate-50 text-slate-400",
                             locked ? "opacity-50" : "",
                           ].join(" ")}
                         >
@@ -1162,7 +1164,7 @@ export default function ResultPage() {
                           value={r.memo ?? ""}
                           disabled={locked}
                           onChange={(e) => patchLedger(r.id, { memo: e.target.value })}
-                          onBlur={() => saveLedgerRow({ ...r, memo: r.memo ?? "" })}
+                          onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
                           placeholder="메모"
                           className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-xs text-slate-600 placeholder:text-slate-300 disabled:opacity-50"
                         />
@@ -1173,7 +1175,7 @@ export default function ResultPage() {
                         <button
                           className="px-4 py-2 rounded-xl border text-[11px] font-bold hover:bg-slate-50 disabled:opacity-50"
                           disabled={locked || savingId === r.id}
-                          onClick={() => saveLedgerRow(r)}
+                          onClick={() => saveLedgerRow(getLatestLedgerRow(r.id))}
                         >
                           {savingId === r.id ? "저장중" : locked ? "잠김" : "저장"}
                         </button>
@@ -1226,7 +1228,7 @@ export default function ResultPage() {
                                   value={r.guest_name}
                                   disabled={locked}
                                   onChange={(e) => patchLedger(r.id, { guest_name: e.target.value })}
-                                  onBlur={() => saveLedgerRow({ ...r, guest_name: r.guest_name })}
+                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
                                 />
 
                                 <span
@@ -1250,17 +1252,15 @@ export default function ResultPage() {
                                   disabled={locked}
                                   placeholder="관계"
                                   onChange={(e) => patchLedger(r.id, { relationship: e.target.value })}
-                                  onBlur={() => saveLedgerRow({ ...r, relationship: r.relationship })}
+                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
                                 />
                                 <input
                                   className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-40 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
                                   value={r.guest_phone ?? ""}
                                   disabled={locked}
                                   placeholder="연락처"
-                                  onChange={(e) =>
-                                    patchLedger(r.id, { guest_phone: formatKoreanMobile(e.target.value) })
-                                  }
-                                  onBlur={() => saveLedgerRow({ ...r, guest_phone: r.guest_phone })}
+                                  onChange={(e) => patchLedger(r.id, { guest_phone: formatKoreanMobile(e.target.value) })}
+                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
                                 />
                               </div>
 
@@ -1275,20 +1275,16 @@ export default function ResultPage() {
                                 disabled={locked}
                                 className={[
                                   "h-9 px-4 rounded-2xl text-[11px] font-black border transition-all",
-                                  r.attended
-                                    ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                                    : "bg-white border-slate-200 text-slate-400",
+                                  r.attended ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-white border-slate-200 text-slate-400",
                                   locked ? "opacity-50" : "",
                                 ].join(" ")}
                                 onClick={() => {
                                   const next = !(r.attended === true);
-                                  const nextRow: LedgerRow = {
-                                    ...r,
+                                  patchLedger(r.id, {
                                     attended: next,
                                     attended_at: next ? new Date().toISOString() : null,
-                                  };
-                                  patchLedger(r.id, { attended: nextRow.attended, attended_at: nextRow.attended_at });
-                                  saveLedgerRow(nextRow);
+                                  });
+                                  saveLedgerRow(getLatestLedgerRow(r.id));
                                 }}
                               >
                                 {r.attended ? "참석" : "미참석"}
@@ -1300,79 +1296,114 @@ export default function ResultPage() {
                             </td>
 
                             <td className="px-8 py-5">
-                              <input
-                                inputMode="numeric"
-                                className="w-32 text-right bg-slate-50 border-none rounded-xl px-3 py-2 text-xs font-black text-slate-900 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
-                                value={r.gift_amount ?? ""}
-                                disabled={locked}
-                                placeholder="0"
-                                onChange={(e) => {
-                                  const v = onlyDigits(e.target.value);
-                                  patchLedger(r.id, { gift_amount: v ? Number(v) : null });
-                                }}
-                                onBlur={() => saveLedgerRow(r)}
-                              />
-                              <div className="mt-2 text-[10px] text-slate-400 font-bold uppercase">
-                                {r.gift_method === "cash"
-                                  ? "CASH"
-                                  : r.gift_method === "account"
-                                  ? "ACCOUNT"
-                                  : "UNKNOWN"}
+                             <input
+                              inputMode="numeric"
+                              className="w-32 text-right bg-slate-50 border-none rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                              value={r.gift_amount ?? ""}
+                              disabled={locked}
+                              placeholder="금액"
+                              onChange={(e) =>
+                                patchLedger(r.id, {
+                                  gift_amount: safeNumber(e.target.value),
+                                })
+                              }
+                              onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                            />
+
+                              <div className="mt-2 flex gap-2">
+                                <select
+                                  className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-32 disabled:opacity-50"
+                                  value={r.gift_method}
+                                  disabled={locked}
+                                  onChange={(e) =>
+                                    patchLedger(r.id, {
+                                      gift_method: e.target.value as GiftMethod,
+                                    })
+                                  }
+                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                >
+                                  <option value="unknown">미지정</option>
+                                  <option value="account">계좌</option>
+                                  <option value="cash">현금</option>
+                                </select>
+
+                                <select
+                                  className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-32 disabled:opacity-50"
+                                  value={r.side ?? ""}
+                                  disabled={locked}
+                                  onChange={(e) =>
+                                    patchLedger(r.id, {
+                                      side: (e.target.value || null) as any,
+                                    })
+                                  }
+                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                >
+                                  <option value="">구분 없음</option>
+                                  <option value="groom">신랑측</option>
+                                  <option value="bride">신부측</option>
+                                </select>
                               </div>
                             </td>
 
                             <td className="px-8 py-5 text-center">
                               <input
                                 inputMode="numeric"
-                                className="w-14 text-center bg-slate-50 border-none rounded-xl py-2 text-xs font-bold focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                                className="w-16 text-center bg-slate-50 border-none rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
                                 value={r.ticket_count ?? 0}
                                 disabled={locked}
-                                onChange={(e) => {
-                                  const v = onlyDigits(e.target.value);
-                                  patchLedger(r.id, { ticket_count: v ? Number(v) : 0 });
-                                }}
-                                onBlur={() => saveLedgerRow(r)}
+                                onChange={(e) =>
+                                  patchLedger(r.id, {
+                                    ticket_count: safeNumber(e.target.value) ?? 0,
+                                  })
+                                }
+                                onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
                               />
                             </td>
 
-                            <td className="px-8 py-5">
-                              <div className="flex gap-2 justify-center">
+                            <td className="px-8 py-5 text-center">
+                              <div className="flex items-center justify-center gap-2">
                                 <button
                                   disabled={locked}
                                   onClick={() => {
-                                    const nextRow: LedgerRow = { ...r, return_given: !r.return_given };
-                                    patchLedger(r.id, { return_given: nextRow.return_given });
-                                    saveLedgerRow(nextRow);
+                                    const next = !r.return_given;
+                                    patchLedger(r.id, { return_given: next });
+                                    saveLedgerRow(getLatestLedgerRow(r.id));
                                   }}
                                   className={[
-                                    "px-4 py-2 rounded-2xl text-[10px] font-black border transition-all",
+                                    "h-9 px-4 rounded-2xl text-[11px] font-black transition-all",
                                     r.return_given
-                                      ? "bg-pink-500 border-pink-500 text-white shadow-sm"
-                                      : "bg-white border-slate-200 text-slate-400 hover:border-slate-300",
+                                      ? "bg-pink-500 text-white shadow-md shadow-pink-100"
+                                      : "bg-slate-50 text-slate-400",
                                     locked ? "opacity-50" : "",
                                   ].join(" ")}
                                 >
-                                  답례
+                                  답례 {r.return_given ? "완료" : "대기"}
                                 </button>
 
                                 <button
                                   disabled={locked}
                                   onClick={() => {
-                                    const nextRow: LedgerRow = { ...r, thanks_done: !r.thanks_done };
-                                    patchLedger(r.id, { thanks_done: nextRow.thanks_done });
-                                    saveLedgerRow(nextRow);
+                                    const next = !r.thanks_done;
+                                    patchLedger(r.id, { thanks_done: next });
+                                    saveLedgerRow(getLatestLedgerRow(r.id));
                                   }}
                                   className={[
-                                    "px-4 py-2 rounded-2xl text-[10px] font-black border transition-all",
+                                    "h-9 px-4 rounded-2xl text-[11px] font-black transition-all",
                                     r.thanks_done
-                                      ? "bg-pink-500 border-pink-500 text-white shadow-sm"
-                                      : "bg-white border-slate-200 text-slate-400 hover:border-slate-300",
+                                      ? "bg-pink-500 text-white shadow-md shadow-pink-100"
+                                      : "bg-slate-50 text-slate-400",
                                     locked ? "opacity-50" : "",
                                   ].join(" ")}
                                 >
-                                  인사
+                                  인사 {r.thanks_done ? "완료" : "대기"}
                                 </button>
                               </div>
+
+                              {locked && (
+                                <div className="mt-2 text-[10px] text-slate-300 font-bold">
+                                  자동 반영 내역은 잠김
+                                </div>
+                              )}
                             </td>
 
                             <td className="px-8 py-5">
@@ -1380,17 +1411,17 @@ export default function ResultPage() {
                                 value={r.memo ?? ""}
                                 disabled={locked}
                                 onChange={(e) => patchLedger(r.id, { memo: e.target.value })}
-                                onBlur={() => saveLedgerRow(r)}
-                                placeholder="비고 입력..."
-                                className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 placeholder:text-slate-300 focus:ring-1 focus:ring-pink-500 w-full disabled:opacity-50"
+                                onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                placeholder="메모"
+                                className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-xs text-slate-600 placeholder:text-slate-300 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
                               />
                             </td>
 
                             <td className="px-8 py-5 text-right">
                               <button
-                                className="px-4 py-2 rounded-2xl border text-[11px] font-bold hover:bg-slate-50 disabled:opacity-50"
+                                className="h-9 px-4 rounded-2xl border text-[11px] font-black hover:bg-slate-50 disabled:opacity-50"
                                 disabled={locked || savingId === r.id}
-                                onClick={() => saveLedgerRow(r)}
+                                onClick={() => saveLedgerRow(getLatestLedgerRow(r.id))}
                               >
                                 {savingId === r.id ? "저장중" : locked ? "잠김" : "저장"}
                               </button>
@@ -1403,9 +1434,10 @@ export default function ResultPage() {
                 </table>
               </div>
 
-              <div className="mt-3 text-[11px] text-slate-400 leading-relaxed">
-                * 참석 여부는 <span className="font-bold text-slate-600">디지털방명록(QR) 스캔 기준</span>이며, 필요 시 수기/엑셀로 보정 가능합니다.
-                <br />* <span className="font-bold text-slate-600">은행 자동 반영 내역</span>은 수정할 수 없습니다.
+              <div className="mt-4 text-[11px] text-slate-400">
+                * “양식 받기”는 항상 가능 / 업로드는 로그인 멤버(event_members) 매칭이 필요합니다.
+                <br />
+                * 은행 자동 반영(스크래핑)은 예식 종료 컷오프 이후 잠깁니다. (수기/엑셀은 계속 가능)
               </div>
             </div>
           </div>
@@ -1413,83 +1445,120 @@ export default function ResultPage() {
 
         {/* 5) 메시지 탭 */}
         {tab === "messages" && (
-          <div className="px-6 md:px-10">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {messages.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((m) => (
-                <div
-                  key={m.id}
-                  className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 flex flex-col justify-between min-h-[220px] hover:shadow-md transition-shadow"
-                >
-                  <p className="text-slate-600 text-[15px] leading-relaxed font-medium">“{m.body}”</p>
-                  <div className="mt-8 flex justify-between items-end border-t border-slate-50 pt-5">
-                    <div>
-                      <span className="font-black text-slate-900 text-base block mb-0.5">
-                        {m.nickname || m.guest_name || "익명"}
-                      </span>
-                      <span className="text-[10px] text-slate-300 font-black uppercase tracking-widest">
-                        {m.relationship || "Guest"}
-                      </span>
-                    </div>
-                    <span
-                      className={[
-                        "text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-tighter",
-                        m.side === "groom"
-                          ? "bg-blue-50 text-blue-500"
-                          : m.side === "bride"
-                          ? "bg-pink-50 text-pink-500"
-                          : "bg-slate-50 text-slate-400",
-                      ].join(" ")}
-                    >
-                      {m.side === "groom" ? "Groom side" : m.side === "bride" ? "Bride side" : "Side"}
-                    </span>
-                  </div>
+          <div className="px-6 md:px-10 pb-12">
+            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-6 md:p-8">
+              <div className="flex items-end justify-between gap-4 mb-6">
+                <div>
+                  <h2 className="text-lg md:text-xl font-black text-slate-900">축하 메시지</h2>
+                  <p className="text-xs text-slate-400 mt-1">
+                    하객이 남긴 메시지를 시간순으로 확인할 수 있어요.
+                  </p>
                 </div>
-              ))}
-            </div>
+                <div className="text-xs font-bold text-slate-400">
+                  총 {messages.length.toLocaleString()}개
+                </div>
+              </div>
 
-            <div className="mt-8 flex items-center justify-between">
-              <button
-                className="px-5 py-3 rounded-2xl border text-xs font-bold bg-white hover:bg-slate-50 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-              >
-                이전
-              </button>
-              <div className="text-xs text-slate-400 font-bold">page {page}</div>
-              <button
-                className="px-5 py-3 rounded-2xl border text-xs font-bold bg-white hover:bg-slate-50 disabled:opacity-50"
-                onClick={() => setPage((p) => p + 1)}
-                disabled={page * PAGE_SIZE >= messages.length}
-              >
-                다음
-              </button>
+              {messages.length === 0 ? (
+                <div className="text-center text-slate-400 py-16">아직 메시지가 없습니다.</div>
+              ) : (
+                (() => {
+                  const totalPages = Math.max(1, Math.ceil(messages.length / PAGE_SIZE));
+                  const safePage = Math.min(Math.max(1, page), totalPages);
+                  const start = (safePage - 1) * PAGE_SIZE;
+                  const slice = messages.slice(start, start + PAGE_SIZE);
+
+                  return (
+                    <>
+                      <div className="space-y-3">
+                        {slice.map((m) => (
+                          <div
+                            key={m.id}
+                            className="p-5 rounded-[2rem] border border-slate-100 bg-slate-50/40"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-black text-slate-900">
+                                  {m.guest_name || m.nickname || "익명"}
+                                </span>
+                                <span className="text-[10px] font-bold text-slate-400">
+                                  {m.relationship ? `(${m.relationship})` : ""}
+                                </span>
+
+                                <span
+                                  className={[
+                                    "text-[9px] px-2 py-0.5 rounded-full font-black uppercase",
+                                    m.side === "groom"
+                                      ? "bg-blue-50 text-blue-500"
+                                      : m.side === "bride"
+                                      ? "bg-pink-50 text-pink-500"
+                                      : "bg-slate-100 text-slate-400",
+                                  ].join(" ")}
+                                >
+                                  {m.side === "groom" ? "Groom" : m.side === "bride" ? "Bride" : "Side"}
+                                </span>
+                              </div>
+
+                              <div className="text-[10px] text-slate-400 font-bold">
+                                {m.created_at ? new Date(m.created_at).toLocaleString() : ""}
+                              </div>
+                            </div>
+
+                            <div className="mt-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                              {m.body}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* pagination */}
+                      <div className="mt-6 flex items-center justify-between">
+                        <button
+                          className="px-4 py-2 rounded-xl border text-xs font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+                          disabled={safePage <= 1}
+                          onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        >
+                          이전
+                        </button>
+
+                        <div className="text-xs font-bold text-slate-400">
+                          {safePage} / {totalPages}
+                        </div>
+
+                        <button
+                          className="px-4 py-2 rounded-xl border text-xs font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+                          disabled={safePage >= totalPages}
+                          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        >
+                          다음
+                        </button>
+                      </div>
+                    </>
+                  );
+                })()
+              )}
             </div>
           </div>
         )}
-      </div>
 
-      {/* 모바일 하단 플로팅 바 */}
-      {tab === "ledger" && (
-        <div className="md:hidden fixed bottom-6 left-6 right-6 bg-slate-900/90 backdrop-blur-xl rounded-[2rem] px-8 py-5 flex justify-between items-center z-50 shadow-2xl shadow-slate-400">
-          <div>
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total</p>
-            <p className="text-xl font-black text-white">{ledgerStats.totalAmount.toLocaleString()}원</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <p className="text-[9px] font-black text-pink-400 uppercase tracking-widest mb-1">Pending</p>
-              <p className="text-sm font-black text-white">{ledgerStats.thanksPending}명</p>
-            </div>
+        {/* 하단 네비 (모바일에서 유용) */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur border-t border-slate-100">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex gap-2">
             <button
-              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-              className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-white"
-              aria-label="scroll to top"
+              onClick={() => navigate("/app")}
+              className="flex-1 py-3 rounded-2xl bg-slate-900 text-white text-xs font-black"
             >
-              ↑
+              이벤트 홈
+            </button>
+            <button
+              onClick={() => navigate(`/app/event/${eventId}/settings`)}
+              className="flex-1 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-xs font-black"
+            >
+              예식 설정
             </button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
