@@ -140,6 +140,25 @@ export default function ConfirmPage() {
   const { eventId } = useParams<RouteParams>();
   const navigate = useNavigate();
 
+  async function getMyMemberId(evId: string): Promise<string> {
+  const { data: userRes, error: userErr } = await supabase.auth.getUser();
+  if (userErr) throw userErr;
+  const userId = userRes?.user?.id;
+  const email = userRes?.user?.email;
+  if (!userId && !email) throw new Error("로그인이 필요합니다.");
+
+  // user_id 우선, 없으면 email로 fallback
+  let q = supabase.from("event_members").select("id").eq("event_id", evId).limit(1);
+
+  if (userId) q = q.eq("user_id", userId);
+  else q = q.eq("email", email);
+
+  const { data, error } = await q.maybeSingle();
+  if (error) throw error;
+  if (!data?.id) throw new Error("event_members에 본인 멤버가 없습니다. (초대/가입 흐름 확인 필요)");
+  return data.id as string;
+}
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -306,7 +325,9 @@ export default function ConfirmPage() {
         setMobileInvitationLink("");
       }
 
-      // 3) event_accounts
+     // 3) event_accounts (✅ 본인 계좌만)
+      const myMemberId = await getMyMemberId(id);
+
       const { data: accountData, error: accountError } = await supabase
         .from("event_accounts")
         .select(
@@ -321,9 +342,11 @@ export default function ConfirmPage() {
         `
         )
         .eq("event_id", id)
+        .eq("owner_member_id", myMemberId)
         .order("sort_order", { ascending: true });
 
       if (accountError && accountError.code !== "42P01") throw accountError;
+
 
       if (accountData && accountData.length > 0) {
         setAccounts(
@@ -662,37 +685,42 @@ export default function ConfirmPage() {
         if (inserted) setSettings(inserted as EventSettingsRow);
       }
 
-      // 4) 계좌 저장(전부 삭제 후 insert)
-      const validAccounts = accounts
-        .filter((a) => a.is_active)
-        .filter(
-          (a) =>
-            a.label.trim() &&
-            a.holder_name.trim() &&
-            a.bank_name.trim() &&
-            a.account_number.trim()
-        )
-        .map((a, index) => ({
-          event_id: eventId,
-          label: a.label.trim(),
-          holder_name: a.holder_name.trim(),
-          bank_name: a.bank_name.trim(),
-          account_number: a.account_number.trim(),
-          sort_order: index,
-          is_active: a.is_active,
-        }));
+     // 4) 계좌 저장(전부 삭제 후 insert)
+        const myMemberId = await getMyMemberId(eventId);
 
-      const { error: deleteError } = await supabase
-        .from("event_accounts")
-        .delete()
-        .eq("event_id", eventId);
-      if (deleteError && deleteError.code !== "42P01") throw deleteError;
+        const validAccounts = accounts
+          .filter((a) => a.is_active)
+          .filter(
+            (a) =>
+              a.label.trim() &&
+              a.holder_name.trim() &&
+              a.bank_name.trim() &&
+              a.account_number.trim()
+          )
+          .map((a, index) => ({
+            event_id: eventId,
+            owner_member_id: myMemberId, // ✅ 등록/수정한 사람이 owner
+            label: a.label.trim(),
+            holder_name: a.holder_name.trim(),
+            bank_name: a.bank_name.trim(),
+            account_number: a.account_number.trim(),
+            sort_order: index,
+            is_active: a.is_active,
+          }));
 
-      const { error: insertAccountsError } = await supabase
-        .from("event_accounts")
-        .insert(validAccounts);
-      if (insertAccountsError && insertAccountsError.code !== "42P01")
-        throw insertAccountsError;
+          const { error: deleteError } = await supabase
+          .from("event_accounts")
+          .delete()
+          .eq("event_id", eventId)
+          .eq("owner_member_id", myMemberId); // ✅ 내 계좌만 삭제
+        if (deleteError && deleteError.code !== "42P01") throw deleteError;
+
+        const { error: insertAccountsError } = await supabase
+          .from("event_accounts")
+          .insert(validAccounts);
+        if (insertAccountsError && insertAccountsError.code !== "42P01")
+          throw insertAccountsError;
+
 
       // ✅ 저장 성공 UX: 문구 교체 + 성공 박스에만 CTA 노출
       setSuccess("설정이 완료되었습니다. 상세설정은 예식 시작 1시간 전까지 수정할 수 있어요.");

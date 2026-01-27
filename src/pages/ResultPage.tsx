@@ -372,7 +372,7 @@ export default function ResultPage() {
       });
 
       // ✅ App.tsx에 /coocon-scrape 라우트가 있어야 함
-      navigate(`/coocon-scrape?${qs.toString()}`);
+      navigate(`/coocon/scrape?${qs.toString()}`);
       return;
     }
 
