@@ -32,6 +32,9 @@ import EventHome from "./pages/app/EventHome";
 import ConfirmPage from "./pages/ConfirmPage";
 import ReportPage from "./pages/app/ReportPage";
 
+/* ===== Coocon ===== */
+import CooconScrapePage from "./pages/CooconScrapePage";
+
 /* ===== Admin ===== */
 import { AdminPage } from "./pages/admin/AdminPage";
 import AdminLoginPage from "./pages/admin/AdminLoginPage";
@@ -61,6 +64,20 @@ const App = () => (
           =============================== */}
           <Route path="/invite/:token" element={<InviteAcceptPage />} />
           <Route path="/join" element={<JoinByCodePage />} />
+
+          {/* ===============================
+              Coocon (Login Required)
+              - PC에서 인증/스크래핑 수행
+              - querystring: ?eventId=...&mode=...&startDate=...&endDate=...&returnTo=...
+          =============================== */}
+          <Route
+            path="/coocon/scrape"
+            element={
+              <AuthGuard>
+                <CooconScrapePage />
+              </AuthGuard>
+            }
+          />
 
           {/* ===============================
               IA App (Login Required)

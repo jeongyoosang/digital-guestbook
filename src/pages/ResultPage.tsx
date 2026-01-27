@@ -1,5 +1,6 @@
+// src/pages/ResultPage.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import * as XLSX from "xlsx";
 
@@ -25,8 +26,8 @@ type Recipient = {
 
 type EventSettingsLite = {
   ceremony_date: string | null;
-  ceremony_start_time: string | null; // ✅ 추가
-  ceremony_end_time: string | null;   // ✅ 추가
+  ceremony_start_time: string | null;
+  ceremony_end_time: string | null;
   recipients: Recipient[] | null;
 };
 
@@ -135,18 +136,21 @@ function safeNumber(v: any): number | null {
   return isNaN(n) ? null : n;
 }
 
-function yyyymmdd(dateIso?: string | null) {
-  const d = dateIso ? new Date(dateIso) : new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const da = String(d.getDate()).padStart(2, "0");
-  return `${y}${m}${da}`;
+function yyyymmdd(dateStr?: string | null) {
+  if (!dateStr) {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    return `${y}${m}${da}`;
+  }
+  const [y, m, d] = dateStr.split("-");
+  return `${y}${m}${d}`;
 }
 
 // ✅ 예식 날짜 + 시각을 “로컬 시간”으로 합쳐서 Date 만들기
 function combineLocalDateTimeToIso(dateStr?: string | null, timeStr?: string | null) {
   if (!dateStr || !timeStr) return null;
-  // timeStr: "HH:MM" 가정
   const isoLike = `${dateStr}T${timeStr}:00`;
   const d = new Date(isoLike);
   if (isNaN(d.getTime())) return null;
@@ -154,6 +158,7 @@ function combineLocalDateTimeToIso(dateStr?: string | null, timeStr?: string | n
 }
 
 export default function ResultPage() {
+  const navigate = useNavigate();
   const { eventId } = useParams<RouteParams>();
 
   const [loading, setLoading] = useState(true);
@@ -161,52 +166,71 @@ export default function ResultPage() {
   const [settings, setSettings] = useState<EventSettingsLite | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // 축의금(스크래핑)
+  // ✅ 쿠콘 스크래핑 상태
   const [scrapeAccountId, setScrapeAccountId] = useState<string | null>(null);
   const [txCount, setTxCount] = useState<number>(0);
   const [scraping, setScraping] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<string | null>(null);
 
+  // ✅ 페이징/탭
   const [page, setPage] = useState(1);
-
-  // 탭
   const [tab, setTab] = useState<TabKey>("ledger");
 
-  // 장부(원장) - 개인 기준 분리 키
+  // ✅ 장부
   const [ownerMemberId, setOwnerMemberId] = useState<string | null>(null);
   const [ownerLabel, setOwnerLabel] = useState<string>("내");
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
 
-  // 장부 필터/검색
+  // ✅ 장부 필터/검색
   const [q, setQ] = useState("");
   const [onlyAttended, setOnlyAttended] = useState(false);
   const [onlyThanksPending, setOnlyThanksPending] = useState(false);
 
-  // 장부 수기 추가
+  // ✅ 장부 수기 추가
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newRel, setNewRel] = useState("");
   const [newSide, setNewSide] = useState<"" | "groom" | "bride">("");
 
-  // Excel UI
+  // ✅ Excel UI
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [excelHelpOpen, setExcelHelpOpen] = useState(false);
   const [excelUploading, setExcelUploading] = useState(false);
   const [excelUploadResult, setExcelUploadResult] = useState<string | null>(null);
 
-  // ✅ 컷오프(예식 종료 시각) = "이후부터 은행 자동 반영 잠김"
+  // ✅ 컷오프(예식 종료 시각) = 이후부터 은행 자동 반영 잠금
   const cutoffIso = useMemo(() => {
     return combineLocalDateTimeToIso(settings?.ceremony_date, settings?.ceremony_end_time);
   }, [settings?.ceremony_date, settings?.ceremony_end_time]);
 
   const scrapeLocked = useMemo(() => {
-    if (!cutoffIso) return false; // 시간이 없으면 일단 잠그지 않음(운영상 안전)
+    if (!cutoffIso) return false; // 시간이 없으면 잠그지 않음(운영상 안전)
     return new Date().getTime() >= new Date(cutoffIso).getTime();
   }, [cutoffIso]);
 
   const canRunScrape = !scrapeLocked;
+
+  const cutoffText = useMemo(() => {
+    if (!settings?.ceremony_date || !settings?.ceremony_end_time) return "-";
+    return `${settings.ceremony_date} ${settings.ceremony_end_time}`;
+  }, [settings?.ceremony_date, settings?.ceremony_end_time]);
+
+  const ceremonyDateText =
+    settings?.ceremony_date &&
+    (() => {
+      const [y, m, d] = settings.ceremony_date.split("-");
+      return `${y}년 ${Number(m)}월 ${Number(d)}일`;
+    })();
+
+  function isLockedRow(row: LedgerRow) {
+    return (row.created_source ?? "manual") === "scrape";
+  }
+
+  function patchLedger(id: string, patch: Partial<LedgerRow>) {
+    setLedger((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
 
   /* ------------------ 내 member id 찾기 ------------------ */
   async function resolveOwnerMemberId(): Promise<string | null> {
@@ -215,17 +239,12 @@ export default function ResultPage() {
 
     const user = authData.user;
 
-    console.log("DEBUG eventId param:", eventId);
-    console.log("DEBUG auth user id:", user.id);
-
     const { data, error } = await supabase
       .from("event_members")
       .select("id, role")
       .eq("event_id", eventId)
       .eq("user_id", user.id)
       .maybeSingle();
-
-    console.log("DEBUG event_members row:", data);
 
     if (error) {
       console.error("resolveOwnerMemberId error:", error);
@@ -241,7 +260,7 @@ export default function ResultPage() {
     return null;
   }
 
-  /* ------------------ 데이터 로드 ------------------ */
+  /* ------------------ 초기 로드 ------------------ */
   useEffect(() => {
     if (!eventId) {
       setError("잘못된 접근입니다.");
@@ -264,7 +283,7 @@ export default function ResultPage() {
         if (msgError) throw msgError;
         setMessages(msgData || []);
 
-        // ✅ 예식 설정 (end_time까지)
+        // 예식 설정(종료시각 포함)
         const { data: settingsData, error: setErrorRes } = await supabase
           .from("event_settings")
           .select("ceremony_date, ceremony_start_time, ceremony_end_time, recipients")
@@ -281,7 +300,7 @@ export default function ResultPage() {
           });
         }
 
-        // 스크래핑 계좌
+        // 스크래핑 계좌(가장 최근)
         const { data: acc } = await supabase
           .from("event_scrape_accounts")
           .select("id")
@@ -290,9 +309,9 @@ export default function ResultPage() {
           .limit(1)
           .maybeSingle();
 
-        if (acc?.id) setScrapeAccountId(acc.id);
+        setScrapeAccountId(acc?.id ?? null);
 
-        // 축의금 개수 (스크래핑 반영 건)
+        // 스크래핑 반영 건수
         const { count } = await supabase
           .from("event_scrape_transactions")
           .select("*", { count: "exact", head: true })
@@ -352,83 +371,7 @@ export default function ResultPage() {
     fetchLedger();
   }, [eventId, ownerMemberId]);
 
-  /* ------------------ 리포트 생성/갱신 (스크래핑) ------------------ */
-  const handleGenerateReport = async () => {
-    // ✅ 확정 버튼 제거 → 컷오프 기준으로만 잠금
-    if (!canRunScrape) {
-      setScrapeResult("예식 종료 이후에는 은행 자동 반영(갱신)이 잠깁니다. (수기/엑셀 입력은 계속 가능)");
-      return;
-    }
-    if (!scrapeAccountId) {
-      // ✅ 내일 여기서 “인증 유도”로 연결하면 됨
-      setScrapeResult("쿠콘 계좌 인증이 필요합니다. (내일 인증 플로우 연결)");
-      return;
-    }
-
-    try {
-      setScraping(true);
-      setScrapeResult(null);
-
-      const { data: session } = await supabase.auth.getSession();
-      const token = session.session?.access_token;
-      if (!token) throw new Error("로그인이 필요합니다.");
-
-      // ✅ 날짜 범위는 내일 쿠콘 미팅 이후 확정하자.
-      // 지금은 ceremony_date 기반으로 “하루 범위”만 깔끔하게.
-      const date = settings?.ceremony_date ?? "2026-01-01";
-      const startDate = date;
-      const endDate = date;
-
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            eventId,
-            scrapeAccountId,
-            startDate,
-            endDate,
-          }),
-        }
-      );
-
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "조회 실패");
-
-      // inserted = 이번 호출로 신규 반영된 건수
-      // totalReflected 같은 값을 내려주면 더 좋지만, 일단 inserted로 UX.
-      const inserted = json.inserted ?? 0;
-
-      // txCount는 “현재 reflected 총량”이 더 정확하지만,
-      // 지금은 최소 변경으로: 기존 txCount에 inserted 더하기.
-      setTxCount((prev) => prev + inserted);
-
-      setScrapeResult(`은행 내역 갱신 완료 (${inserted}건 반영)`);
-    } catch (e: any) {
-      setScrapeResult(e.message);
-    } finally {
-      setScraping(false);
-    }
-  };
-
-  /* ------------------ 장부: 업데이트/추가 ------------------ */
-  function patchLedger(id: string, patch: Partial<LedgerRow>) {
-    setLedger((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  }
-
-  function getLatestLedgerRow(id: string) {
-    return ledger.find((r) => r.id === id)!;
-  }
-
-  function isLockedRow(row: LedgerRow) {
-    // ✅ 스크래핑으로 들어온 row는 언제나 수정 불가
-    return (row.created_source ?? "manual") === "scrape";
-  }
-
+  /* ------------------ 저장 ------------------ */
   async function saveLedgerRow(row: LedgerRow) {
     if (isLockedRow(row)) return;
 
@@ -589,15 +532,10 @@ export default function ResultPage() {
       const ws = wb.Sheets[sheetName];
 
       const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
-
-      if (!json.length) {
-        throw new Error("업로드할 데이터가 없습니다. (첫 시트에 행이 없음)");
-      }
+      if (!json.length) throw new Error("업로드할 데이터가 없습니다. (첫 시트에 행이 없음)");
 
       const key = (obj: any, candidates: string[]) => {
-        for (const k of candidates) {
-          if (k in obj) return obj[k];
-        }
+        for (const k of candidates) if (k in obj) return obj[k];
         return "";
       };
 
@@ -617,7 +555,6 @@ export default function ResultPage() {
           const attended_at = toIsoMaybe(attendedAtRaw);
 
           const gift_amount = safeNumber(key(r, ["축의금", "금액", "축의금액"]));
-
           const gift_method = normalizeGiftMethod(key(r, ["축의방식(선택)", "축의방식", "방식", "gift_method"]));
 
           const ticket_count = safeNumber(key(r, ["식권(개수)", "식권", "식권수", "ticket_count"])) ?? 0;
@@ -654,9 +591,7 @@ export default function ResultPage() {
         })
         .filter(Boolean) as any[];
 
-      if (!rowsToInsert.length) {
-        throw new Error("업로드할 유효 행이 없습니다. (이름 필수)");
-      }
+      if (!rowsToInsert.length) throw new Error("업로드할 유효 행이 없습니다. (이름 필수)");
 
       const { data, error } = await supabase
         .from("event_ledger_entries")
@@ -696,20 +631,74 @@ export default function ResultPage() {
     fileInputRef.current?.click();
   }
 
+  /* ------------------ 스크래핑: 인증 유도 + 갱신 ------------------ */
+  const goToCooconConnect = () => {
+    // ✅ 너가 만든 쿠콘 인증 페이지 라우트에 맞춰서 여기만 바꾸면 됨
+    // 예: navigate(`/coocon?eventId=${eventId}`)
+    // 예: navigate(`/coocon/connect/${eventId}`)
+    navigate(`/coocon?eventId=${encodeURIComponent(eventId ?? "")}`);
+  };
+
+  const handleGenerateReport = async () => {
+    // ✅ 확정 버튼 제거 → 컷오프 기준으로만 잠금
+    if (!canRunScrape) {
+      setScrapeResult("예식 종료 이후에는 은행 자동 반영(갱신)이 잠깁니다. (수기/엑셀 입력은 계속 가능)");
+      return;
+    }
+
+    // ✅ 인증 전: 버튼 누르면 인증 유도
+    if (!scrapeAccountId) {
+      setScrapeResult("쿠콘 계좌 인증이 필요합니다. 잠시 후 인증 화면으로 이동합니다.");
+      goToCooconConnect();
+      return;
+    }
+
+    try {
+      setScraping(true);
+      setScrapeResult(null);
+
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token;
+      if (!token) throw new Error("로그인이 필요합니다.");
+
+      // ✅ 날짜 범위: 우선 예식일 하루로 (필요하면 확장)
+      const date = settings?.ceremony_date ?? new Date().toISOString().slice(0, 10);
+      const startDate = date;
+      const endDate = date;
+
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            eventId,
+            scrapeAccountId,
+            startDate,
+            endDate,
+          }),
+        }
+      );
+
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "조회 실패");
+
+      const inserted = json.inserted ?? 0;
+
+      // ✅ reflected 총량을 다시 세는 게 가장 정확하지만, 최소변경으로 inserted 누적
+      setTxCount((prev) => prev + inserted);
+      setScrapeResult(`은행 내역 갱신 완료 (${inserted}건 반영)`);
+    } catch (e: any) {
+      setScrapeResult(e.message);
+    } finally {
+      setScraping(false);
+    }
+  };
+
   /* ------------------ 계산 ------------------ */
-  const ceremonyDateText =
-    settings?.ceremony_date &&
-    (() => {
-      const [y, m, d] = settings.ceremony_date.split("-");
-      return `${y}년 ${Number(m)}월 ${Number(d)}일`;
-    })();
-
-  const cutoffText = useMemo(() => {
-    if (!settings?.ceremony_date || !settings?.ceremony_end_time) return "-";
-    // 로컬 표시용
-    return `${settings.ceremony_date} ${settings.ceremony_end_time}`;
-  }, [settings?.ceremony_date, settings?.ceremony_end_time]);
-
   const ledgerStats = useMemo(() => {
     const total = ledger.length;
     const attended = ledger.filter((r) => r.attended === true).length;
@@ -886,7 +875,7 @@ export default function ResultPage() {
               </div>
             )}
 
-            {/* 컷오프 안내 (운영자/유저 모두 이해하도록) */}
+            {/* 컷오프 안내 */}
             {cutoffIso && (
               <div className="mx-6 md:mx-10 rounded-[2rem] bg-white border border-slate-100 p-5 text-xs text-slate-500">
                 <div className="font-bold text-slate-700 mb-1">은행 자동 반영(스크래핑) 컷오프</div>
@@ -899,7 +888,7 @@ export default function ResultPage() {
               </div>
             )}
 
-            {/* 검색/필터 + 관리도구 토글 */}
+            {/* 검색/필터 + 관리도구 */}
             <div className="px-6 md:px-10 flex flex-col md:flex-row gap-3">
               <div className="relative flex-1">
                 <input
@@ -948,7 +937,7 @@ export default function ResultPage() {
               </div>
             </div>
 
-            {/* 관리 도구 (아코디언) */}
+            {/* 관리 도구 */}
             {excelHelpOpen && (
               <div className="mx-6 md:mx-10 p-8 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-10">
                 <div className="space-y-4">
@@ -970,6 +959,7 @@ export default function ResultPage() {
                       {excelUploading ? "업로드 중..." : "엑셀 업로드"}
                     </button>
 
+                    {/* ✅ 샘플은 권한 없이 항상 가능 */}
                     <button
                       onClick={downloadLedgerSampleExcel}
                       className="px-5 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold underline"
@@ -993,7 +983,7 @@ export default function ResultPage() {
                   {excelUploadResult && <div className="text-xs text-slate-500">{excelUploadResult}</div>}
 
                   <div className="text-[11px] text-slate-400 leading-relaxed">
-                    * 업로드는 현재 <span className="font-bold text-slate-600">새 행 추가</span> 방식입니다. (중복 병합/매칭은 다음 단계에서 고도화)
+                    * 업로드는 현재 <span className="font-bold text-slate-600">새 행 추가</span> 방식입니다.
                     <br />* <span className="font-bold text-slate-600">은행 자동 반영</span> 내역은 항상 수정 불가입니다.
                   </div>
                 </div>
@@ -1063,6 +1053,7 @@ export default function ResultPage() {
               ) : (
                 filteredLedger.map((r) => {
                   const locked = isLockedRow(r);
+
                   return (
                     <div
                       key={r.id}
@@ -1112,11 +1103,13 @@ export default function ResultPage() {
                           ].join(" ")}
                           onClick={() => {
                             const next = !(r.attended === true);
-                            patchLedger(r.id, {
+                            const nextRow: LedgerRow = {
+                              ...r,
                               attended: next,
                               attended_at: next ? new Date().toISOString() : null,
-                            });
-                            saveLedgerRow(getLatestLedgerRow(r.id));
+                            };
+                            patchLedger(r.id, { attended: nextRow.attended, attended_at: nextRow.attended_at });
+                            saveLedgerRow(nextRow);
                           }}
                         >
                           참석 {r.attended ? "확인" : "미확인"}{" "}
@@ -1130,9 +1123,9 @@ export default function ResultPage() {
                         <button
                           disabled={locked}
                           onClick={() => {
-                            const next = !r.return_given;
-                            patchLedger(r.id, { return_given: next });
-                            saveLedgerRow(getLatestLedgerRow(r.id));
+                            const nextRow: LedgerRow = { ...r, return_given: !r.return_given };
+                            patchLedger(r.id, { return_given: nextRow.return_given });
+                            saveLedgerRow(nextRow);
                           }}
                           className={[
                             "flex-1 py-3.5 rounded-2xl text-[11px] font-black transition-all",
@@ -1148,9 +1141,9 @@ export default function ResultPage() {
                         <button
                           disabled={locked}
                           onClick={() => {
-                            const next = !r.thanks_done;
-                            patchLedger(r.id, { thanks_done: next });
-                            saveLedgerRow(getLatestLedgerRow(r.id));
+                            const nextRow: LedgerRow = { ...r, thanks_done: !r.thanks_done };
+                            patchLedger(r.id, { thanks_done: nextRow.thanks_done });
+                            saveLedgerRow(nextRow);
                           }}
                           className={[
                             "flex-1 py-3.5 rounded-2xl text-[11px] font-black transition-all",
@@ -1169,7 +1162,7 @@ export default function ResultPage() {
                           value={r.memo ?? ""}
                           disabled={locked}
                           onChange={(e) => patchLedger(r.id, { memo: e.target.value })}
-                          onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                          onBlur={() => saveLedgerRow({ ...r, memo: r.memo ?? "" })}
                           placeholder="메모"
                           className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-xs text-slate-600 placeholder:text-slate-300 disabled:opacity-50"
                         />
@@ -1180,7 +1173,7 @@ export default function ResultPage() {
                         <button
                           className="px-4 py-2 rounded-xl border text-[11px] font-bold hover:bg-slate-50 disabled:opacity-50"
                           disabled={locked || savingId === r.id}
-                          onClick={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                          onClick={() => saveLedgerRow(r)}
                         >
                           {savingId === r.id ? "저장중" : locked ? "잠김" : "저장"}
                         </button>
@@ -1233,7 +1226,7 @@ export default function ResultPage() {
                                   value={r.guest_name}
                                   disabled={locked}
                                   onChange={(e) => patchLedger(r.id, { guest_name: e.target.value })}
-                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                  onBlur={() => saveLedgerRow({ ...r, guest_name: r.guest_name })}
                                 />
 
                                 <span
@@ -1257,15 +1250,17 @@ export default function ResultPage() {
                                   disabled={locked}
                                   placeholder="관계"
                                   onChange={(e) => patchLedger(r.id, { relationship: e.target.value })}
-                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                  onBlur={() => saveLedgerRow({ ...r, relationship: r.relationship })}
                                 />
                                 <input
                                   className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-40 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
                                   value={r.guest_phone ?? ""}
                                   disabled={locked}
                                   placeholder="연락처"
-                                  onChange={(e) => patchLedger(r.id, { guest_phone: formatKoreanMobile(e.target.value) })}
-                                  onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                  onChange={(e) =>
+                                    patchLedger(r.id, { guest_phone: formatKoreanMobile(e.target.value) })
+                                  }
+                                  onBlur={() => saveLedgerRow({ ...r, guest_phone: r.guest_phone })}
                                 />
                               </div>
 
@@ -1287,11 +1282,13 @@ export default function ResultPage() {
                                 ].join(" ")}
                                 onClick={() => {
                                   const next = !(r.attended === true);
-                                  patchLedger(r.id, {
+                                  const nextRow: LedgerRow = {
+                                    ...r,
                                     attended: next,
                                     attended_at: next ? new Date().toISOString() : null,
-                                  });
-                                  saveLedgerRow(getLatestLedgerRow(r.id));
+                                  };
+                                  patchLedger(r.id, { attended: nextRow.attended, attended_at: nextRow.attended_at });
+                                  saveLedgerRow(nextRow);
                                 }}
                               >
                                 {r.attended ? "참석" : "미참석"}
@@ -1313,10 +1310,14 @@ export default function ResultPage() {
                                   const v = onlyDigits(e.target.value);
                                   patchLedger(r.id, { gift_amount: v ? Number(v) : null });
                                 }}
-                                onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                onBlur={() => saveLedgerRow(r)}
                               />
                               <div className="mt-2 text-[10px] text-slate-400 font-bold uppercase">
-                                {r.gift_method === "cash" ? "CASH" : r.gift_method === "account" ? "ACCOUNT" : "UNKNOWN"}
+                                {r.gift_method === "cash"
+                                  ? "CASH"
+                                  : r.gift_method === "account"
+                                  ? "ACCOUNT"
+                                  : "UNKNOWN"}
                               </div>
                             </td>
 
@@ -1330,7 +1331,7 @@ export default function ResultPage() {
                                   const v = onlyDigits(e.target.value);
                                   patchLedger(r.id, { ticket_count: v ? Number(v) : 0 });
                                 }}
-                                onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                onBlur={() => saveLedgerRow(r)}
                               />
                             </td>
 
@@ -1339,8 +1340,9 @@ export default function ResultPage() {
                                 <button
                                   disabled={locked}
                                   onClick={() => {
-                                    patchLedger(r.id, { return_given: !r.return_given });
-                                    saveLedgerRow(getLatestLedgerRow(r.id));
+                                    const nextRow: LedgerRow = { ...r, return_given: !r.return_given };
+                                    patchLedger(r.id, { return_given: nextRow.return_given });
+                                    saveLedgerRow(nextRow);
                                   }}
                                   className={[
                                     "px-4 py-2 rounded-2xl text-[10px] font-black border transition-all",
@@ -1356,8 +1358,9 @@ export default function ResultPage() {
                                 <button
                                   disabled={locked}
                                   onClick={() => {
-                                    patchLedger(r.id, { thanks_done: !r.thanks_done });
-                                    saveLedgerRow(getLatestLedgerRow(r.id));
+                                    const nextRow: LedgerRow = { ...r, thanks_done: !r.thanks_done };
+                                    patchLedger(r.id, { thanks_done: nextRow.thanks_done });
+                                    saveLedgerRow(nextRow);
                                   }}
                                   className={[
                                     "px-4 py-2 rounded-2xl text-[10px] font-black border transition-all",
@@ -1377,7 +1380,7 @@ export default function ResultPage() {
                                 value={r.memo ?? ""}
                                 disabled={locked}
                                 onChange={(e) => patchLedger(r.id, { memo: e.target.value })}
-                                onBlur={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                onBlur={() => saveLedgerRow(r)}
                                 placeholder="비고 입력..."
                                 className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 placeholder:text-slate-300 focus:ring-1 focus:ring-pink-500 w-full disabled:opacity-50"
                               />
@@ -1387,7 +1390,7 @@ export default function ResultPage() {
                               <button
                                 className="px-4 py-2 rounded-2xl border text-[11px] font-bold hover:bg-slate-50 disabled:opacity-50"
                                 disabled={locked || savingId === r.id}
-                                onClick={() => saveLedgerRow(getLatestLedgerRow(r.id))}
+                                onClick={() => saveLedgerRow(r)}
                               >
                                 {savingId === r.id ? "저장중" : locked ? "잠김" : "저장"}
                               </button>
