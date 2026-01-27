@@ -79,6 +79,16 @@ const App = () => (
             }
           />
 
+          {/* ✅ alias (과거/다른 코드에서 /coocon-scrape 로 보내는 케이스 방어) */}
+          <Route
+            path="/coocon-scrape"
+            element={
+              <AuthGuard>
+                <CooconScrapePage />
+              </AuthGuard>
+            }
+          />
+
           {/* ===============================
               IA App (Login Required)
           =============================== */}
