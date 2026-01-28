@@ -11,6 +11,9 @@ declare global {
     CooconiSASNX?: any;
     jQuery?: any;
     $?: any;
+
+    // isasscaping.js가 올릴 수도 있는 헬퍼들(환경별)
+    fn?: any;
   }
 }
 
@@ -52,6 +55,70 @@ function loadCss(href: string) {
   });
 }
 
+function isYmd(s: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+/**
+ * ✅ “조회 API” 호출부는 쿠콘 샘플/계약 스펙에 따라 달라질 수 있음.
+ * 아래는 최대한 많은 후보를 순차로 시도하는 안전한 래퍼.
+ */
+async function callCooconApi(nx: any, apiId: string, params: any) {
+  // 후보1) nx.execute(apiId, params, cb)
+  if (typeof nx?.execute === "function") {
+    const out = await new Promise<any>((resolve, reject) => {
+      try {
+        nx.execute(apiId, params, (res: any) => resolve(res));
+      } catch (e) {
+        reject(e);
+      }
+    });
+    return out;
+  }
+
+  // 후보2) nx.call(apiId, params, cb)
+  if (typeof nx?.call === "function") {
+    const out = await new Promise<any>((resolve, reject) => {
+      try {
+        nx.call(apiId, params, (res: any) => resolve(res));
+      } catch (e) {
+        reject(e);
+      }
+    });
+    return out;
+  }
+
+  // 후보3) nx.run(apiId, params, cb)
+  if (typeof nx?.run === "function") {
+    const out = await new Promise<any>((resolve, reject) => {
+      try {
+        nx.run(apiId, params, (res: any) => resolve(res));
+      } catch (e) {
+        reject(e);
+      }
+    });
+    return out;
+  }
+
+  // 후보4) isasscaping.js가 window.fn에 헬퍼를 올리는 경우
+  const fn = window.fn;
+  const fnCandidates = ["callCoocon", "execute", "getTxList", "getTradeList", "requestTxList"];
+  for (const name of fnCandidates) {
+    if (typeof fn?.[name] === "function") {
+      const out = await new Promise<any>((resolve, reject) => {
+        try {
+          fn[name](apiId, params, (res: any) => resolve(res));
+        } catch (e) {
+          reject(e);
+        }
+      });
+      return out;
+    }
+  }
+
+  throw new Error("쿠콘 조회 API 호출 메서드를 찾지 못했습니다. (nx.execute/call/run 또는 window.fn 헬퍼 없음)");
+}
+
 export default function CooconScrapePage() {
   const nav = useNavigate();
   const [sp] = useSearchParams();
@@ -61,6 +128,16 @@ export default function CooconScrapePage() {
   const startDate = sp.get("startDate") || ""; // YYYY-MM-DD
   const endDate = sp.get("endDate") || ""; // YYYY-MM-DD
   const returnTo = sp.get("returnTo") || ""; // 완료 후 돌아갈 경로
+
+  /**
+   * ✅ 조회 API 식별자(쿠콘에서 받은 문서 기준으로 넣어야 함)
+   * - 예: "WDR001" 같은 TR code / API ID
+   * - 지금은 기본값을 두고, 필요 시 URL query로 override 가능하게 해둠
+   *
+   * 사용 예:
+   * /coocon/scrape?eventId=...&mode=connect_then_scrape&startDate=...&endDate=...&apiId=WDR001
+   */
+  const apiId = sp.get("apiId") || "TX_LIST"; // ⚠️ TODO: 쿠콘 가이드의 “거래내역 조회” API ID로 교체
 
   const [state, setState] = useState<ScrapeState>("idle");
   const [log, setLog] = useState<string[]>([]);
@@ -103,7 +180,7 @@ export default function CooconScrapePage() {
         await loadScript(`${base}/jquery-1.9.1.min.js`);
         await loadScript(`${base}/json2.js`);
         await loadScript(`${base}/web_socket.js`);
-        await loadScript(`${base}/isasscaping.js`); // ✅ 파일명 그대로
+        await loadScript(`${base}/isasscaping.js`); // ✅ 파일명 그대로 (r 없음)
 
         pushLog("쿠콘 리소스 로딩 완료");
 
@@ -122,6 +199,11 @@ export default function CooconScrapePage() {
 
         pushLog("NXiSAS ready");
         setState("ready");
+
+        // 날짜 체크
+        if (!isYmd(startDate) || !isYmd(endDate)) {
+          throw new Error("startDate/endDate가 유효하지 않습니다. (YYYY-MM-DD)");
+        }
 
         if (mode === "connect_then_scrape") {
           await runConnectThenScrape();
@@ -151,7 +233,7 @@ export default function CooconScrapePage() {
   }, [eventId]);
 
   /**
-   * A) 인증서 선택 → 연결 저장(우리 DB) → 즉시 1회 스크래핑(Edge Function)
+   * A) 인증서 선택 → 연결 저장(우리 DB) → 즉시 1회 스크래핑(조회 API 실행) → Edge Function 반영
    */
   async function runConnectThenScrape() {
     setState("cert_select");
@@ -171,44 +253,43 @@ export default function CooconScrapePage() {
     const $ = window.$;
     if (!$) throw new Error("jQuery($)가 없습니다.");
 
-    /**
-     * ✅ 중요: makeCertManager는 "$div.length < 1" 일 때만 내부 HTML을 생성한다.
-     * 그래서 certLayer를 미리 만들어두면(=length 1) 내부가 비어서 팝업이 안 뜬다.
-     * → 기존 certLayer를 제거하고 새로 만든 뒤 makeCertManager 호출
-     */
-    try {
-      $("#certLayer").remove();
-    } catch {
-      // ignore
+    if ($("#certLayer").length === 0) {
+      $("body").append(`<div id="certLayer" style="position:fixed; inset:0; z-index:9999;"></div>`);
     }
 
-    $("body").append(`<div id="certLayer" style="position:fixed; inset:0; z-index:9999;"></div>`);
-
     pushLog("인증서 선택 팝업 표시");
-
-    const certInfo: any = await new Promise((resolve, reject) => {
+    const certMeta = await new Promise<any>((resolve, reject) => {
       try {
-        $("#certLayer").makeCertManager((data: any) => {
-          // data: {User, Issuer, ExpiryDate, RDN, Type, Drive, CertPwd, ...}
-          resolve(data);
-        });
+        // makeCertManager는 “선택 + 비번 입력”까지 처리.
+        // 콜백 data에 User/Issuer/ExpiryDate/Type 등이 들어오는 걸 네 콘솔에서 확인함.
+        $("#certLayer").makeCertManager((data: any) => resolve(data));
       } catch (_e) {
         reject(new Error("인증서 팝업 생성 실패(makeCertManager)"));
       }
     });
 
-    pushLog(`인증서 선택 완료: ${certInfo?.User ?? "(unknown user)"}`);
+    pushLog("인증서 선택 완료");
+    if (certMeta) {
+      const brief = {
+        User: certMeta?.User,
+        Issuer: certMeta?.Issuer,
+        ExpiryDate: certMeta?.ExpiryDate,
+        Type: certMeta?.Type,
+      };
+      pushLog(`CERT: ${JSON.stringify(brief)}`);
+    }
 
     // ✅ DB에 연결완료 저장 + scrapeAccountId 확보
-    const scrapeAccountId = await insertConnectedAccount(eventId, certInfo);
+    const scrapeAccountId = await upsertConnectedAccount(eventId, certMeta);
 
-    // ✅ 인증 직후 1회 자동 갱신(Edge Function)
-    await runScrapeEdgeOnly(scrapeAccountId);
+    // ✅ 인증 직후 1회 자동 갱신
+    await runScrapeWithQueryApiAndReflect(scrapeAccountId);
   }
 
   /**
    * B) 스크래핑 실행만
-   * - Edge Function(coocon-scrape-transactions) 호출로 통일
+   * - 인증이 이미 완료되어 scrapeAccountId가 DB에 존재한다고 가정
+   * - 최신 verified_at 계정으로 조회 실행
    */
   async function runScrapeOnly() {
     setState("scraping");
@@ -225,35 +306,30 @@ export default function CooconScrapePage() {
     if (error) throw new Error(`스크래핑 계정 조회 실패: ${error.message}`);
     if (!acc?.id) throw new Error("스크래핑 계정이 없습니다. (먼저 인증이 필요)");
 
-    await runScrapeEdgeOnly(acc.id);
+    await runScrapeWithQueryApiAndReflect(acc.id);
   }
 
   /**
-   * ✅ upsert 대신 insert
-   * - 너의 설계(verified_at 최신 계정 선택)와 일치
-   * - event_id onConflict 같은 가정(이벤트당 1개 계정)은 위험
+   * ✅ 인증 직후: event_scrape_accounts upsert (id 확보)
+   * - certified meta를 raw로 저장해두면 디버깅에 도움됨(컬럼이 있으면)
    */
-  async function insertConnectedAccount(evId: string, certInfo: any): Promise<string> {
+  async function upsertConnectedAccount(evId: string, certMeta: any): Promise<string> {
     const { data: userRes } = await supabase.auth.getUser();
     const userEmail = userRes?.user?.email || null;
 
-    // ⚠️ DB 컬럼에 맞춰서 확장 가능 (bank_code/bank_name/account_masked 등)
-    // 지금은 "인증 완료 기록"이 목적이라 최소만 넣음
+    // ⚠️ 컬럼은 네 DB에 맞춰야 함.
+    // - 최소: event_id, verified_at
+    // - 있으면: connected_by_email, cert_meta_json
     const payload: any = {
       event_id: evId,
       verified_at: new Date().toISOString(),
       connected_by_email: userEmail,
-
-      // 디버그/추후 매핑용(있으면 도움됨)
-      cert_user: certInfo?.User ?? null,
-      cert_issuer: certInfo?.Issuer ?? null,
-      cert_expiry: certInfo?.ExpiryDate ?? null,
-      cert_type: certInfo?.Type ?? null,
+      cert_meta_json: certMeta ?? null,
     };
 
     const { data, error } = await supabase
       .from("event_scrape_accounts")
-      .insert(payload)
+      .upsert(payload, { onConflict: "event_id" })
       .select("id")
       .maybeSingle();
 
@@ -264,56 +340,87 @@ export default function CooconScrapePage() {
     return data.id as string;
   }
 
-  async function runScrapeEdgeOnly(scrapeAccountId: string) {
+  /**
+   * ✅ 핵심: “조회 API 실행 → Output 수신 → Edge Function 반영”
+   */
+  async function runScrapeWithQueryApiAndReflect(scrapeAccountId: string) {
     setState("scraping");
 
-    const s = startDate || "";
-    const e = endDate || "";
-
-    if (!s || !e) {
+    if (!startDate || !endDate) {
       throw new Error("startDate/endDate가 비어있습니다. (ResultPage에서 날짜를 넣어 보내야 함)");
     }
+    if (!isYmd(startDate) || !isYmd(endDate)) {
+      throw new Error("startDate/endDate 형식 오류 (YYYY-MM-DD)");
+    }
 
-    pushLog(`Edge Function 호출: coocon-scrape-transactions (${s} ~ ${e})`);
+    const nx = window.CooconiSASNX;
+    if (!nx) throw new Error("CooconiSASNX가 없습니다.");
+
+    pushLog(`조회 API 실행: ${apiId} (${startDate} ~ ${endDate})`);
+
+    /**
+     * ✅ 여기 params는 “쿠콘 가이드의 조회 파라미터”로 맞춰야 함.
+     * - start/end, 계좌식별자, 은행코드 등이 필요할 수 있음.
+     *
+     * 지금은 최소한 날짜만 넣고, 필요한 값은 추후 확정되면 추가하면 됨.
+     * (실제 스펙에 맞춰야 100% 성공)
+     */
+    const params: any = {
+      startDate,
+      endDate,
+
+      // 예시로 넣어둠 (가이드에 맞춰 키 이름 변경)
+      // bankCode: "...",
+      // accountNo: "...",
+    };
+
+    // 1) 조회 실행 → Output 받기
+    let output: any;
+    try {
+      output = await callCooconApi(nx, apiId, params);
+    } catch (e: any) {
+      pushLog(`조회 API 실패: ${e?.message || String(e)}`);
+      throw new Error(`조회 API 호출 실패(메서드/스펙 확인 필요): ${e?.message || String(e)}`);
+    }
+
+    pushLog("조회 결과 수신(원본 Output 확보)");
+
+    // 2) Edge Function으로 반영 (cooconOutput 그대로 전달 → 서버에서 normalize)
+    pushLog(`Edge Function 호출: coocon-scrape-transactions (${startDate} ~ ${endDate})`);
 
     const { data: session } = await supabase.auth.getSession();
     const token = session.session?.access_token;
     if (!token) throw new Error("로그인이 필요합니다.");
 
-    const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          eventId,
-          scrapeAccountId,
-          startDate: s,
-          endDate: e,
-        }),
-      }
-    );
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        eventId,
+        scrapeAccountId,
+        startDate,
+        endDate,
 
-    const body = await res.json().catch(() => ({} as any));
+        // ✅ 서버에서 normalizeFromCooconOutput로 파싱
+        cooconOutput: output,
+      }),
+    });
 
+    const j = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const msg =
-        body?.message ||
-        body?.error ||
-        body?.detail ||
-        `조회 실패(${res.status})`;
+      const msg = j?.message || j?.error || `조회 실패(${res.status})`;
       throw new Error(msg);
     }
 
-    // ✅ Edge Function 응답 필드명 기준 (너가 준 coocon-scrape-transactions 코드 기준)
-    const fetched = Number(body?.fetched ?? 0);
-    const insertedTx = Number(body?.insertedTx ?? 0);
-    const reflectedLedgerNew = Number(body?.reflectedLedgerNew ?? 0);
+    const fetched = j.fetched ?? 0;
+    const insertedTx = j.insertedTx ?? 0;
+    const reflectedNew = j.reflectedLedgerNew ?? 0;
+    const reflectedTotal = j.reflectedLedgerTotal ?? 0;
 
-    pushLog(`갱신 성공: fetched=${fetched}, insertedTx=${insertedTx}, ledgerNew=${reflectedLedgerNew}`);
+    pushLog(`갱신 성공: fetched=${fetched}, insertedTx=${insertedTx}, ledgerNew=${reflectedNew}, ledgerTotal=${reflectedTotal}`);
   }
 
   return (
@@ -357,13 +464,16 @@ export default function CooconScrapePage() {
           * 이 화면은 PC에서만 정상 동작(엔진/인증서 필요). 모바일은 막거나 안내만 띄우는 게 맞음.
         </div>
         <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-          * 흐름: 인증 완료 → DB에 계정 저장 → 즉시 1회 “은행 내역 갱신” 자동 실행 → 리포트로 복귀
+          * 흐름: 인증 완료 → DB 저장 → 조회 API 실행 → Output 수신 → Edge Function으로 DB 반영 → 리포트 복귀
+        </div>
+        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
+          * apiId(거래내역 조회 식별자): <b>{apiId}</b> (필요 시 URL에 <code>&amp;apiId=...</code> 로 교체)
         </div>
       </div>
 
       <div style={{ marginTop: 12 }}>
         <h2 style={{ fontSize: 14, marginBottom: 8 }}>로그</h2>
-        <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, background: "white", minHeight: 200 }}>
+        <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, background: "white", minHeight: 220 }}>
           {log.length === 0 ? (
             <div style={{ opacity: 0.6 }}>...</div>
           ) : (
