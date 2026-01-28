@@ -250,18 +250,28 @@ export default function CooconScrapePage() {
     const $ = window.$;
     if (!$) throw new Error("jQuery($)가 없습니다.");
 
-    // ✅ 팝업이 “다시 안 열리는” 케이스 방지: 무조건 새 레이어로 재생성
+    // ✅ 안전판: certLayer 선생성 제거 + 매번 강제 재생성 + CERT_OPENED 리셋
+    if (window.__CERT_OPENED__) {
+      pushLog("인증서 팝업이 열린 것으로 감지 → 강제 리셋");
+    }
     try {
       $("#certLayer").remove();
     } catch {}
-    $("body").append(`<div id="certLayer" style="position:fixed; inset:0; z-index:9999;"></div>`);
     window.__CERT_OPENED__ = false;
 
     pushLog("인증서 선택 팝업 표시");
+    window.__CERT_OPENED__ = true;
     const certMeta = await new Promise<any>((resolve, reject) => {
       try {
-        $("#certLayer").makeCertManager((data: any) => resolve(data));
+        $("#certLayer").makeCertManager((data: any) => {
+          window.__CERT_OPENED__ = false;
+          try {
+            $("#certLayer").remove();
+          } catch {}
+          resolve(data);
+        });
       } catch (_e) {
+        window.__CERT_OPENED__ = false;
         reject(new Error("인증서 팝업 생성 실패(makeCertManager)"));
       }
     });
