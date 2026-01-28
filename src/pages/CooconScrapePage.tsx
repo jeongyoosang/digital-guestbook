@@ -14,6 +14,9 @@ declare global {
 
     // isasscaping.js가 올릴 수도 있는 헬퍼들(환경별)
     fn?: any;
+
+    // cert 팝업 중복 방지
+    __CERT_OPENED__?: boolean;
   }
 }
 
@@ -21,6 +24,7 @@ type ScrapeState =
   | "idle"
   | "loading_assets"
   | "initializing"
+  | "opening"
   | "ready"
   | "cert_select"
   | "scraping"
@@ -133,9 +137,6 @@ export default function CooconScrapePage() {
    * ✅ 조회 API 식별자(쿠콘에서 받은 문서 기준으로 넣어야 함)
    * - 예: "WDR001" 같은 TR code / API ID
    * - 지금은 기본값을 두고, 필요 시 URL query로 override 가능하게 해둠
-   *
-   * 사용 예:
-   * /coocon/scrape?eventId=...&mode=connect_then_scrape&startDate=...&endDate=...&apiId=WDR001
    */
   const apiId = sp.get("apiId") || "TX_LIST"; // ⚠️ TODO: 쿠콘 가이드의 “거래내역 조회” API ID로 교체
 
@@ -144,6 +145,7 @@ export default function CooconScrapePage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
+  const openedRef = useRef(false);
 
   // public/coocon => /coocon 으로 서빙됨
   const base = useMemo(() => "/coocon", []);
@@ -197,6 +199,32 @@ export default function CooconScrapePage() {
           });
         });
 
+        pushLog("NXiSAS init 완료");
+
+        // ✅ 핵심: open을 반드시 호출 (CERTLIST/팝업이 안 뜨는 케이스 방지)
+        // - open(1, cb) : (문서/샘플에서 보통 1을 사용)
+        setState("opening");
+        pushLog("NXiSAS open 시작");
+
+        await new Promise<void>((resolve, reject) => {
+          try {
+            if (typeof nx.open !== "function") {
+              pushLog("nx.open 함수가 없습니다. (환경별로 생략 가능) → 계속 진행");
+              openedRef.current = true;
+              return resolve();
+            }
+
+            nx.open(1, (msg: any) => {
+              // Result: "OK" / "ALREADY" 등
+              pushLog(`NXiSAS open 콜백: ${JSON.stringify(msg)}`);
+              openedRef.current = true;
+              resolve();
+            });
+          } catch (e: any) {
+            reject(new Error(`nx.open 실패: ${e?.message || String(e)}`));
+          }
+        });
+
         pushLog("NXiSAS ready");
         setState("ready");
 
@@ -237,15 +265,43 @@ export default function CooconScrapePage() {
    */
   async function runConnectThenScrape() {
     setState("cert_select");
-    pushLog("인증서 목록 조회");
+
+    // ✅ certLayer/flag 초기화(“팝업 다시 안열림” 방지)
+    try {
+      document.querySelector("#certLayer")?.remove();
+    } catch {}
+    window.__CERT_OPENED__ = false;
 
     const nx = window.CooconiSASNX;
+    if (!nx) throw new Error("CooconiSASNX가 없습니다.");
+
+    pushLog("인증서 목록 조회");
+
+    // 혹시 open이 완료되지 않았다면 방어적으로 1회 더 시도
+    if (!openedRef.current && typeof nx.open === "function") {
+      pushLog("open 미완료 감지 → nx.open 재시도");
+      await new Promise<void>((resolve) => {
+        try {
+          nx.open(1, (msg: any) => {
+            pushLog(`NXiSAS open(재시도) 콜백: ${JSON.stringify(msg)}`);
+            openedRef.current = true;
+            resolve();
+          });
+        } catch {
+          resolve();
+        }
+      });
+    }
 
     const certList: any[] = await new Promise((resolve, reject) => {
-      nx.getCertList((list: any[]) => {
-        if (!Array.isArray(list)) return reject(new Error("인증서 목록 조회 실패"));
-        resolve(list);
-      });
+      try {
+        nx.getCertList((list: any[]) => {
+          if (!Array.isArray(list)) return reject(new Error("인증서 목록 조회 실패"));
+          resolve(list);
+        });
+      } catch (e: any) {
+        reject(new Error(`nx.getCertList 예외: ${e?.message || String(e)}`));
+      }
     });
 
     pushLog(`인증서 ${certList.length}개 발견`);
@@ -257,13 +313,30 @@ export default function CooconScrapePage() {
       $("body").append(`<div id="certLayer" style="position:fixed; inset:0; z-index:9999;"></div>`);
     }
 
+    // ✅ 중복 호출 방지 (isasscaping.js쪽에서도 중복 방지 변수가 있을 수 있음)
+    if (window.__CERT_OPENED__) {
+      pushLog("인증서 팝업이 이미 열려있는 것으로 감지됨 → 강제 초기화 후 재오픈");
+      try {
+        $("#certLayer").empty();
+      } catch {}
+      window.__CERT_OPENED__ = false;
+    }
+
     pushLog("인증서 선택 팝업 표시");
+    window.__CERT_OPENED__ = true;
+
     const certMeta = await new Promise<any>((resolve, reject) => {
       try {
-        // makeCertManager는 “선택 + 비번 입력”까지 처리.
-        // 콜백 data에 User/Issuer/ExpiryDate/Type 등이 들어오는 걸 네 콘솔에서 확인함.
-        $("#certLayer").makeCertManager((data: any) => resolve(data));
+        $("#certLayer").makeCertManager((data: any) => {
+          // 닫힘 처리
+          window.__CERT_OPENED__ = false;
+          try {
+            document.querySelector("#certLayer")?.remove();
+          } catch {}
+          resolve(data);
+        });
       } catch (_e) {
+        window.__CERT_OPENED__ = false;
         reject(new Error("인증서 팝업 생성 실패(makeCertManager)"));
       }
     });
@@ -318,8 +391,6 @@ export default function CooconScrapePage() {
     const userEmail = userRes?.user?.email || null;
 
     // ⚠️ 컬럼은 네 DB에 맞춰야 함.
-    // - 최소: event_id, verified_at
-    // - 있으면: connected_by_email, cert_meta_json
     const payload: any = {
       event_id: evId,
       verified_at: new Date().toISOString(),
@@ -360,18 +431,12 @@ export default function CooconScrapePage() {
 
     /**
      * ✅ 여기 params는 “쿠콘 가이드의 조회 파라미터”로 맞춰야 함.
-     * - start/end, 계좌식별자, 은행코드 등이 필요할 수 있음.
-     *
-     * 지금은 최소한 날짜만 넣고, 필요한 값은 추후 확정되면 추가하면 됨.
-     * (실제 스펙에 맞춰야 100% 성공)
+     * 지금은 최소한 날짜만 넣고, 필요한 값은 추후 확정되면 추가.
      */
     const params: any = {
       startDate,
       endDate,
-
-      // 예시로 넣어둠 (가이드에 맞춰 키 이름 변경)
-      // bankCode: "...",
-      // accountNo: "...",
+      // bankCode, accountNo 등은 쿠콘 스펙 확정되면 추가
     };
 
     // 1) 조회 실행 → Output 받기
@@ -403,7 +468,6 @@ export default function CooconScrapePage() {
         scrapeAccountId,
         startDate,
         endDate,
-
         // ✅ 서버에서 normalizeFromCooconOutput로 파싱
         cooconOutput: output,
       }),
@@ -420,7 +484,9 @@ export default function CooconScrapePage() {
     const reflectedNew = j.reflectedLedgerNew ?? 0;
     const reflectedTotal = j.reflectedLedgerTotal ?? 0;
 
-    pushLog(`갱신 성공: fetched=${fetched}, insertedTx=${insertedTx}, ledgerNew=${reflectedNew}, ledgerTotal=${reflectedTotal}`);
+    pushLog(
+      `갱신 성공: fetched=${fetched}, insertedTx=${insertedTx}, ledgerNew=${reflectedNew}, ledgerTotal=${reflectedTotal}`
+    );
   }
 
   return (
