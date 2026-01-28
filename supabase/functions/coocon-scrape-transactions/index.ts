@@ -1,7 +1,16 @@
+// supabase/functions/coocon-scrape-transactions/index.ts
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 type Direction = "IN" | "OUT";
+
+type Body = {
+  eventId: string;
+  scrapeAccountId: string;
+  startDate: string; // 'YYYY-MM-DD'
+  endDate: string; // 'YYYY-MM-DD'
+  cooconOutput?: unknown; // ✅ 프론트에서 받은 조회 결과(Output 원본)
+};
 
 type NormalizedTx = {
   tx_date: string; // 'YYYY-MM-DD'
@@ -13,21 +22,6 @@ type NormalizedTx = {
   counterparty?: string | null;
   counterparty_account?: string | null;
   raw_json?: unknown | null;
-};
-
-type Body = {
-  eventId: string;
-  scrapeAccountId: string;
-  startDate: string; // 'YYYY-MM-DD'
-  endDate: string; // 'YYYY-MM-DD'
-
-  /**
-   * ✅ E2E용 추가 입력
-   * - fetched: 이미 정규화된 거래내역 (권장)
-   * - cooconOutput: 쿠콘 API Output 전체(원본) 넣으면 아래에서 파싱해서 정규화함
-   */
-  fetched?: NormalizedTx[];
-  cooconOutput?: unknown;
 };
 
 // ✅ CORS
@@ -48,10 +42,6 @@ function json(data: unknown, status = 200, extraHeaders: Record<string, string> 
 
 function isYmd(s: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
-}
-
-function isHms(s: string) {
-  return /^\d{2}:\d{2}:\d{2}$/.test(s);
 }
 
 // SHA256 hex
@@ -89,7 +79,7 @@ async function makeTxHash(input: {
 }
 
 function toIsoFromYmdHms(tx_date: string, tx_time?: string | null) {
-  const t = tx_time && isHms(tx_time) ? tx_time : "00:00:00";
+  const t = tx_time && /^\d{2}:\d{2}:\d{2}$/.test(tx_time) ? tx_time : "00:00:00";
   return `${tx_date}T${t}Z`;
 }
 
@@ -100,92 +90,206 @@ function chunk<T>(arr: T[], size: number) {
 }
 
 /**
- * ✅ 쿠콘 원본 Output(JSON) → NormalizedTx[]
- * - 가이드에 있는 키들(거래일자/거래시각/입금액/출금액/거래후잔액/기재사항 1/상대계좌번호/상대계좌예금주명)을 최대한 흡수
- * - "거래내역조회", "수시거래내역조회", "수시과거거래내역조회" 등 배열 키 변형도 대응
+ * ✅ cooconOutput(조회 결과 원본) → NormalizedTx[]
+ *
+ * 쿠콘 Output 구조가 고객사/상품/샘플에 따라 다를 수 있어서,
+ * 1) 배열 후보들을 최대한 찾아보고
+ * 2) 각 row에서 날짜/시간/금액/입출금/메모/상대방/잔액을 추출 시도
+ *
+ * 실제 Output 샘플(콘솔에서 찍은 json)을 주면 여기 파서 정확도를 더 올릴 수 있음.
  */
 function normalizeFromCooconOutput(cooconOutput: any): NormalizedTx[] {
-  try {
-    const out = cooconOutput?.Output ?? cooconOutput; // 혹시 Output만 오거나 전체가 오거나
-    const result = out?.Result ?? out?.result ?? out?.RESULT ?? {};
-    const arr =
-      result?.거래내역조회 ??
-      result?.수시거래내역조회 ??
-      result?.수시과거거래내역조회 ??
-      result?.거래내역 ??
-      [];
+  if (!cooconOutput) return [];
 
-    if (!Array.isArray(arr)) return [];
+  // 0) 흔한 래핑 제거: {Output:{Result:{...}}} 또는 {Result:{...}} 또는 그냥 {...}
+  const root =
+    cooconOutput?.Output?.Result ??
+    cooconOutput?.Output ??
+    cooconOutput?.Result ??
+    cooconOutput;
 
-    const norm: NormalizedTx[] = [];
+  // 1) 배열 후보 찾기 (가장 흔한 케이스들을 폭넓게)
+  const candidates: any[] = [];
 
-    for (const row of arr) {
-      const ymdRaw = String(row?.거래일자 ?? row?.TXDATE ?? row?.tx_date ?? "");
-      if (!/^\d{8}$/.test(ymdRaw)) continue;
-      const tx_date = `${ymdRaw.slice(0, 4)}-${ymdRaw.slice(4, 6)}-${ymdRaw.slice(6, 8)}`;
+  // 직접 배열이면 그대로
+  if (Array.isArray(root)) candidates.push(root);
 
-      const hmsRaw = String(row?.거래시각 ?? row?.TXTIME ?? row?.tx_time ?? "");
-      let tx_time: string | null = null;
-      if (/^\d{6}$/.test(hmsRaw)) {
-        tx_time = `${hmsRaw.slice(0, 2)}:${hmsRaw.slice(2, 4)}:${hmsRaw.slice(4, 6)}`;
+  // 흔한 키들
+  const keysToTry = [
+    "List",
+    "list",
+    "TX_LIST",
+    "TxList",
+    "txList",
+    "TXLIST",
+    "OUT",
+    "out",
+    "ResultList",
+    "resultList",
+    "Data",
+    "data",
+    "rows",
+    "Rows",
+    "items",
+    "Items",
+  ];
+
+  for (const k of keysToTry) {
+    const v = (root as any)?.[k];
+    if (Array.isArray(v)) candidates.push(v);
+  }
+
+  // 한 단계 더 들어가서 배열 찾기
+  for (const k of Object.keys(root ?? {})) {
+    const v = (root as any)[k];
+    if (v && typeof v === "object") {
+      for (const kk of keysToTry) {
+        const vv = (v as any)?.[kk];
+        if (Array.isArray(vv)) candidates.push(vv);
       }
+    }
+  }
 
-      const inAmt = Number(String(row?.입금액 ?? "0").replace(/,/g, ""));
-      const outAmt = Number(String(row?.출금액 ?? "0").replace(/,/g, ""));
-      const balance = row?.거래후잔액 != null ? Number(String(row.거래후잔액).replace(/,/g, "")) : null;
+  const list = candidates.find((x) => Array.isArray(x) && x.length > 0) ?? [];
+  if (!Array.isArray(list) || list.length === 0) return [];
 
-      const direction: Direction = inAmt > 0 ? "IN" : outAmt > 0 ? "OUT" : "IN";
-      const amount = Math.abs(direction === "IN" ? inAmt : outAmt);
-      if (!amount || !Number.isFinite(amount)) continue;
+  const out: NormalizedTx[] = [];
 
-      const memo =
-        String(row?.["기재사항 1"] ?? row?.기재사항1 ?? row?.memo ?? row?.적요 ?? "").trim() || null;
+  for (const row of list) {
+    if (!row || typeof row !== "object") continue;
 
-      const counterparty =
-        String(row?.상대계좌예금주명 ?? row?.상대예금주명 ?? row?.counterparty ?? "").trim() || null;
+    // 날짜 키 후보
+    const dateRaw =
+      row.tx_date ??
+      row.TxDate ??
+      row.TRN_DT ??
+      row.TRNDATE ??
+      row.date ??
+      row.DT ??
+      row.거래일자 ??
+      row.거래일 ??
+      row["거래일"] ??
+      row["거래일자"];
 
-      const counterparty_account =
-        String(row?.상대계좌번호 ?? row?.counterparty_account ?? "").trim() || null;
+    const timeRaw =
+      row.tx_time ??
+      row.TxTime ??
+      row.TRN_TM ??
+      row.time ??
+      row.TM ??
+      row.거래시간 ??
+      row["거래시간"];
 
-      norm.push({
-        tx_date,
-        tx_time,
-        amount,
-        direction,
-        balance: Number.isFinite(balance as any) ? (balance as number) : null,
-        memo,
-        counterparty,
-        counterparty_account,
-        raw_json: row ?? null,
-      });
+    // 금액(입금/출금/거래금액 등)
+    const amtRaw =
+      row.amount ??
+      row.AMT ??
+      row.TRN_AMT ??
+      row.거래금액 ??
+      row["거래금액"] ??
+      row.입금 ??
+      row.출금 ??
+      row["입금"] ??
+      row["출금"];
+
+    // 입출금 방향 후보 (없으면 amount 부호로 추정)
+    const dirRaw =
+      row.direction ??
+      row.DIR ??
+      row.INOUT ??
+      row.inout ??
+      row.입출금구분 ??
+      row["입출금구분"] ??
+      row.구분 ??
+      row["구분"];
+
+    const balRaw =
+      row.balance ??
+      row.BAL ??
+      row.BALANCE ??
+      row.잔액 ??
+      row["잔액"];
+
+    const memoRaw =
+      row.memo ??
+      row.MEMO ??
+      row.REMARK ??
+      row.적요 ??
+      row["적요"] ??
+      row.내용 ??
+      row["내용"];
+
+    const counterpartyRaw =
+      row.counterparty ??
+      row.OPPONENT ??
+      row.TRADER ??
+      row.거래처 ??
+      row["거래처"] ??
+      row.상대방 ??
+      row["상대방"] ??
+      row.보낸사람 ??
+      row["보낸사람"];
+
+    const counterAccRaw =
+      row.counterparty_account ??
+      row.OPP_ACC ??
+      row.OPPONENT_ACC ??
+      row.상대계좌 ??
+      row["상대계좌"];
+
+    // ---- normalize ----
+    const tx_date = String(dateRaw ?? "").trim();
+    if (!isYmd(tx_date)) continue;
+
+    let tx_time: string | null = null;
+    if (timeRaw != null) {
+      const t = String(timeRaw).trim();
+      // HHMMSS → HH:MM:SS 보정
+      if (/^\d{6}$/.test(t)) tx_time = `${t.slice(0, 2)}:${t.slice(2, 4)}:${t.slice(4, 6)}`;
+      else if (/^\d{2}:\d{2}:\d{2}$/.test(t)) tx_time = t;
+      else tx_time = null;
     }
 
-    return norm;
-  } catch {
-    return [];
+    const amountNum = Number(String(amtRaw ?? "").replace(/[^\d.-]/g, ""));
+    if (!Number.isFinite(amountNum) || amountNum === 0) continue;
+
+    let direction: Direction = "IN";
+    const dirStr = String(dirRaw ?? "").toUpperCase();
+
+    if (dirStr.includes("OUT") || dirStr.includes("출금") || dirStr.includes("지출")) direction = "OUT";
+    else if (dirStr.includes("IN") || dirStr.includes("입금") || dirStr.includes("수입")) direction = "IN";
+    else {
+      // fallback: 입금/출금이 분리돼 들어온 케이스
+      const hasIn = row.입금 != null || row["입금"] != null;
+      const hasOut = row.출금 != null || row["출금"] != null;
+      if (hasOut && !hasIn) direction = "OUT";
+      else if (hasIn && !hasOut) direction = "IN";
+      else direction = amountNum < 0 ? "OUT" : "IN";
+    }
+
+    const amount = Math.abs(amountNum);
+
+    const balanceNum = balRaw == null ? null : Number(String(balRaw).replace(/[^\d.-]/g, ""));
+    const balance = Number.isFinite(balanceNum as any) ? (balanceNum as number) : null;
+
+    const memo = memoRaw == null ? null : String(memoRaw).trim() || null;
+    const counterparty = counterpartyRaw == null ? null : String(counterpartyRaw).trim() || null;
+    const counterparty_account = counterAccRaw == null ? null : String(counterAccRaw).trim() || null;
+
+    out.push({
+      tx_date,
+      tx_time,
+      amount,
+      direction,
+      balance,
+      memo,
+      counterparty,
+      counterparty_account,
+      raw_json: row,
+    });
   }
-}
 
-/**
- * ✅ 예식 종료 컷오프 이후 스크래핑 잠금
- * - event_settings.ceremony_date (YYYY-MM-DD) + ceremony_end_time (HH:MM)
- * - Asia/Seoul(+09:00)로 해석해서 now가 이후면 잠금
- */
-function computeCutoffKst(ceremony_date: string | null, ceremony_end_time: string | null): Date | null {
-  if (!ceremony_date || !ceremony_end_time) return null;
-  // ceremony_end_time: "HH:MM" or "HH:MM:SS"
-  const t = /^\d{2}:\d{2}:\d{2}$/.test(ceremony_end_time)
-    ? ceremony_end_time
-    : /^\d{2}:\d{2}$/.test(ceremony_end_time)
-      ? `${ceremony_end_time}:00`
-      : null;
-  if (!t) return null;
-
-  // KST로 만든 뒤 Date로 파싱
-  const iso = `${ceremony_date}T${t}+09:00`;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return d;
+  return out;
 }
 
 // ✅ Preflight
@@ -201,7 +305,7 @@ Deno.serve(async (req) => {
     const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
     const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // 1) 로그인 유저 확인
+    // 1) 로그인 유저 확인 (Bearer 토큰)
     const authHeader = req.headers.get("Authorization") ?? "";
     if (!authHeader.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
 
@@ -221,7 +325,7 @@ Deno.serve(async (req) => {
       return json({ error: "Invalid date format (YYYY-MM-DD)" }, 400);
     }
 
-    // 2) 이 유저가 event 멤버인지 확인
+    // 2) 이 유저가 event 멤버인지 확인 (+ side 있으면 가져오기)
     const { data: memberRow, error: memErr } = await userClient
       .from("event_members")
       .select("id, side")
@@ -235,29 +339,27 @@ Deno.serve(async (req) => {
     const ownerMemberId = memberRow.id as string;
     const ownerSide = (memberRow as any)?.side ?? null;
 
-    // ✅ 2.5) 예식 종료 컷오프 이후 스크래핑 차단 (정책 반영)
-    // - events/report_status 대신 event_settings 기준 사용
-    const { data: settings, error: setErr } = await userClient
-      .from("event_settings")
-      .select("ceremony_date, ceremony_end_time")
-      .eq("event_id", body.eventId)
+    // ✅ 2.5) 리포트 확정이면 스크래핑 차단
+    const { data: ev, error: evErr } = await userClient
+      .from("events")
+      .select("report_status, report_finalized_at")
+      .eq("id", body.eventId)
       .maybeSingle();
 
-    if (setErr) return json({ error: "Event settings read failed", detail: setErr.message }, 500);
+    if (evErr) return json({ error: "Event read failed", detail: evErr.message }, 500);
 
-    const cutoff = computeCutoffKst(settings?.ceremony_date ?? null, settings?.ceremony_end_time ?? null);
-    if (cutoff && Date.now() >= cutoff.getTime()) {
+    if (ev?.report_status === "finalized") {
       return json(
         {
-          error: "Scrape locked after cutoff",
-          message: "예식 종료 이후에는 은행 내역(스크래핑)을 갱신할 수 없습니다.",
-          cutoff_at: cutoff.toISOString(),
+          error: "Report finalized",
+          message: "확정된 현장 참석자 리포트는 갱신할 수 없습니다.",
+          report_finalized_at: ev.report_finalized_at ?? null,
         },
         409
       );
     }
 
-    // 3) scrapeAccount 권한 + event_id 확인
+    // 3) scrapeAccount 권한 + event_id 확인 (+ bank_name/account_masked 가져오기)
     const { data: myAccount, error: accErr } = await userClient
       .from("event_scrape_accounts")
       .select("id, event_id, bank_code, bank_name, account_masked")
@@ -270,22 +372,15 @@ Deno.serve(async (req) => {
       return json({ error: "Forbidden (scrape account not for this event)" }, 403);
     }
 
-    // 4) ✅ fetched를 “클라가 보내준 값”으로 반영 (E2E 핵심)
-    let fetched: NormalizedTx[] = [];
-    if (Array.isArray(body.fetched)) {
-      fetched = body.fetched as NormalizedTx[];
-    } else if (body.cooconOutput) {
-      fetched = normalizeFromCooconOutput(body.cooconOutput);
-    } else {
-      fetched = [];
-    }
+    // ✅ 4) 프론트에서 받은 cooconOutput으로 fetched 생성
+    const fetched: NormalizedTx[] = normalizeFromCooconOutput((body as any).cooconOutput);
 
-    // 5) 서비스 롤 클라이언트
+    // 5) 서비스 롤 클라이언트 (RLS 무시)
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
       auth: { persistSession: false },
     });
 
-    // 5-1) event_scrape_transactions upsert rows
+    // 5-1) event_scrape_transactions upsert rows 만들기 (is_reflected는 일단 false)
     const txRows: Array<{
       event_id: string;
       scrape_account_id: string;
@@ -340,7 +435,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 5-2) 멱등 upsert
+    // 5-2) event_scrape_transactions 멱등 upsert
     let insertedTx = 0;
 
     if (txRows.length > 0) {
@@ -360,10 +455,9 @@ Deno.serve(async (req) => {
     let reflectedLedgerNew = 0;
     let reflectedLedgerTotal = 0;
 
-    // 6-1) 이번 기간 tx 다시 조회
     const { data: txList, error: txReadErr } = await admin
       .from("event_scrape_transactions")
-      .select("id, tx_hash, tx_date, tx_time, amount, direction, memo, counterparty, counterparty_account, is_reflected")
+      .select("id, tx_hash, tx_date, tx_time, amount, direction, memo, counterparty, is_reflected")
       .eq("event_id", body.eventId)
       .eq("scrape_account_id", body.scrapeAccountId)
       .gte("tx_date", body.startDate)
@@ -374,7 +468,6 @@ Deno.serve(async (req) => {
     const allTx = (txList ?? []) as any[];
     const inTx = allTx.filter((t) => (t.direction ?? "IN") === "IN" && Number(t.amount ?? 0) > 0);
 
-    // 6-2) 기존 ledger scrape memo hash set
     const { data: existingLedger, error: ledReadErr } = await admin
       .from("event_ledger_entries")
       .select("memo")
@@ -394,10 +487,8 @@ Deno.serve(async (req) => {
       existingHashSet.add(key);
     }
 
-    const bankLabel =
-      `${myAccount.bank_name ?? myAccount.bank_code ?? ""} ${myAccount.account_masked ?? ""}`.trim() || null;
+    const bankLabel = `${myAccount.bank_name ?? myAccount.bank_code ?? ""} ${myAccount.account_masked ?? ""}`.trim() || null;
 
-    // 6-3) insert ledger rows
     const ledgerRows: any[] = [];
     const reflectedHashKeys: string[] = [];
 
@@ -406,7 +497,6 @@ Deno.serve(async (req) => {
       if (!hash) continue;
 
       const hashKey = `SCRAPE:${hash}`;
-
       if (existingHashSet.has(hashKey)) {
         reflectedLedgerTotal += 1;
         reflectedHashKeys.push(hashKey);
@@ -454,7 +544,6 @@ Deno.serve(async (req) => {
       reflectedHashKeys.push(hashKey);
     }
 
-    // 6-4) ledger insert
     if (ledgerRows.length > 0) {
       const { data: insertedLed, error: ledInsErr } = await admin
         .from("event_ledger_entries")
@@ -465,10 +554,7 @@ Deno.serve(async (req) => {
       reflectedLedgerNew = insertedLed?.length ?? 0;
     }
 
-    // 6-5) is_reflected=true 업데이트
-    const reflectedTxHashes = reflectedHashKeys
-      .map((k) => k.replace(/^SCRAPE:/, ""))
-      .filter(Boolean);
+    const reflectedTxHashes = reflectedHashKeys.map((k) => k.replace(/^SCRAPE:/, "")).filter(Boolean);
 
     if (reflectedTxHashes.length > 0) {
       for (const part of chunk(reflectedTxHashes, 100)) {
@@ -485,7 +571,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 7) last_scraped_at 갱신
     const { error: lastErr } = await admin
       .from("event_scrape_accounts")
       .update({ last_scraped_at: new Date().toISOString() })
@@ -502,7 +587,7 @@ Deno.serve(async (req) => {
       reflectedLedgerNew,
       reflectedLedgerTotal,
       note:
-        "이제 fetched(또는 cooconOutput)가 들어오면 event_scrape_transactions upsert + ledger 자동 반영까지 E2E로 동작합니다. dedupe는 memo prefix(SCRAPE:<tx_hash>) 방식 유지.",
+        "프론트에서 cooconOutput을 전달받아 normalizeFromCooconOutput로 파싱 후 반영합니다. Output 구조에 따라 파서 보정이 필요할 수 있습니다.",
     });
   } catch (e: any) {
     return json({ error: "Unhandled", detail: String(e?.message ?? e) }, 500);
