@@ -103,7 +103,7 @@ export default function CooconScrapePage() {
         await loadScript(`${base}/jquery-1.9.1.min.js`);
         await loadScript(`${base}/json2.js`);
         await loadScript(`${base}/web_socket.js`);
-        await loadScript(`${base}/isasscaping.js`); // ✅ 파일명 그대로 (r 없음)
+        await loadScript(`${base}/isasscaping.js`); // ✅ 파일명 그대로
 
         pushLog("쿠콘 리소스 로딩 완료");
 
@@ -171,26 +171,36 @@ export default function CooconScrapePage() {
     const $ = window.$;
     if (!$) throw new Error("jQuery($)가 없습니다.");
 
-    if ($("#certLayer").length === 0) {
-      $("body").append(`<div id="certLayer" style="position:fixed; inset:0; z-index:9999;"></div>`);
+    /**
+     * ✅ 중요: makeCertManager는 "$div.length < 1" 일 때만 내부 HTML을 생성한다.
+     * 그래서 certLayer를 미리 만들어두면(=length 1) 내부가 비어서 팝업이 안 뜬다.
+     * → 기존 certLayer를 제거하고 새로 만든 뒤 makeCertManager 호출
+     */
+    try {
+      $("#certLayer").remove();
+    } catch {
+      // ignore
     }
 
+    $("body").append(`<div id="certLayer" style="position:fixed; inset:0; z-index:9999;"></div>`);
+
     pushLog("인증서 선택 팝업 표시");
-    await new Promise<void>((resolve, reject) => {
+
+    const certInfo: any = await new Promise((resolve, reject) => {
       try {
-        // 샘플 플러그인: makeCertManager가 cert 선택+비번 입력까지 처리
-        $("#certLayer").makeCertManager((_data: any) => {
-          resolve();
+        $("#certLayer").makeCertManager((data: any) => {
+          // data: {User, Issuer, ExpiryDate, RDN, Type, Drive, CertPwd, ...}
+          resolve(data);
         });
       } catch (_e) {
         reject(new Error("인증서 팝업 생성 실패(makeCertManager)"));
       }
     });
 
-    pushLog("인증서 선택 완료");
+    pushLog(`인증서 선택 완료: ${certInfo?.User ?? "(unknown user)"}`);
 
     // ✅ DB에 연결완료 저장 + scrapeAccountId 확보
-    const scrapeAccountId = await upsertConnectedAccount(eventId);
+    const scrapeAccountId = await insertConnectedAccount(eventId, certInfo);
 
     // ✅ 인증 직후 1회 자동 갱신(Edge Function)
     await runScrapeEdgeOnly(scrapeAccountId);
@@ -198,11 +208,9 @@ export default function CooconScrapePage() {
 
   /**
    * B) 스크래핑 실행만
-   * - “우리는 클라에서 nx.execute로 긁는 게 아니라” Edge Function(coocon-scrape-transactions)가 처리하는 구조로 통일
+   * - Edge Function(coocon-scrape-transactions) 호출로 통일
    */
   async function runScrapeOnly() {
-    // 인증이 이미 완료되어 scrapeAccountId가 DB에 존재한다는 가정
-    // 최신 계정을 찾아서 Edge Function 호출
     setState("scraping");
     pushLog("스크래핑 계정 조회");
 
@@ -220,21 +228,32 @@ export default function CooconScrapePage() {
     await runScrapeEdgeOnly(acc.id);
   }
 
-  async function upsertConnectedAccount(evId: string): Promise<string> {
+  /**
+   * ✅ upsert 대신 insert
+   * - 너의 설계(verified_at 최신 계정 선택)와 일치
+   * - event_id onConflict 같은 가정(이벤트당 1개 계정)은 위험
+   */
+  async function insertConnectedAccount(evId: string, certInfo: any): Promise<string> {
     const { data: userRes } = await supabase.auth.getUser();
     const userEmail = userRes?.user?.email || null;
 
-    // ⚠️ 컬럼명은 네 DB에 맞춰야 함. (지금은 any로 우회)
-    // - ResultPage에서 verified_at 기준으로 최신을 가져오고 있으니 verified_at은 꼭 채우는 게 좋음
+    // ⚠️ DB 컬럼에 맞춰서 확장 가능 (bank_code/bank_name/account_masked 등)
+    // 지금은 "인증 완료 기록"이 목적이라 최소만 넣음
     const payload: any = {
       event_id: evId,
       verified_at: new Date().toISOString(),
       connected_by_email: userEmail,
+
+      // 디버그/추후 매핑용(있으면 도움됨)
+      cert_user: certInfo?.User ?? null,
+      cert_issuer: certInfo?.Issuer ?? null,
+      cert_expiry: certInfo?.ExpiryDate ?? null,
+      cert_type: certInfo?.Type ?? null,
     };
 
     const { data, error } = await supabase
       .from("event_scrape_accounts")
-      .upsert(payload, { onConflict: "event_id" })
+      .insert(payload)
       .select("id")
       .maybeSingle();
 
@@ -252,7 +271,6 @@ export default function CooconScrapePage() {
     const e = endDate || "";
 
     if (!s || !e) {
-      // ResultPage에서 기본으로 ceremony_date 하루를 넣어주긴 하지만, 혹시 빈값이면 안전하게 막음
       throw new Error("startDate/endDate가 비어있습니다. (ResultPage에서 날짜를 넣어 보내야 함)");
     }
 
@@ -279,11 +297,23 @@ export default function CooconScrapePage() {
       }
     );
 
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json?.error ?? `조회 실패(${res.status})`);
+    const body = await res.json().catch(() => ({} as any));
 
-    const inserted = json.inserted ?? 0;
-    pushLog(`갱신 성공: ${inserted}건 반영`);
+    if (!res.ok) {
+      const msg =
+        body?.message ||
+        body?.error ||
+        body?.detail ||
+        `조회 실패(${res.status})`;
+      throw new Error(msg);
+    }
+
+    // ✅ Edge Function 응답 필드명 기준 (너가 준 coocon-scrape-transactions 코드 기준)
+    const fetched = Number(body?.fetched ?? 0);
+    const insertedTx = Number(body?.insertedTx ?? 0);
+    const reflectedLedgerNew = Number(body?.reflectedLedgerNew ?? 0);
+
+    pushLog(`갱신 성공: fetched=${fetched}, insertedTx=${insertedTx}, ledgerNew=${reflectedLedgerNew}`);
   }
 
   return (
