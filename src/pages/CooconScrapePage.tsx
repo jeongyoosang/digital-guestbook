@@ -1,10 +1,10 @@
-// src/pages/CooconScrapePage.tsx
+﻿// src/pages/CooconScrapePage.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 
 /**
- * ?�역 객체??쿠콘 ?�플 JS가 window???�림)
+ * ?꾩뿭 媛앹껜??荑좎퐯 ?섑뵆 JS媛 window???щ┝)
  */
 declare global {
   interface Window {
@@ -12,10 +12,10 @@ declare global {
     jQuery?: any;
     $?: any;
 
-    // isasscaping.js가 ?�릴 ?�도 ?�는 ?�퍼???�경�?
+    // isasscaping.js媛 ?щ┫ ?섎룄 ?덈뒗 ?ы띁???섍꼍蹂?
     fn?: any;
 
-    // cert ?�업 중복 방�?
+    // cert ?앹뾽 以묐났 諛⑹?
     __CERT_OPENED__?: boolean;
   }
 }
@@ -64,11 +64,11 @@ function isYmd(s: string) {
 }
 
 /**
- * ???�조??API???�출부??쿠콘 ?�플/계약 ?�펙???�라 ?�라�????�음.
- * ?�래??최�???많�? ?�보�??�차�??�도?�는 ?�전???�퍼.
+ * ???쒖“??API???몄텧遺??荑좎퐯 ?섑뵆/怨꾩빟 ?ㅽ럺???곕씪 ?щ씪吏????덉쓬.
+ * ?꾨옒??理쒕???留롮? ?꾨낫瑜??쒖감濡??쒕룄?섎뒗 ?덉쟾???섑띁.
  */
 async function callCooconApi(nx: any, apiId: string, params: any) {
-  // ?�보1) nx.execute(apiId, params, cb)
+  // ?꾨낫1) nx.execute(apiId, params, cb)
   if (typeof nx?.execute === "function") {
     const out = await new Promise<any>((resolve, reject) => {
       try {
@@ -80,7 +80,7 @@ async function callCooconApi(nx: any, apiId: string, params: any) {
     return out;
   }
 
-  // ?�보2) nx.call(apiId, params, cb)
+  // ?꾨낫2) nx.call(apiId, params, cb)
   if (typeof nx?.call === "function") {
     const out = await new Promise<any>((resolve, reject) => {
       try {
@@ -92,7 +92,7 @@ async function callCooconApi(nx: any, apiId: string, params: any) {
     return out;
   }
 
-  // ?�보3) nx.run(apiId, params, cb)
+  // ?꾨낫3) nx.run(apiId, params, cb)
   if (typeof nx?.run === "function") {
     const out = await new Promise<any>((resolve, reject) => {
       try {
@@ -104,7 +104,7 @@ async function callCooconApi(nx: any, apiId: string, params: any) {
     return out;
   }
 
-  // ?�보4) isasscaping.js가 window.fn???�퍼�??�리??경우
+  // ?꾨낫4) isasscaping.js媛 window.fn???ы띁瑜??щ━??寃쎌슦
   const fn = window.fn;
   const fnCandidates = ["callCoocon", "execute", "getTxList", "getTradeList", "requestTxList"];
   for (const name of fnCandidates) {
@@ -120,7 +120,7 @@ async function callCooconApi(nx: any, apiId: string, params: any) {
     }
   }
 
-  throw new Error("쿠콘 조회 API ?�출 메서?��? 찾�? 못했?�니?? (nx.execute/call/run ?�는 window.fn ?�퍼 ?�음)");
+  throw new Error("荑좎퐯 議고쉶 API ?몄텧 硫붿꽌?쒕? 李얠? 紐삵뻽?듬땲?? (nx.execute/call/run ?먮뒗 window.fn ?ы띁 ?놁쓬)");
 }
 
 export default function CooconScrapePage() {
@@ -131,14 +131,14 @@ export default function CooconScrapePage() {
   const mode = sp.get("mode") || "connect_then_scrape"; // connect_then_scrape | scrape_only
   const startDate = sp.get("startDate") || ""; // YYYY-MM-DD
   const endDate = sp.get("endDate") || ""; // YYYY-MM-DD
-  const returnTo = sp.get("returnTo") || ""; // ?�료 ???�아�?경로
+  const returnTo = sp.get("returnTo") || ""; // ?꾨즺 ???뚯븘媛?寃쎈줈
 
   /**
-   * ??조회 API ?�별??쿠콘?�서 받�? 문서 기�??�로 ?�어????
-   * - ?? "WDR001" 같�? TR code / API ID
-   * - 지금�? 기본값을 ?�고, ?�요 ??URL query�?override 가?�하�??�둠
+   * ??議고쉶 API ?앸퀎??荑좎퐯?먯꽌 諛쏆? 臾몄꽌 湲곗??쇰줈 ?ｌ뼱????
+   * - ?? "WDR001" 媛숈? TR code / API ID
+   * - 吏湲덉? 湲곕낯媛믪쓣 ?먭퀬, ?꾩슂 ??URL query濡?override 媛?ν븯寃??대몺
    */
-  const apiId = sp.get("apiId") || "TX_LIST"; // ?�️ TODO: 쿠콘 가?�드???�거?�내??조회??API ID�?교체
+  const apiId = sp.get("apiId") || "TX_LIST"; // ?좑툘 TODO: 荑좎퐯 媛?대뱶???쒓굅?섎궡??議고쉶??API ID濡?援먯껜
 
   const [state, setState] = useState<ScrapeState>("idle");
   const [log, setLog] = useState<string[]>([]);
@@ -147,7 +147,7 @@ export default function CooconScrapePage() {
   const isMountedRef = useRef(true);
   const openedRef = useRef(false);
 
-  // public/coocon => /coocon ?�로 ?�빙??
+  // public/coocon => /coocon ?쇰줈 ?쒕튃??
   const base = useMemo(() => "/coocon", []);
 
   const pushLog = (s: string) => {
@@ -163,7 +163,7 @@ export default function CooconScrapePage() {
 
   useEffect(() => {
     if (!eventId) {
-      setErrorMsg("eventId가 ?�습?�다. (URL???eventId=... ?�요)");
+      setErrorMsg("eventId媛 ?놁뒿?덈떎. (URL???eventId=... ?꾩슂)");
       setState("error");
       return;
     }
@@ -171,66 +171,66 @@ export default function CooconScrapePage() {
     (async () => {
       try {
         setState("loading_assets");
-        pushLog("쿠콘 리소??로딩 ?�작");
+        pushLog("荑좎퐯 由ъ냼??濡쒕뵫 ?쒖옉");
 
-        // (?�으�?좋고 ?�어??진행)
+        // (?덉쑝硫?醫뗪퀬 ?놁뼱??吏꾪뻾)
         await loadCss(`${base}/css/process_manager.css`).catch(() => {
-          pushLog("process_manager.css 로딩 ?�패(?�으�?좋고 ?�어??진행)");
+          pushLog("process_manager.css 濡쒕뵫 ?ㅽ뙣(?덉쑝硫?醫뗪퀬 ?놁뼱??吏꾪뻾)");
         });
 
-        // JS ?�서 중요: jquery ??json2 ??web_socket ??isasscaping
+        // JS ?쒖꽌 以묒슂: jquery ??json2 ??web_socket ??isasscaping
         await loadScript(`${base}/jquery-1.9.1.min.js`);
         await loadScript(`${base}/json2.js`);
         await loadScript(`${base}/web_socket.js`);
-        await loadScript(`${base}/isasscaping.js`); // ???�일�?그�?�?(r ?�음)
+        await loadScript(`${base}/isasscaping.js`); // ???뚯씪紐?洹몃?濡?(r ?놁쓬)
 
-        pushLog("쿠콘 리소??로딩 ?�료");
+        pushLog("荑좎퐯 由ъ냼??濡쒕뵫 ?꾨즺");
 
         const nx = window.CooconiSASNX;
-        if (!nx) throw new Error("CooconiSASNX가 ?�습?�다. isasscaping.js 로딩/?�행 ?�인 ?�요");
+        if (!nx) throw new Error("CooconiSASNX媛 ?놁뒿?덈떎. isasscaping.js 濡쒕뵫/?ㅽ뻾 ?뺤씤 ?꾩슂");
 
         setState("initializing");
-        pushLog("NXiSAS init ?�작");
+        pushLog("NXiSAS init ?쒖옉");
 
         await new Promise<void>((resolve, reject) => {
           nx.init((ok: boolean) => {
             if (ok) resolve();
-            else reject(new Error("nx.init ?�패: ?�진/?�비??권한 ?�인 ?�요"));
+            else reject(new Error("nx.init ?ㅽ뙣: ?붿쭊/?쒕퉬??沅뚰븳 ?뺤씤 ?꾩슂"));
           });
         });
 
-        pushLog("NXiSAS init ?�료");
+        pushLog("NXiSAS init ?꾨즺");
 
-        // ???�심: open??반드???�출 (CERTLIST/?�업?????�는 케?�스 방�?)
-        // - open(1, cb) : (문서/?�플?�서 보통 1???�용)
+        // ???듭떖: open??諛섎뱶???몄텧 (CERTLIST/?앹뾽?????⑤뒗 耳?댁뒪 諛⑹?)
+        // - open(1, cb) : (臾몄꽌/?섑뵆?먯꽌 蹂댄넻 1???ъ슜)
         setState("opening");
-        pushLog("NXiSAS open ?�작");
+        pushLog("NXiSAS open ?쒖옉");
 
         await new Promise<void>((resolve, reject) => {
           try {
             if (typeof nx.open !== "function") {
-              pushLog("nx.open ?�수가 ?�습?�다. (?�경별로 ?�략 가?? ??계속 진행");
+              pushLog("nx.open ?⑥닔媛 ?놁뒿?덈떎. (?섍꼍蹂꾨줈 ?앸왂 媛?? ??怨꾩냽 吏꾪뻾");
               openedRef.current = true;
               return resolve();
             }
 
             nx.open(1, (msg: any) => {
               // Result: "OK" / "ALREADY" ??
-              pushLog(`NXiSAS open 콜백: ${JSON.stringify(msg)}`);
+              pushLog(`NXiSAS open retry callback: ${JSON.stringify(msg)}`);
               openedRef.current = true;
               resolve();
             });
           } catch (e: any) {
-            reject(new Error(`nx.open ?�패: ${e?.message || String(e)}`));
+            reject(new Error(`nx.open ?ㅽ뙣: ${e?.message || String(e)}`));
           }
         });
 
         pushLog("NXiSAS ready");
         setState("ready");
 
-        // ?�짜 체크
+        // ?좎쭨 泥댄겕
         if (!isYmd(startDate) || !isYmd(endDate)) {
-          throw new Error("startDate/endDate가 ?�효?��? ?�습?�다. (YYYY-MM-DD)");
+          throw new Error("startDate/endDate媛 ?좏슚?섏? ?딆뒿?덈떎. (YYYY-MM-DD)");
         }
 
         if (mode === "connect_then_scrape") {
@@ -238,22 +238,22 @@ export default function CooconScrapePage() {
         } else if (mode === "scrape_only") {
           await runScrapeOnly();
         } else {
-          pushLog(`?????�는 mode: ${mode}`);
+          pushLog(`?????녿뒗 mode: ${mode}`);
         }
 
         setState("done");
-        pushLog("?�료");
+        pushLog("?꾨즺");
 
         const fallback = `/app/event/${eventId}/report`;
         const to = returnTo || fallback;
 
-        pushLog(`?�동: ${to}`);
+        pushLog(`?대룞: ${to}`);
         nav(to);
       } catch (e: any) {
         console.error(e);
         setErrorMsg(e?.message || String(e));
         setState("error");
-        pushLog(`?�류: ${e?.message || String(e)}`);
+        pushLog(`?ㅻ쪟: ${e?.message || String(e)}`);
       }
     })();
 
@@ -261,29 +261,29 @@ export default function CooconScrapePage() {
   }, [eventId]);
 
   /**
-   * A) ?�증???�택 ???�결 ?�???�리 DB) ??즉시 1???�크?�핑(조회 API ?�행) ??Edge Function 반영
+   * A) ?몄쬆???좏깮 ???곌껐 ????곕━ DB) ??利됱떆 1???ㅽ겕?섑븨(議고쉶 API ?ㅽ뻾) ??Edge Function 諛섏쁺
    */
   async function runConnectThenScrape() {
     setState("cert_select");
 
-    // ??certLayer/flag 초기???�팝???�시 ?�열림�?방�?)
+    // ??certLayer/flag 珥덇린???쒗뙘???ㅼ떆 ?덉뿴由쇄?諛⑹?)
     try {
       document.querySelector("#certLayer")?.remove();
     } catch {}
     window.__CERT_OPENED__ = false;
 
     const nx = window.CooconiSASNX;
-    if (!nx) throw new Error("CooconiSASNX가 ?�습?�다.");
+    if (!nx) throw new Error("CooconiSASNX媛 ?놁뒿?덈떎.");
 
-    pushLog("?�증??목록 조회");
+    pushLog("?몄쬆??紐⑸줉 議고쉶");
 
-    // ?�시 open???�료?��? ?�았?�면 방어?�으�?1?????�도
+    // ?뱀떆 open???꾨즺?섏? ?딆븯?ㅻ㈃ 諛⑹뼱?곸쑝濡?1?????쒕룄
     if (!openedRef.current && typeof nx.open === "function") {
-      pushLog("open 미완�?감�? ??nx.open ?�시??);
+      pushLog("open not completed yet; retrying nx.open");
       await new Promise<void>((resolve) => {
         try {
           nx.open(1, (msg: any) => {
-            pushLog(`NXiSAS open(?�시?? 콜백: ${JSON.stringify(msg)}`);
+            pushLog(`NXiSAS open retry callback: ${JSON.stringify(msg)}`);
             openedRef.current = true;
             resolve();
           });
@@ -296,36 +296,36 @@ export default function CooconScrapePage() {
     const certList: any[] = await new Promise((resolve, reject) => {
       try {
         nx.getCertList((list: any[]) => {
-          if (!Array.isArray(list)) return reject(new Error("?�증??목록 조회 ?�패"));
+          if (!Array.isArray(list)) return reject(new Error("?몄쬆??紐⑸줉 議고쉶 ?ㅽ뙣"));
           resolve(list);
         });
       } catch (e: any) {
-        reject(new Error(`nx.getCertList ?�외: ${e?.message || String(e)}`));
+        reject(new Error(`nx.getCertList ?덉쇅: ${e?.message || String(e)}`));
       }
     });
 
-    pushLog(`?�증??${certList.length}�?발견`);
+    pushLog(`?몄쬆??${certList.length}媛?諛쒓껄`);
 
     const $ = window.$;
-    if (!$) throw new Error("jQuery($)가 ?�습?�다.");
+    if (!$) throw new Error("jQuery($)媛 ?놁뒿?덈떎.");
 
-    // ??중복 ?�출 방�? (isasscaping.js쪽에?�도 중복 방�? 변?��? ?�을 ???�음)
-    // makeCertManager�� selector�� ������� ���� HTML�� �����ϹǷ�, ���� ���̾�� ����.
+    // ??以묐났 ?몄텧 諛⑹? (isasscaping.js履쎌뿉?쒕룄 以묐났 諛⑹? 蹂?섍? ?덉쓣 ???덉쓬)
+    // makeCertManager는 selector가 비어있을 때만 HTML을 생성하므로, 기존 레이어는 제거.
     if (window.__CERT_OPENED__) {
-      pushLog("?�증???�업???��? ?�려?�는 것으�?감�?????강제 초기?????�오??");
+      pushLog("?몄쬆???앹뾽???대? ?대젮?덈뒗 寃껋쑝濡?媛먯?????媛뺤젣 珥덇린?????ъ삤??");
     }
     try {
       $("#certLayer").remove();
     } catch {}
     window.__CERT_OPENED__ = false;
 
-    pushLog("?�증???�택 ?�업 ?�시");
+    pushLog("?몄쬆???좏깮 ?앹뾽 ?쒖떆");
     window.__CERT_OPENED__ = true;
 
     const certMeta = await new Promise<any>((resolve, reject) => {
       try {
         $("#certLayer").makeCertManager((data: any) => {
-          // ?�힘 처리
+          // ?ロ옒 泥섎━
           window.__CERT_OPENED__ = false;
           try {
             document.querySelector("#certLayer")?.remove();
@@ -334,11 +334,11 @@ export default function CooconScrapePage() {
         });
       } catch (_e) {
         window.__CERT_OPENED__ = false;
-        reject(new Error("?�증???�업 ?�성 ?�패(makeCertManager)"));
+        reject(new Error("?몄쬆???앹뾽 ?앹꽦 ?ㅽ뙣(makeCertManager)"));
       }
     });
 
-    pushLog("?�증???�택 ?�료");
+    pushLog("?몄쬆???좏깮 ?꾨즺");
     if (certMeta) {
       const brief = {
         User: certMeta?.User,
@@ -349,21 +349,21 @@ export default function CooconScrapePage() {
       pushLog(`CERT: ${JSON.stringify(brief)}`);
     }
 
-    // ??DB???�결?�료 ?�??+ scrapeAccountId ?�보
+    // ??DB???곌껐?꾨즺 ???+ scrapeAccountId ?뺣낫
     const scrapeAccountId = await upsertConnectedAccount(eventId, certMeta);
 
-    // ???�증 직후 1???�동 갱신
+    // ???몄쬆 吏곹썑 1???먮룞 媛깆떊
     await runScrapeWithQueryApiAndReflect(scrapeAccountId);
   }
 
   /**
-   * B) ?�크?�핑 ?�행�?
-   * - ?�증???��? ?�료?�어 scrapeAccountId가 DB??존재?�다�?가??
-   * - 최신 verified_at 계정?�로 조회 ?�행
+   * B) ?ㅽ겕?섑븨 ?ㅽ뻾留?
+   * - ?몄쬆???대? ?꾨즺?섏뼱 scrapeAccountId媛 DB??議댁옱?쒕떎怨?媛??
+   * - 理쒖떊 verified_at 怨꾩젙?쇰줈 議고쉶 ?ㅽ뻾
    */
   async function runScrapeOnly() {
     setState("scraping");
-    pushLog("?�크?�핑 계정 조회");
+    pushLog("?ㅽ겕?섑븨 怨꾩젙 議고쉶");
 
     const { data: acc, error } = await supabase
       .from("event_scrape_accounts")
@@ -373,21 +373,21 @@ export default function CooconScrapePage() {
       .limit(1)
       .maybeSingle();
 
-    if (error) throw new Error(`?�크?�핑 계정 조회 ?�패: ${error.message}`);
-    if (!acc?.id) throw new Error("?�크?�핑 계정???�습?�다. (먼�? ?�증???�요)");
+    if (error) throw new Error(`?ㅽ겕?섑븨 怨꾩젙 議고쉶 ?ㅽ뙣: ${error.message}`);
+    if (!acc?.id) throw new Error("?ㅽ겕?섑븨 怨꾩젙???놁뒿?덈떎. (癒쇱? ?몄쬆???꾩슂)");
 
     await runScrapeWithQueryApiAndReflect(acc.id);
   }
 
   /**
-   * ???�증 직후: event_scrape_accounts upsert (id ?�보)
-   * - certified meta�?raw�??�?�해?�면 ?�버깅에 ?��???컬럼???�으�?
+   * ???몄쬆 吏곹썑: event_scrape_accounts upsert (id ?뺣낫)
+   * - certified meta瑜?raw濡???ν빐?먮㈃ ?붾쾭源낆뿉 ?꾩???而щ읆???덉쑝硫?
    */
   async function upsertConnectedAccount(evId: string, certMeta: any): Promise<string> {
     const { data: userRes } = await supabase.auth.getUser();
     const userEmail = userRes?.user?.email || null;
 
-    // ?�️ 컬럼?� ??DB??맞춰????
+    // ?좑툘 而щ읆? ??DB??留욎떠????
     const payload: any = {
       event_id: evId,
       verified_at: new Date().toISOString(),
@@ -401,58 +401,58 @@ export default function CooconScrapePage() {
       .select("id")
       .maybeSingle();
 
-    if (error) throw new Error(`DB ?�결?�태 ?�???�패: ${error.message}`);
-    if (!data?.id) throw new Error("DB ?�결?�태 ?�?��? ?��?�?id�?가?�오지 못했?�니??");
+    if (error) throw new Error(`DB ?곌껐?곹깭 ????ㅽ뙣: ${error.message}`);
+    if (!data?.id) throw new Error("DB ?곌껐?곹깭 ??μ? ?먯?留?id瑜?媛?몄삤吏 紐삵뻽?듬땲??");
 
-    pushLog(`DB???�인증완�??�결?�료???�??(scrapeAccountId=${data.id})`);
+    pushLog(`DB???섏씤利앹셿猷??곌껐?꾨즺?????(scrapeAccountId=${data.id})`);
     return data.id as string;
   }
 
   /**
-   * ???�심: ?�조??API ?�행 ??Output ?�신 ??Edge Function 반영??
+   * ???듭떖: ?쒖“??API ?ㅽ뻾 ??Output ?섏떊 ??Edge Function 諛섏쁺??
    */
   async function runScrapeWithQueryApiAndReflect(scrapeAccountId: string) {
     setState("scraping");
 
     if (!startDate || !endDate) {
-      throw new Error("startDate/endDate가 비어?�습?�다. (ResultPage?�서 ?�짜�??�어 보내????");
+      throw new Error("startDate/endDate媛 鍮꾩뼱?덉뒿?덈떎. (ResultPage?먯꽌 ?좎쭨瑜??ｌ뼱 蹂대궡????");
     }
     if (!isYmd(startDate) || !isYmd(endDate)) {
-      throw new Error("startDate/endDate ?�식 ?�류 (YYYY-MM-DD)");
+      throw new Error("startDate/endDate ?뺤떇 ?ㅻ쪟 (YYYY-MM-DD)");
     }
 
     const nx = window.CooconiSASNX;
-    if (!nx) throw new Error("CooconiSASNX가 ?�습?�다.");
+    if (!nx) throw new Error("CooconiSASNX媛 ?놁뒿?덈떎.");
 
-    pushLog(`조회 API ?�행: ${apiId} (${startDate} ~ ${endDate})`);
+    pushLog(`議고쉶 API ?ㅽ뻾: ${apiId} (${startDate} ~ ${endDate})`);
 
     /**
-     * ???�기 params???�쿠�?가?�드??조회 ?�라미터?�로 맞춰????
-     * 지금�? 최소???�짜�??�고, ?�요??값�? 추후 ?�정?�면 추�?.
+     * ???ш린 params???쒖퓼肄?媛?대뱶??議고쉶 ?뚮씪誘명꽣?앸줈 留욎떠????
+     * 吏湲덉? 理쒖냼???좎쭨留??ｊ퀬, ?꾩슂??媛믪? 異뷀썑 ?뺤젙?섎㈃ 異붽?.
      */
     const params: any = {
       startDate,
       endDate,
-      // bankCode, accountNo ?��? 쿠콘 ?�펙 ?�정?�면 추�?
+      // bankCode, accountNo ?깆? 荑좎퐯 ?ㅽ럺 ?뺤젙?섎㈃ 異붽?
     };
 
-    // 1) 조회 ?�행 ??Output 받기
+    // 1) 議고쉶 ?ㅽ뻾 ??Output 諛쏄린
     let output: any;
     try {
       output = await callCooconApi(nx, apiId, params);
     } catch (e: any) {
-      pushLog(`조회 API ?�패: ${e?.message || String(e)}`);
-      throw new Error(`조회 API ?�출 ?�패(메서???�펙 ?�인 ?�요): ${e?.message || String(e)}`);
+      pushLog(`議고쉶 API ?ㅽ뙣: ${e?.message || String(e)}`);
+      throw new Error(`議고쉶 API ?몄텧 ?ㅽ뙣(硫붿꽌???ㅽ럺 ?뺤씤 ?꾩슂): ${e?.message || String(e)}`);
     }
 
-    pushLog("조회 결과 ?�신(?�본 Output ?�보)");
+    pushLog("議고쉶 寃곌낵 ?섏떊(?먮낯 Output ?뺣낫)");
 
-    // 2) Edge Function?�로 반영 (cooconOutput 그�?�??�달 ???�버?�서 normalize)
-    pushLog(`Edge Function ?�출: coocon-scrape-transactions (${startDate} ~ ${endDate})`);
+    // 2) Edge Function?쇰줈 諛섏쁺 (cooconOutput 洹몃?濡??꾨떖 ???쒕쾭?먯꽌 normalize)
+    pushLog(`Edge Function ?몄텧: coocon-scrape-transactions (${startDate} ~ ${endDate})`);
 
     const { data: session } = await supabase.auth.getSession();
     const token = session.session?.access_token;
-    if (!token) throw new Error("로그?�이 ?�요?�니??");
+    if (!token) throw new Error("濡쒓렇?몄씠 ?꾩슂?⑸땲??");
 
     const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`, {
       method: "POST",
@@ -465,14 +465,14 @@ export default function CooconScrapePage() {
         scrapeAccountId,
         startDate,
         endDate,
-        // ???�버?�서 normalizeFromCooconOutput�??�싱
+        // ???쒕쾭?먯꽌 normalizeFromCooconOutput濡??뚯떛
         cooconOutput: output,
       }),
     });
 
     const j = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const msg = j?.message || j?.error || `조회 ?�패(${res.status})`;
+      const msg = j?.message || j?.error || `議고쉶 ?ㅽ뙣(${res.status})`;
       throw new Error(msg);
     }
 
@@ -482,7 +482,7 @@ export default function CooconScrapePage() {
     const reflectedTotal = j.reflectedLedgerTotal ?? 0;
 
     pushLog(
-      `갱신 ?�공: fetched=${fetched}, insertedTx=${insertedTx}, ledgerNew=${reflectedNew}, ledgerTotal=${reflectedTotal}`
+      `媛깆떊 ?깃났: fetched=${fetched}, insertedTx=${insertedTx}, ledgerNew=${reflectedNew}, ledgerTotal=${reflectedTotal}`
     );
   }
 
@@ -493,9 +493,9 @@ export default function CooconScrapePage() {
           onClick={() => nav(-1)}
           style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #ddd" }}
         >
-          ???�로
+          ???ㅻ줈
         </button>
-        <h1 style={{ margin: 0, fontSize: 18 }}>쿠콘 계좌 ?�증/?�크?�핑</h1>
+        <h1 style={{ margin: 0, fontSize: 18 }}>荑좎퐯 怨꾩쥖 ?몄쬆/?ㅽ겕?섑븨</h1>
         <span style={{ opacity: 0.7 }}>state: {state}</span>
       </div>
 
@@ -509,7 +509,7 @@ export default function CooconScrapePage() {
             background: "#fff5f5",
           }}
         >
-          <b>?�류</b>
+          <b>?ㅻ쪟</b>
           <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{errorMsg}</div>
         </div>
       )}
@@ -524,18 +524,18 @@ export default function CooconScrapePage() {
         }}
       >
         <div style={{ fontSize: 12, opacity: 0.7 }}>
-          * ???�면?� PC?�서�??�상 ?�작(?�진/?�증???�요). 모바?��? 막거???�내�??�우??�?맞음.
+          * ???붾㈃? PC?먯꽌留??뺤긽 ?숈옉(?붿쭊/?몄쬆???꾩슂). 紐⑤컮?쇱? 留됯굅???덈궡留??꾩슦??寃?留욎쓬.
         </div>
         <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-          * ?�름: ?�증 ?�료 ??DB ?�????조회 API ?�행 ??Output ?�신 ??Edge Function?�로 DB 반영 ??리포??복�?
+          * ?먮쫫: ?몄쬆 ?꾨즺 ??DB ?????議고쉶 API ?ㅽ뻾 ??Output ?섏떊 ??Edge Function?쇰줈 DB 諛섏쁺 ??由ы룷??蹂듦?
         </div>
         <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-          * apiId(거래?�역 조회 ?�별??: <b>{apiId}</b> (?�요 ??URL??<code>&amp;apiId=...</code> �?교체)
+          * apiId(嫄곕옒?댁뿭 議고쉶 ?앸퀎??: <b>{apiId}</b> (?꾩슂 ??URL??<code>&amp;apiId=...</code> 濡?援먯껜)
         </div>
       </div>
 
       <div style={{ marginTop: 12 }}>
-        <h2 style={{ fontSize: 14, marginBottom: 8 }}>로그</h2>
+        <h2 style={{ fontSize: 14, marginBottom: 8 }}>濡쒓렇</h2>
         <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, background: "white", minHeight: 220 }}>
           {log.length === 0 ? (
             <div style={{ opacity: 0.6 }}>...</div>
@@ -547,6 +547,8 @@ export default function CooconScrapePage() {
     </div>
   );
 }
+
+
 
 
 
