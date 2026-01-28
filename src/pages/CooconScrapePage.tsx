@@ -30,6 +30,25 @@ type ScrapeState =
   | "done"
   | "error";
 
+const COOCON_BANK_CODE_MAP: Record<string, string> = {
+  "국민은행": "kbstar",
+  "신한은행": "shinhan",
+  "우리은행": "wooribank",
+  "하나은행": "hanabank",
+  "NH농협은행": "nonghyup",
+  "IBK기업은행": "ibk",
+  "SC제일은행": "standardchartered",
+  "한국씨티은행": "citibank",
+  "카카오뱅크": "kakaobank",
+  "수협은행": "suhyupbank",
+  "대구은행": "dgb",
+  "부산은행": "busanbank",
+  "경남은행": "knbank",
+  "광주은행": "kjbank",
+  "전북은행": "jbbank",
+  "제주은행": "jejubank",
+};
+
 function loadScript(src: string) {
   return new Promise<void>((resolve, reject) => {
     const existing = document.querySelector(`script[src="${src}"]`);
@@ -120,6 +139,41 @@ async function callCooconApi(nx: any, apiId: string, params: any) {
   }
 
   throw new Error("쿠콘 조회 API 호출 메서드를 찾지 못했습니다. (nx.execute/call/run 또는 window.fn 헬퍼 없음)");
+}
+
+async function getPrimaryBankInfo(eventId: string): Promise<{ bankName: string; bankCode: string }> {
+  const { data, error } = await supabase
+    .from("event_accounts")
+    .select("bank_name, is_active, sort_order")
+    .eq("event_id", eventId)
+    .order("is_active", { ascending: false })
+    .order("sort_order", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`대표 계좌 조회 실패: ${error.message}`);
+  }
+
+  const bankName = (data?.bank_name || "").trim();
+  if (!bankName) {
+    throw new Error("대표 계좌의 은행 정보가 없습니다. 상세설정에서 은행을 선택해주세요.");
+  }
+  if (bankName === "기타(직접 입력)") {
+    throw new Error(
+      "기타(직접 입력) 은행은 자동 조회를 지원하지 않습니다. 엑셀 업로드/수기로 진행해주세요."
+    );
+  }
+  if (bankName === "토스뱅크") {
+    throw new Error("토스뱅크는 현재 자동 조회를 지원하지 않습니다.");
+  }
+
+  const bankCode = COOCON_BANK_CODE_MAP[bankName];
+  if (!bankCode) {
+    throw new Error(`은행 매핑 실패: ${bankName}. 자동 조회를 지원하지 않습니다.`);
+  }
+
+  return { bankName, bankCode };
 }
 
 export default function CooconScrapePage() {
@@ -287,8 +341,10 @@ export default function CooconScrapePage() {
       pushLog(`CERT: ${JSON.stringify(brief)}`);
     }
 
+    const { bankName, bankCode } = await getPrimaryBankInfo(eventId);
+
     // ✅ DB에 연결완료 저장 + scrapeAccountId 확보 (컬럼 없으면 자동 축소)
-    const scrapeAccountId = await upsertConnectedAccountSafe(eventId, certMeta);
+    const scrapeAccountId = await upsertConnectedAccountSafe(eventId, certMeta, bankCode, bankName);
 
     // ✅ 인증 직후 1회 자동 갱신
     await runScrapeWithQueryApiAndReflect(scrapeAccountId);
@@ -322,7 +378,12 @@ export default function CooconScrapePage() {
    * - 1차: event_id + verified_at + connected_by_email + cert_meta_json
    * - 실패(컬럼 없음) 시: event_id + verified_at 만으로 재시도
    */
-  async function upsertConnectedAccountSafe(evId: string, certMeta: any): Promise<string> {
+  async function upsertConnectedAccountSafe(
+    evId: string,
+    certMeta: any,
+    bankCode: string,
+    bankName: string
+  ): Promise<string> {
     const { data: userRes } = await supabase.auth.getUser();
     const userId = userRes?.user?.id || null;
     const userEmail = userRes?.user?.email || null;
@@ -330,11 +391,17 @@ export default function CooconScrapePage() {
     if (!userId) {
       throw new Error("로그인이 필요합니다.");
     }
+    if (!bankCode) {
+      throw new Error("bank_code를 확인할 수 없습니다. 은행 정보를 다시 확인해주세요.");
+    }
 
     // 1차(확장 payload)
     const payloadFull: any = {
       event_id: evId,
       owner_user_id: userId,
+      provider: "coocon",
+      bank_code: bankCode,
+      bank_name: bankName,
       verified_at: new Date().toISOString(),
       connected_by_email: userEmail,
       cert_meta_json: certMeta ?? null,
@@ -344,6 +411,9 @@ export default function CooconScrapePage() {
     const payloadMin: any = {
       event_id: evId,
       owner_user_id: userId,
+      provider: "coocon",
+      bank_code: bankCode,
+      bank_name: bankName,
       verified_at: new Date().toISOString(),
     };
 

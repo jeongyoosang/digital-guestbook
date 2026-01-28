@@ -1,4 +1,4 @@
-// src/pages/ConfirmPage.tsx
+﻿// src/pages/ConfirmPage.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -29,7 +29,7 @@ type EventSettingsRow = {
   title: string | null;
   subtitle: string | null;
 
-  // ✅ 메모 삭제(필드 자체는 유지될 수 있어도 UI에선 사용 안 함)
+  // ??硫붾え ??젣(?꾨뱶 ?먯껜???좎??????덉뼱??UI?먯꽑 ?ъ슜 ????
   theme_prompt: string | null;
 
   recipients: any | null;
@@ -40,14 +40,14 @@ type EventSettingsRow = {
   display_style?: string | null;
   background_mode?: "photo" | "template" | null;
 
-  // ✅ 사진/영상 URL들 (혼합)
+  // ???ъ쭊/?곸긽 URL??(?쇳빀)
   media_urls?: string[] | null;
 
-  // ✅ 모바일 청첩장 링크
+  // ??紐⑤컮??泥?꺽??留곹겕
   mobile_invitation_link?: string | null;
 };
 
-// ✅ A안: 은행 “기타(직접 입력)” 선택 상태를 bank_name과 분리
+// ??A?? ????쒓린?(吏곸젒 ?낅젰)???좏깮 ?곹깭瑜?bank_name怨?遺꾨━
 type BankMode = "select" | "custom";
 
 type AccountForm = {
@@ -59,23 +59,23 @@ type AccountForm = {
   sort_order: number;
   is_active: boolean;
 
-  // ✅ UI 전용(서버 저장 X)
+  // ??UI ?꾩슜(?쒕쾭 ???X)
   bank_mode?: BankMode;
 };
 
 const MAX_ACCOUNTS = 6;
 
-// ✅ 미디어 정책
+// ??誘몃뵒???뺤콉
 const MAX_MEDIA_TOTAL = 10;
 const MAX_VIDEOS = 2;
 const MAX_VIDEO_MB = 50;
 
 const DEFAULT_TITLE = "WEDDING MESSAGES";
-const DEFAULT_SUBTITLE = "하객 분들의 마음이 전해지고 있어요 💐";
-const DEFAULT_LOWER_MESSAGE = "친히 오셔서 축복해주시어 감사합니다.";
+const DEFAULT_SUBTITLE = "?섍컼 遺꾨뱾??留덉쓬???꾪빐吏怨??덉뼱???뮁";
+const DEFAULT_LOWER_MESSAGE = "移쒗엳 ?ㅼ뀛??異뺣났?댁＜?쒖뼱 媛먯궗?⑸땲??";
 
-const DEFAULT_START_OFFSET = -60; // 예식 시작 1시간 전
-const DEFAULT_END_OFFSET = -10; // 예식 종료 10분 전
+const DEFAULT_START_OFFSET = -60; // ?덉떇 ?쒖옉 1?쒓컙 ??
+const DEFAULT_END_OFFSET = -10; // ?덉떇 醫낅즺 10遺???
 
 const HOURS: string[] = Array.from({ length: 24 }, (_, i) =>
   String(i).padStart(2, "0")
@@ -83,11 +83,11 @@ const HOURS: string[] = Array.from({ length: 24 }, (_, i) =>
 const MINUTES_10: string[] = ["00", "10", "20", "30", "40", "50"];
 
 const DISPLAY_STYLE_OPTIONS = [
-  { value: "basic", label: "기본" },
-  { value: "spring", label: "봄" },
-  { value: "summer", label: "여름" },
-  { value: "autumn", label: "가을" },
-  { value: "winter", label: "겨울" },
+  { value: "basic", label: "湲곕낯" },
+  { value: "spring", label: "遊? },
+  { value: "summer", label: "?щ쫫" },
+  { value: "autumn", label: "媛?? },
+  { value: "winter", label: "寃⑥슱" },
 ];
 
 const BANK_OPTIONS = [
@@ -112,7 +112,7 @@ const BANK_OPTIONS = [
 ];
 
 function isVideoUrl(url: string) {
-  const u = (url || "").toLowerCase().split("?")[0]; // ✅ 쿼리 제거
+  const u = (url || "").toLowerCase().split("?")[0]; // ??荑쇰━ ?쒓굅
   return (
     u.endsWith(".mp4") ||
     u.endsWith(".mov") ||
@@ -133,7 +133,7 @@ function bytesToMB(bytes: number) {
 }
 
 function isKnownBankName(name: string) {
-  return BANK_OPTIONS.includes(name) && name !== "기타(직접 입력)";
+  return BANK_OPTIONS.includes(name) && name !== "湲고?(吏곸젒 ?낅젰)";
 }
 
 export default function ConfirmPage() {
@@ -145,9 +145,9 @@ export default function ConfirmPage() {
   if (userErr) throw userErr;
   const userId = userRes?.user?.id;
   const email = userRes?.user?.email;
-  if (!userId && !email) throw new Error("로그인이 필요합니다.");
+  if (!userId && !email) throw new Error("濡쒓렇?몄씠 ?꾩슂?⑸땲??");
 
-  // user_id 우선, 없으면 email로 fallback
+  // user_id ?곗꽑, ?놁쑝硫?email濡?fallback
   let q = supabase.from("event_members").select("id").eq("event_id", evId).limit(1);
 
   if (userId) q = q.eq("user_id", userId);
@@ -155,7 +155,7 @@ export default function ConfirmPage() {
 
   const { data, error } = await q.maybeSingle();
   if (error) throw error;
-  if (!data?.id) throw new Error("event_members에 본인 멤버가 없습니다. (초대/가입 흐름 확인 필요)");
+  if (!data?.id) throw new Error("event_members??蹂몄씤 硫ㅻ쾭媛 ?놁뒿?덈떎. (珥덈?/媛???먮쫫 ?뺤씤 ?꾩슂)");
   return data.id as string;
 }
 
@@ -168,7 +168,7 @@ export default function ConfirmPage() {
   const [settings, setSettings] = useState<EventSettingsRow | null>(null);
   const [accounts, setAccounts] = useState<AccountForm[]>([]);
 
-  // 기본 정보
+  // 湲곕낯 ?뺣낫
   const [groomName, setGroomName] = useState("");
   const [brideName, setBrideName] = useState("");
   const [venueName, setVenueName] = useState("");
@@ -183,23 +183,23 @@ export default function ConfirmPage() {
   const [displaySubtitle, setDisplaySubtitle] = useState(DEFAULT_SUBTITLE);
   const [lowerMessage, setLowerMessage] = useState(DEFAULT_LOWER_MESSAGE);
 
-  // ✅ 디스플레이 배경사진(템플릿 선택 시만 사용)
+  // ???붿뒪?뚮젅??諛곌꼍?ъ쭊(?쒗뵆由??좏깮 ?쒕쭔 ?ъ슜)
   const [displayStyle, setDisplayStyle] = useState("basic");
 
-  // ✅ 모바일 청첩장 링크 (필수)
+  // ??紐⑤컮??泥?꺽??留곹겕 (?꾩닔)
   const [mobileInvitationLink, setMobileInvitationLink] = useState("");
 
-  // 배경 모드 & 업로드된 미디어 URL 들
+  // 諛곌꼍 紐⑤뱶 & ?낅줈?쒕맂 誘몃뵒??URL ??
   const [backgroundMode, setBackgroundMode] = useState<"template" | "photo">(
     "photo"
   );
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
 
-  // 템플릿 미리보기 로드 실패 여부
+  // ?쒗뵆由?誘몃━蹂닿린 濡쒕뱶 ?ㅽ뙣 ?щ?
   const [templatePreviewError, setTemplatePreviewError] = useState(false);
 
-  // 예식장 검색
+  // ?덉떇??寃??
   const [venueSearchOpen, setVenueSearchOpen] = useState(false);
   const [venueSearchKeyword, setVenueSearchKeyword] = useState("");
   const [venueSearchResults, setVenueSearchResults] = useState<any[]>([]);
@@ -211,12 +211,12 @@ export default function ConfirmPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
-  // ✅ 템플릿 미리보기 URL
+  // ???쒗뵆由?誘몃━蹂닿린 URL
   const templatePreviewUrl = useMemo(() => {
     return `/display-templates/${displayStyle}/background.jpg`;
   }, [displayStyle]);
 
-  // displayStyle 바뀔 때마다 에러 상태 초기화
+  // displayStyle 諛붾??뚮쭏???먮윭 ?곹깭 珥덇린??
   useEffect(() => {
     setTemplatePreviewError(false);
   }, [displayStyle]);
@@ -325,7 +325,7 @@ export default function ConfirmPage() {
         setMobileInvitationLink("");
       }
 
-     // 3) event_accounts (✅ 본인 계좌만)
+     // 3) event_accounts (??蹂몄씤 怨꾩쥖留?
       const myMemberId = await getMyMemberId(id);
 
       const { data: accountData, error: accountError } = await supabase
@@ -369,7 +369,7 @@ export default function ConfirmPage() {
       } else {
         setAccounts([
           {
-            label: "신랑",
+            label: "?좊옉",
             holder_name: "",
             bank_name: "",
             account_number: "",
@@ -378,7 +378,7 @@ export default function ConfirmPage() {
             bank_mode: "select",
           },
           {
-            label: "신부",
+            label: "?좊?",
             holder_name: "",
             bank_name: "",
             account_number: "",
@@ -390,7 +390,7 @@ export default function ConfirmPage() {
       }
     } catch (e: any) {
       console.error("[ConfirmPage] fetchData error:", e);
-      setError(e.message ?? "데이터를 불러오는 중 오류가 발생했습니다.");
+      setError(e.message ?? "?곗씠?곕? 遺덈윭?ㅻ뒗 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.");
     } finally {
       setLoading(false);
     }
@@ -411,7 +411,7 @@ export default function ConfirmPage() {
     setAccounts((prev) => [
       ...prev,
       {
-        label: "기타",
+        label: "湲고?",
         holder_name: "",
         bank_name: "",
         account_number: "",
@@ -439,7 +439,7 @@ export default function ConfirmPage() {
     if (!files || !eventId) return;
 
     setSaving(true);
-    setUploadStatus("업로드 중...");
+    setUploadStatus("?낅줈??以?..");
     setError(null);
     setSuccess(null);
 
@@ -455,7 +455,7 @@ export default function ConfirmPage() {
         const file = files[i];
 
         if (totalCount >= MAX_MEDIA_TOTAL) {
-          skipped.push(`"${file.name}" (최대 ${MAX_MEDIA_TOTAL}개 초과)`);
+          skipped.push(`"${file.name}" (理쒕? ${MAX_MEDIA_TOTAL}媛?珥덇낵)`);
           continue;
         }
 
@@ -463,19 +463,19 @@ export default function ConfirmPage() {
         const isImage = (file.type || "").startsWith("image/");
 
         if (!isVideo && !isImage) {
-          skipped.push(`"${file.name}" (지원하지 않는 파일 형식)`);
+          skipped.push(`"${file.name}" (吏?먰븯吏 ?딅뒗 ?뚯씪 ?뺤떇)`);
           continue;
         }
 
         if (isVideo && videoCount >= MAX_VIDEOS) {
-          skipped.push(`"${file.name}" (영상은 최대 ${MAX_VIDEOS}개)`);
+          skipped.push(`"${file.name}" (?곸긽? 理쒕? ${MAX_VIDEOS}媛?`);
           continue;
         }
 
         if (isVideo) {
           const mb = bytesToMB(file.size);
           if (mb > MAX_VIDEO_MB) {
-            skipped.push(`"${file.name}" (영상은 파일당 ${MAX_VIDEO_MB}MB 이하)`);
+            skipped.push(`"${file.name}" (?곸긽? ?뚯씪??${MAX_VIDEO_MB}MB ?댄븯)`);
             continue;
           }
         }
@@ -490,7 +490,7 @@ export default function ConfirmPage() {
         .from("event-media")
         .upload(path, file, {
           upsert: false,
-          contentType: file.type || undefined, // ✅ 중요: video/mp4, image/jpeg 등 명시
+          contentType: file.type || undefined, // ??以묒슂: video/mp4, image/jpeg ??紐낆떆
           cacheControl: "3600",
         });
 
@@ -510,14 +510,14 @@ export default function ConfirmPage() {
 
       if (skipped.length > 0) {
         setUploadStatus(
-          `업로드 완료. 일부 파일은 제외되었습니다: ${skipped.join(", ")}`
+          `?낅줈???꾨즺. ?쇰? ?뚯씪? ?쒖쇅?섏뿀?듬땲?? ${skipped.join(", ")}`
         );
       } else {
-        setUploadStatus("업로드가 완료되었습니다. 하단에서 미디어를 확인해주세요.");
+        setUploadStatus("?낅줈?쒓? ?꾨즺?섏뿀?듬땲?? ?섎떒?먯꽌 誘몃뵒?대? ?뺤씤?댁＜?몄슂.");
       }
     } catch (err: any) {
       console.error("[ConfirmPage] file upload error", err);
-      setError(err.message ?? "업로드 중 오류가 발생했습니다. 다시 시도해주세요.");
+      setError(err.message ?? "?낅줈??以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎. ?ㅼ떆 ?쒕룄?댁＜?몄슂.");
       setUploadStatus(null);
     } finally {
       setSaving(false);
@@ -525,13 +525,13 @@ export default function ConfirmPage() {
     }
   }
 
-  // 카카오 예식장 검색
+  // 移댁뭅???덉떇??寃??
   const runVenueSearch = () => {
     if (!venueSearchKeyword.trim()) return;
     const kakao = (window as any).kakao;
     if (!kakao || !kakao.maps || !kakao.maps.services) {
       alert(
-        "카카오 지도 스크립트가 아직 로드되지 않았습니다.\n잠시 후 새로고침 후 다시 시도해주세요."
+        "移댁뭅??吏???ㅽ겕由쏀듃媛 ?꾩쭅 濡쒕뱶?섏? ?딆븯?듬땲??\n?좎떆 ???덈줈怨좎묠 ???ㅼ떆 ?쒕룄?댁＜?몄슂."
       );
       return;
     }
@@ -567,24 +567,24 @@ export default function ConfirmPage() {
     }
   };
 
-  // ✅ 필수값 검증
+  // ???꾩닔媛?寃利?
   const validateBeforeSave = () => {
-    if (!mobileInvitationLink.trim()) return "모바일 청첩장 링크는 필수입니다.";
+    if (!mobileInvitationLink.trim()) return "紐⑤컮??泥?꺽??留곹겕???꾩닔?낅땲??";
     if (!isValidUrl(mobileInvitationLink.trim()))
-      return "모바일 청첩장 링크가 유효한 URL 형식이 아닙니다.";
+      return "紐⑤컮??泥?꺽??留곹겕媛 ?좏슚??URL ?뺤떇???꾨떃?덈떎.";
 
-    if (!groomName.trim()) return "신랑 이름을 입력해주세요.";
-    if (!brideName.trim()) return "신부 이름을 입력해주세요.";
-    if (!venueName.trim()) return "예식장을 선택해주세요.";
+    if (!groomName.trim()) return "?좊옉 ?대쫫???낅젰?댁＜?몄슂.";
+    if (!brideName.trim()) return "?좊? ?대쫫???낅젰?댁＜?몄슂.";
+    if (!venueName.trim()) return "?덉떇?μ쓣 ?좏깮?댁＜?몄슂.";
     if (!venueAddress.trim())
-      return "예식장 주소가 필요합니다. (검색으로 선택해주세요.)";
+      return "?덉떇??二쇱냼媛 ?꾩슂?⑸땲?? (寃?됱쑝濡??좏깮?댁＜?몄슂.)";
 
-    if (!ceremonyDate) return "예식 날짜를 입력해주세요.";
-    if (!ceremonyStartTime) return "예식 시작 시간을 선택해주세요.";
-    if (!ceremonyEndTime) return "예식 종료 시간을 선택해주세요.";
+    if (!ceremonyDate) return "?덉떇 ?좎쭨瑜??낅젰?댁＜?몄슂.";
+    if (!ceremonyStartTime) return "?덉떇 ?쒖옉 ?쒓컙???좏깮?댁＜?몄슂.";
+    if (!ceremonyEndTime) return "?덉떇 醫낅즺 ?쒓컙???좏깮?댁＜?몄슂.";
 
     if (backgroundMode === "template" && !displayStyle)
-      return "디스플레이 배경사진을 선택해주세요.";
+      return "?붿뒪?뚮젅??諛곌꼍?ъ쭊???좏깮?댁＜?몄슂.";
 
     const validAccounts = accounts
       .filter((a) => a.is_active)
@@ -597,7 +597,7 @@ export default function ConfirmPage() {
       );
 
     if (validAccounts.length === 0) {
-      return "축의금 계좌를 최소 1개 이상 등록해주세요. (구분/예금주/은행/계좌번호 모두 필요)";
+      return "異뺤쓽湲?怨꾩쥖瑜?理쒖냼 1媛??댁긽 ?깅줉?댁＜?몄슂. (援щ텇/?덇툑二????怨꾩쥖踰덊샇 紐⑤몢 ?꾩슂)";
     }
 
     return null;
@@ -619,7 +619,7 @@ export default function ConfirmPage() {
       const startOffsetNum = DEFAULT_START_OFFSET;
       const endOffsetNum = DEFAULT_END_OFFSET;
 
-      // 1) events 업데이트
+      // 1) events ?낅뜲?댄듃
       const eventPayload = {
         groom_name: groomName || null,
         bride_name: brideName || null,
@@ -635,14 +635,14 @@ export default function ConfirmPage() {
         .eq("id", eventId);
       if (eventUpdateError) throw eventUpdateError;
 
-      // 2) recipients (신랑/신부)
+      // 2) recipients (?좊옉/?좊?)
       const recipients: any[] = [];
       if (groomName.trim())
-        recipients.push({ name: groomName.trim(), role: "신랑", contact: null });
+        recipients.push({ name: groomName.trim(), role: "?좊옉", contact: null });
       if (brideName.trim())
-        recipients.push({ name: brideName.trim(), role: "신부", contact: null });
+        recipients.push({ name: brideName.trim(), role: "?좊?", contact: null });
 
-      // 배경모드/미디어 배열
+      // 諛곌꼍紐⑤뱶/誘몃뵒??諛곗뿴
       const cleaned = mediaUrls.map((u) => u.trim()).filter(Boolean);
       const isPhotoValid = cleaned.length > 0;
 
@@ -685,7 +685,7 @@ export default function ConfirmPage() {
         if (inserted) setSettings(inserted as EventSettingsRow);
       }
 
-     // 4) 계좌 저장(전부 삭제 후 insert)
+     // 4) 怨꾩쥖 ????꾨? ??젣 ??insert)
         const myMemberId = await getMyMemberId(eventId);
 
         const validAccounts = accounts
@@ -699,7 +699,7 @@ export default function ConfirmPage() {
           )
           .map((a, index) => ({
             event_id: eventId,
-            owner_member_id: myMemberId, // ✅ 등록/수정한 사람이 owner
+            owner_member_id: myMemberId, // ???깅줉/?섏젙???щ엺??owner
             label: a.label.trim(),
             holder_name: a.holder_name.trim(),
             bank_name: a.bank_name.trim(),
@@ -712,7 +712,7 @@ export default function ConfirmPage() {
           .from("event_accounts")
           .delete()
           .eq("event_id", eventId)
-          .eq("owner_member_id", myMemberId); // ✅ 내 계좌만 삭제
+          .eq("owner_member_id", myMemberId); // ????怨꾩쥖留???젣
         if (deleteError && deleteError.code !== "42P01") throw deleteError;
 
         const { error: insertAccountsError } = await supabase
@@ -722,11 +722,11 @@ export default function ConfirmPage() {
           throw insertAccountsError;
 
 
-      // ✅ 저장 성공 UX: 문구 교체 + 성공 박스에만 CTA 노출
-      setSuccess("설정이 완료되었습니다. 상세설정은 예식 시작 1시간 전까지 수정할 수 있어요.");
+      // ??????깃났 UX: 臾멸뎄 援먯껜 + ?깃났 諛뺤뒪?먮쭔 CTA ?몄텧
+      setSuccess("?ㅼ젙???꾨즺?섏뿀?듬땲?? ?곸꽭?ㅼ젙? ?덉떇 ?쒖옉 1?쒓컙 ?꾧퉴吏 ?섏젙?????덉뼱??");
     } catch (e: any) {
       console.error("[ConfirmPage] handleSave error:", e);
-      setError(e.message ?? "저장 중 오류가 발생했습니다.");
+      setError(e.message ?? "???以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.");
     } finally {
       setSaving(false);
     }
@@ -735,7 +735,7 @@ export default function ConfirmPage() {
   if (loading) {
     return (
       <div className="p-6">
-        <p>로딩 중...</p>
+        <p>濡쒕뵫 以?..</p>
       </div>
     );
   }
@@ -743,8 +743,8 @@ export default function ConfirmPage() {
   if (!event) {
     return (
       <div className="p-6">
-        <p>이벤트 정보를 불러올 수 없습니다.</p>
-        {error && <p className="mt-2 text-sm text-red-600">상세 오류: {error}</p>}
+        <p>?대깽???뺣낫瑜?遺덈윭?????놁뒿?덈떎.</p>
+        {error && <p className="mt-2 text-sm text-red-600">?곸꽭 ?ㅻ쪟: {error}</p>}
       </div>
     );
   }
@@ -761,7 +761,7 @@ export default function ConfirmPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
-      {/* ✅ 상단: 우측 링크 + 타이틀 */}
+      {/* ???곷떒: ?곗륫 留곹겕 + ??댄? */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-end gap-3">
           <button
@@ -769,7 +769,7 @@ export default function ConfirmPage() {
             onClick={() => navigate("/app")}
             className="text-xs md:text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900 whitespace-nowrap"
           >
-            이벤트 홈
+            ?대깽????
           </button>
 
           <button
@@ -777,31 +777,31 @@ export default function ConfirmPage() {
             onClick={() => navigate(`/app/event/${eventId}/report`)}
             className="text-xs md:text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900 whitespace-nowrap"
           >
-            리포트
+            由ы룷??
           </button>
         </div>
 
         <div>
-          <h1 className="text-xl md:text-2xl font-bold">디지털방명록 세부사항 확정</h1>
+          <h1 className="text-xl md:text-2xl font-bold">?붿??몃갑紐낅줉 ?몃??ы빆 ?뺤젙</h1>
           <p className="text-xs md:text-sm text-gray-600 mt-1">
-            예식 시간, 디스플레이, 축의금 계좌, 사진/영상을 한 번에 설정하면 결혼식 당일 디스플레이에 그대로 적용됩니다.
+            ?덉떇 ?쒓컙, ?붿뒪?뚮젅?? 異뺤쓽湲?怨꾩쥖, ?ъ쭊/?곸긽????踰덉뿉 ?ㅼ젙?섎㈃ 寃고샎???뱀씪 ?붿뒪?뚮젅?댁뿉 洹몃?濡??곸슜?⑸땲??
           </p>
         </div>
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">
-        {/* 모바일 청첩장 */}
+        {/* 紐⑤컮??泥?꺽??*/}
         <section className="bg-white/70 border border-rose-200/70 ring-1 ring-rose-200/40 rounded-2xl p-4 space-y-4 shadow-2xl shadow-rose-200/30 backdrop-blur-xl transition-all hover:border-rose-300/80">
-          <h2 className="text-sm md:text-lg font-semibold">모바일 청첩장</h2>
+          <h2 className="text-sm md:text-lg font-semibold">紐⑤컮??泥?꺽??/h2>
           <p className="text-[11px] text-gray-500">
-            모바일 청첩장 링크는 필수입니다. (예금주/사진 등을 최종 더블체크하기 위한 용도)
+            紐⑤컮??泥?꺽??留곹겕???꾩닔?낅땲?? (?덇툑二??ъ쭊 ?깆쓣 理쒖쥌 ?붾툝泥댄겕?섍린 ?꾪븳 ?⑸룄)
           </p>
 
           <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="url"
               className="flex-1 border rounded-md px-3 py-2 text-sm"
-              placeholder="예: https://m-card.com/your-link"
+              placeholder="?? https://m-card.com/your-link"
               value={mobileInvitationLink}
               onChange={(e) => setMobileInvitationLink(e.target.value)}
             />
@@ -810,51 +810,51 @@ export default function ConfirmPage() {
               className="sm:w-auto w-full px-3 py-2 text-sm border border-green-300 rounded-full bg-white hover:bg-green-50"
               onClick={() => {
                 const v = mobileInvitationLink.trim();
-                if (!v) return alert("먼저 모바일 청첩장 링크를 입력해주세요.");
-                if (!isValidUrl(v)) return alert("유효한 URL 형식이 아닙니다.");
+                if (!v) return alert("癒쇱? 紐⑤컮??泥?꺽??留곹겕瑜??낅젰?댁＜?몄슂.");
+                if (!isValidUrl(v)) return alert("?좏슚??URL ?뺤떇???꾨떃?덈떎.");
                 window.open(v, "_blank", "noopener,noreferrer");
               }}
             >
-              링크 열기
+              留곹겕 ?닿린
             </button>
           </div>
         </section>
 
-        {/* 기본 정보 */}
+        {/* 湲곕낯 ?뺣낫 */}
         <section className="bg-white/70 border border-rose-200/70 ring-1 ring-rose-200/40 rounded-2xl p-4 space-y-4 shadow-2xl shadow-rose-200/30 backdrop-blur-xl transition-all hover:border-rose-300/80">
-          <h2 className="text-sm md:text-lg font-semibold">기본 정보</h2>
+          <h2 className="text-sm md:text-lg font-semibold">湲곕낯 ?뺣낫</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-[11px] font-medium text-gray-500 mb-1">신랑 이름</label>
+              <label className="block text-[11px] font-medium text-gray-500 mb-1">?좊옉 ?대쫫</label>
               <input
                 type="text"
                 className="w-full border rounded-md px-3 py-2 text-sm"
-                placeholder="예: 김우빈"
+                placeholder="?? 源?곕퉰"
                 value={groomName}
                 onChange={(e) => setGroomName(e.target.value)}
               />
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-gray-500 mb-1">신부 이름</label>
+              <label className="block text-[11px] font-medium text-gray-500 mb-1">?좊? ?대쫫</label>
               <input
                 type="text"
                 className="w-full border rounded-md px-3 py-2 text-sm"
-                placeholder="예: 신민아"
+                placeholder="?? ?좊???
                 value={brideName}
                 onChange={(e) => setBrideName(e.target.value)}
               />
             </div>
 
             <div className="md:col-span-2 space-y-2">
-              <label className="block text-[11px] font-medium text-gray-500 mb-1">예식장</label>
+              <label className="block text-[11px] font-medium text-gray-500 mb-1">?덉떇??/label>
               <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   type="button"
                   className="sm:w-auto w-full px-3 py-2 text-sm border border-green-300 rounded-full flex items-center justify-center gap-1 bg-white hover:bg-green-50"
                   onClick={() => setVenueSearchOpen(true)}
                 >
-                  <span>📍</span>
-                  <span>예식장 검색하기</span>
+                  <span>?뱧</span>
+                  <span>?덉떇??寃?됲븯湲?/span>
                 </button>
                 <div className="flex-1 min-h-[40px] border rounded-md px-3 py-2 text-xs bg-white flex flex-col justify-center">
                   {venueName ? (
@@ -863,7 +863,7 @@ export default function ConfirmPage() {
                       {venueAddress && <span className="text-[11px] text-gray-500">{venueAddress}</span>}
                     </>
                   ) : (
-                    <span className="text-[11px] text-gray-400">아직 선택한 예식장이 없습니다.</span>
+                    <span className="text-[11px] text-gray-400">?꾩쭅 ?좏깮???덉떇?μ씠 ?놁뒿?덈떎.</span>
                   )}
                 </div>
               </div>
@@ -871,21 +871,21 @@ export default function ConfirmPage() {
           </div>
 
           <p className="text-[11px] text-gray-500 mt-1">
-            여기에서 입력한 정보는 디지털 방명록 화면과 최종 리포트에 그대로 사용됩니다.
+            ?ш린?먯꽌 ?낅젰???뺣낫???붿???諛⑸챸濡??붾㈃怨?理쒖쥌 由ы룷?몄뿉 洹몃?濡??ъ슜?⑸땲??
           </p>
         </section>
 
-        {/* 예식 시간 */}
+        {/* ?덉떇 ?쒓컙 */}
         <section className="bg-white/70 border border-rose-200/70 ring-1 ring-rose-200/40 rounded-2xl p-4 space-y-4 shadow-2xl shadow-rose-200/30 backdrop-blur-xl transition-all hover:border-rose-300/80">
-          <h2 className="text-sm md:text-lg font-semibold">예식 시간</h2>
+          <h2 className="text-sm md:text-lg font-semibold">?덉떇 ?쒓컙</h2>
           <p className="text-[11px] text-gray-500">
-            예식 시작 <span className="font-semibold">1시간 전</span>부터 종료{" "}
-            <span className="font-semibold">10분 전</span>까지 디지털 방명록 디스플레이가 재생됩니다.
+            ?덉떇 ?쒖옉 <span className="font-semibold">1?쒓컙 ??/span>遺??醫낅즺{" "}
+            <span className="font-semibold">10遺???/span>源뚯? ?붿???諛⑸챸濡??붿뒪?뚮젅?닿? ?ъ깮?⑸땲??
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-[11px] font-medium text-gray-600 mb-1">예식 날짜</label>
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">?덉떇 ?좎쭨</label>
               <input
                 type="date"
                 className="w-full border rounded-md px-3 py-2 text-sm"
@@ -895,7 +895,7 @@ export default function ConfirmPage() {
             </div>
 
             <div>
-              <label className="block text-[11px] font-medium text-gray-600 mb-1">시작 시간</label>
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">?쒖옉 ?쒓컙</label>
               <div className="flex gap-2">
                 <select
                   className="w-full border rounded-md px-3 py-2 text-sm"
@@ -906,10 +906,10 @@ export default function ConfirmPage() {
                     setCeremonyStartTime(newHour ? `${newHour}:${minute}` : "");
                   }}
                 >
-                  <option value="">시</option>
+                  <option value="">??/option>
                   {HOURS.map((h) => (
                     <option key={h} value={h}>
-                      {h}시
+                      {h}??
                     </option>
                   ))}
                 </select>
@@ -922,10 +922,10 @@ export default function ConfirmPage() {
                     setCeremonyStartTime(newMinute ? `${hour}:${newMinute}` : "");
                   }}
                 >
-                  <option value="">분</option>
+                  <option value="">遺?/option>
                   {MINUTES_10.map((m) => (
                     <option key={m} value={m}>
-                      {m}분
+                      {m}遺?
                     </option>
                   ))}
                 </select>
@@ -933,7 +933,7 @@ export default function ConfirmPage() {
             </div>
 
             <div>
-              <label className="block text-[11px] font-medium text-gray-600 mb-1">종료 시간</label>
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">醫낅즺 ?쒓컙</label>
               <div className="flex gap-2">
                 <select
                   className="w-full border rounded-md px-3 py-2 text-sm"
@@ -944,10 +944,10 @@ export default function ConfirmPage() {
                     setCeremonyEndTime(newHour ? `${newHour}:${minute}` : "");
                   }}
                 >
-                  <option value="">시</option>
+                  <option value="">??/option>
                   {HOURS.map((h) => (
                     <option key={h} value={h}>
-                      {h}시
+                      {h}??
                     </option>
                   ))}
                 </select>
@@ -960,10 +960,10 @@ export default function ConfirmPage() {
                     setCeremonyEndTime(newMinute ? `${hour}:${newMinute}` : "");
                   }}
                 >
-                  <option value="">분</option>
+                  <option value="">遺?/option>
                   {MINUTES_10.map((m) => (
                     <option key={m} value={m}>
-                      {m}분
+                      {m}遺?
                     </option>
                   ))}
                 </select>
@@ -972,12 +972,12 @@ export default function ConfirmPage() {
           </div>
         </section>
 
-        {/* 디스플레이 */}
+        {/* ?붿뒪?뚮젅??*/}
         <section className="bg-white/70 border border-rose-200/70 ring-1 ring-rose-200/40 rounded-2xl p-4 space-y-4 shadow-2xl shadow-rose-200/30 backdrop-blur-xl transition-all hover:border-rose-300/80">
-          <h2 className="text-sm md:text-lg font-semibold">디스플레이 디자인 & 사진/영상</h2>
+          <h2 className="text-sm md:text-lg font-semibold">?붿뒪?뚮젅???붿옄??& ?ъ쭊/?곸긽</h2>
 
           <div className="space-y-2">
-            <label className="block text-[11px] font-medium text-gray-600 mb-1">배경 방식</label>
+            <label className="block text-[11px] font-medium text-gray-600 mb-1">諛곌꼍 諛⑹떇</label>
             <div className="flex flex-col gap-1 text-sm">
               <label className="flex items-center gap-2">
                 <input
@@ -987,7 +987,7 @@ export default function ConfirmPage() {
                   checked={backgroundMode === "photo"}
                   onChange={() => setBackgroundMode("photo")}
                 />
-                <span>신랑·신부 웨딩사진/영상 사용 (추천)</span>
+                <span>?좊옉쨌?좊? ?⑤뵫?ъ쭊/?곸긽 ?ъ슜 (異붿쿇)</span>
               </label>
 
               <label className="flex items-center gap-2">
@@ -998,12 +998,12 @@ export default function ConfirmPage() {
                   checked={backgroundMode === "template"}
                   onChange={() => setBackgroundMode("template")}
                 />
-                <span>기본 계절템플릿 사용</span>
+                <span>湲곕낯 怨꾩젅?쒗뵆由??ъ슜</span>
               </label>
             </div>
 
             <p className="text-[11px] text-gray-500">
-              사진/영상을 올리면 신랑·신부 화면 위로 축하 메시지가 자연스럽게 표시됩니다.
+              ?ъ쭊/?곸긽???щ━硫??좊옉쨌?좊? ?붾㈃ ?꾨줈 異뺥븯 硫붿떆吏媛 ?먯뿰?ㅻ읇寃??쒖떆?⑸땲??
             </p>
           </div>
 
@@ -1011,18 +1011,18 @@ export default function ConfirmPage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                  신랑·신부 사진/영상 올리기 (선택)
+                  ?좊옉쨌?좊? ?ъ쭊/?곸긽 ?щ━湲?(?좏깮)
                 </label>
 
                 <label className="block">
                   <div className="w-full border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-center bg-white active:scale-[0.99] transition">
-                    <span className="text-3xl mb-1">🎞️</span>
+                    <span className="text-3xl mb-1">?렄截?/span>
                     <p className="text-sm font-medium text-gray-800">
-                      핸드폰 앨범에서 사진/영상 선택하기
+                      ?몃뱶???⑤쾾?먯꽌 ?ъ쭊/?곸긽 ?좏깮?섍린
                     </p>
                     <p className="mt-1 text-[11px] text-gray-500">
-                      사진+영상 합쳐서 최대 {MAX_MEDIA_TOTAL}개까지 업로드할 수 있어요. (영상은 최대{" "}
-                      {MAX_VIDEOS}개, 영상 파일당 {MAX_VIDEO_MB}MB 이하)
+                      ?ъ쭊+?곸긽 ?⑹퀜??理쒕? {MAX_MEDIA_TOTAL}媛쒓퉴吏 ?낅줈?쒗븷 ???덉뼱?? (?곸긽? 理쒕?{" "}
+                      {MAX_VIDEOS}媛? ?곸긽 ?뚯씪??{MAX_VIDEO_MB}MB ?댄븯)
                     </p>
                   </div>
 
@@ -1041,16 +1041,16 @@ export default function ConfirmPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-gray-700">
-                    업로드된 미디어 ({mediaUrls.length}/{MAX_MEDIA_TOTAL}) · 영상 {videoCount}/{MAX_VIDEOS}
+                    ?낅줈?쒕맂 誘몃뵒??({mediaUrls.length}/{MAX_MEDIA_TOTAL}) 쨌 ?곸긽 {videoCount}/{MAX_VIDEOS}
                   </span>
                   <span className="text-[11px] text-gray-500">
-                    왼쪽부터 순서대로 재생됩니다. (✕ 삭제)
+                    ?쇱そ遺???쒖꽌?濡??ъ깮?⑸땲?? (????젣)
                   </span>
                 </div>
 
                 {mediaUrls.length === 0 ? (
                   <div className="border border-dashed border-gray-300 rounded-xl py-4 text-center text-[11px] text-gray-400 bg-white">
-                    아직 업로드된 미디어가 없습니다. 원하시면 위 버튼으로 추가해주세요.
+                    ?꾩쭅 ?낅줈?쒕맂 誘몃뵒?닿? ?놁뒿?덈떎. ?먰븯?쒕㈃ ??踰꾪듉?쇰줈 異붽??댁＜?몄슂.
                   </div>
                 ) : (
                   <div className="flex gap-2 overflow-x-auto pb-1">
@@ -1068,7 +1068,7 @@ export default function ConfirmPage() {
                               muted
                               playsInline
                               preload="metadata"
-                              controls                    // ✅ “영상이 맞다”를 눈으로 확인
+                              controls                    // ???쒖쁺?곸씠 留욌떎?앸? ?덉쑝濡??뺤씤
                               controlsList="nodownload noplaybackrate noremoteplayback"
                             />
                           ) : (
@@ -1085,7 +1085,7 @@ export default function ConfirmPage() {
                             onClick={() => removeMedia(idx)}
                             className="absolute top-1 right-1 bg-black/75 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center shadow"
                           >
-                            ✕
+                            ??
                           </button>
                         </div>
                       );
@@ -1094,8 +1094,8 @@ export default function ConfirmPage() {
                 )}
 
                 <p className="text-[11px] text-gray-500">
-                  * 사진/영상을 업로드하지 않으면, 저장 시 자동으로{" "}
-                  <span className="font-semibold">기본 계절 템플릿</span>으로 적용됩니다.
+                  * ?ъ쭊/?곸긽???낅줈?쒗븯吏 ?딆쑝硫? ??????먮룞?쇰줈{" "}
+                  <span className="font-semibold">湲곕낯 怨꾩젅 ?쒗뵆由?/span>?쇰줈 ?곸슜?⑸땲??
                 </p>
               </div>
             </div>
@@ -1105,7 +1105,7 @@ export default function ConfirmPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                  디스플레이 배경사진
+                  ?붿뒪?뚮젅??諛곌꼍?ъ쭊
                 </label>
                 <select
                   className="w-full border rounded-md px-3 py-2 text-sm"
@@ -1121,7 +1121,7 @@ export default function ConfirmPage() {
 
                 <div className="md:hidden border rounded-xl overflow-hidden bg-gray-50">
                   <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">
-                    미리보기
+                    誘몃━蹂닿린
                   </div>
                   <div className="p-3 flex justify-center">
                     {!templatePreviewError ? (
@@ -1135,7 +1135,7 @@ export default function ConfirmPage() {
                       </div>
                     ) : (
                       <div className="w-[220px] aspect-[9/16] rounded-xl border bg-white flex items-center justify-center text-xs text-gray-500">
-                        미리보기를 불러올 수 없습니다.
+                        誘몃━蹂닿린瑜?遺덈윭?????놁뒿?덈떎.
                       </div>
                     )}
                   </div>
@@ -1145,7 +1145,7 @@ export default function ConfirmPage() {
               <div className="hidden md:flex justify-end">
                 <div className="border rounded-xl overflow-hidden bg-gray-50 w-fit">
                   <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">
-                    미리보기
+                    誘몃━蹂닿린
                   </div>
                   <div className="p-3 flex justify-center">
                     {!templatePreviewError ? (
@@ -1159,7 +1159,7 @@ export default function ConfirmPage() {
                       </div>
                     ) : (
                       <div className="w-[260px] aspect-[9/16] rounded-xl border bg-white flex items-center justify-center text-xs text-gray-500">
-                        미리보기를 불러올 수 없습니다.
+                        誘몃━蹂닿린瑜?遺덈윭?????놁뒿?덈떎.
                       </div>
                     )}
                   </div>
@@ -1169,23 +1169,23 @@ export default function ConfirmPage() {
           )}
         </section>
 
-        {/* 축의금 계좌 */}
+        {/* 異뺤쓽湲?怨꾩쥖 */}
         <section className="bg-white/70 border border-rose-200/70 ring-1 ring-rose-200/40 rounded-2xl p-4 space-y-4 shadow-2xl shadow-rose-200/30 backdrop-blur-xl transition-all hover:border-rose-300/80">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm md:text-lg font-semibold">축의금 계좌 설정</h2>
+            <h2 className="text-sm md:text-lg font-semibold">異뺤쓽湲?怨꾩쥖 ?ㅼ젙</h2>
             <button
               type="button"
               onClick={addAccount}
               disabled={accounts.length >= MAX_ACCOUNTS}
               className="text-xs md:text-sm px-3 py-1 border rounded-md disabled:opacity-50"
             >
-              계좌 추가 ({accounts.length}/{MAX_ACCOUNTS})
+              怨꾩쥖 異붽? ({accounts.length}/{MAX_ACCOUNTS})
             </button>
           </div>
 
           <p className="text-[11px] text-gray-500">
-            신랑 / 신부 / 양가 부모 등 최대 {MAX_ACCOUNTS}개의 계좌를 등록할 수 있습니다. QR을 스캔하면 하객이 송금할 계좌를
-            선택하게 됩니다.
+            ?좊옉 / ?좊? / ?묎? 遺紐???理쒕? {MAX_ACCOUNTS}媛쒖쓽 怨꾩쥖瑜??깅줉?????덉뒿?덈떎. QR???ㅼ틪?섎㈃ ?섍컼???↔툑??怨꾩쥖瑜?
+            ?좏깮?섍쾶 ?⑸땲??
           </p>
 
           <div className="space-y-4">
@@ -1196,7 +1196,7 @@ export default function ConfirmPage() {
 
               const selectValue =
                 bankMode === "custom"
-                  ? "기타(직접 입력)"
+                  ? "湲고?(吏곸젒 ?낅젰)"
                   : acct.bank_name
                   ? acct.bank_name
                   : "";
@@ -1204,38 +1204,38 @@ export default function ConfirmPage() {
               return (
                 <div key={index} className="border rounded-lg p-3 bg-gray-50 space-y-2">
                   <div className="flex items-center justify-between">
-                    <div className="text-[11px] font-semibold text-gray-600">계좌 #{index + 1}</div>
+                    <div className="text-[11px] font-semibold text-gray-600">怨꾩쥖 #{index + 1}</div>
                     {accounts.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removeAccount(index)}
                         className="text-[11px] text-red-500"
                       >
-                        삭제
+                        ??젣
                       </button>
                     )}
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                     <div>
-                      <label className="block text-[11px] font-medium text-gray-600 mb-1">구분</label>
+                      <label className="block text-[11px] font-medium text-gray-600 mb-1">援щ텇</label>
                       <select
                         className="w-full border rounded-md px-2 py-1.5 text-xs"
                         value={acct.label}
                         onChange={(e) => handleAccountChange(index, "label", e.target.value)}
                       >
-                        <option value="신랑">신랑</option>
-                        <option value="신부">신부</option>
-                        <option value="신랑 아버지">신랑 아버지</option>
-                        <option value="신랑 어머니">신랑 어머니</option>
-                        <option value="신부 아버지">신부 아버지</option>
-                        <option value="신부 어머니">신부 어머니</option>
-                        <option value="기타">기타</option>
+                        <option value="?좊옉">?좊옉</option>
+                        <option value="?좊?">?좊?</option>
+                        <option value="?좊옉 ?꾨쾭吏">?좊옉 ?꾨쾭吏</option>
+                        <option value="?좊옉 ?대㉧??>?좊옉 ?대㉧??/option>
+                        <option value="?좊? ?꾨쾭吏">?좊? ?꾨쾭吏</option>
+                        <option value="?좊? ?대㉧??>?좊? ?대㉧??/option>
+                        <option value="湲고?">湲고?</option>
                       </select>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-medium text-gray-600 mb-1">예금주</label>
+                      <label className="block text-[11px] font-medium text-gray-600 mb-1">?덇툑二?/label>
                       <input
                         type="text"
                         className="w-full border rounded-md px-2 py-1.5 text-xs"
@@ -1245,7 +1245,7 @@ export default function ConfirmPage() {
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-medium text-gray-600 mb-1">은행명</label>
+                      <label className="block text-[11px] font-medium text-gray-600 mb-1">??됰챸</label>
 
                       <select
                         className="w-full border rounded-md px-2 py-1.5 text-xs mb-1"
@@ -1259,18 +1259,18 @@ export default function ConfirmPage() {
                             return;
                           }
 
-                          if (v === "기타(직접 입력)") {
+                          if (v === "湲고?(吏곸젒 ?낅젰)") {
                             handleAccountChange(index, "bank_mode", "custom");
-                            // bank_name은 직접 입력칸에서 입력
+                            // bank_name? 吏곸젒 ?낅젰移몄뿉???낅젰
                             return;
                           }
 
-                          // 일반 은행 선택
+                          // ?쇰컲 ????좏깮
                           handleAccountChange(index, "bank_mode", "select");
                           handleAccountChange(index, "bank_name", v);
                         }}
                       >
-                        <option value="">은행 선택</option>
+                        <option value="">????좏깮</option>
                         {BANK_OPTIONS.map((name) => (
                           <option key={name} value={name}>
                             {name}
@@ -1278,12 +1278,12 @@ export default function ConfirmPage() {
                         ))}
                       </select>
 
-                      {/* ✅ bank_mode === custom이면 무조건 직접 입력 칸 노출 */}
+                      {/* ??bank_mode === custom?대㈃ 臾댁“嫄?吏곸젒 ?낅젰 移??몄텧 */}
                       {bankMode === "custom" && (
                         <input
                           type="text"
                           className="w-full border rounded-md px-2 py-1.5 text-xs"
-                          placeholder="예: 새마을금고, 신협, 단위농협 등"
+                          placeholder="?? ?덈쭏?꾧툑怨? ?좏삊, ?⑥쐞?랁삊 ??
                           value={acct.bank_name}
                           onChange={(e) => handleAccountChange(index, "bank_name", e.target.value)}
                         />
@@ -1291,7 +1291,7 @@ export default function ConfirmPage() {
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-medium text-gray-600 mb-1">계좌번호</label>
+                      <label className="block text-[11px] font-medium text-gray-600 mb-1">怨꾩쥖踰덊샇</label>
                       <input
                         type="text"
                         className="w-full border rounded-md px-2 py-1.5 text-xs"
@@ -1306,7 +1306,7 @@ export default function ConfirmPage() {
           </div>
         </section>
 
-        {/* 상태 / 버튼 */}
+        {/* ?곹깭 / 踰꾪듉 */}
         <div className="flex flex-col gap-2">
           {error && (
             <div className="text-xs md:text-sm text-red-600 bg-red-50 border border-red-100 px-3 py-2 rounded-md">
@@ -1324,45 +1324,45 @@ export default function ConfirmPage() {
                     onClick={() => navigate("/app")}
                     className="px-3 py-2 rounded-md bg-white border text-xs sm:text-sm hover:bg-gray-50"
                   >
-                    이벤트 홈으로
+                    ?대깽???덉쑝濡?
                   </button>
                   <button
                     type="button"
                     onClick={() => navigate(`/app/event/${eventId}/report`)}
                     className="px-3 py-2 rounded-md bg-black text-white text-xs sm:text-sm hover:opacity-90"
                   >
-                    리포트 보기
+                    由ы룷??蹂닿린
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ✅ 하단 액션바: 확정 전에는 “확정하기”만 */}
+          {/* ???섎떒 ?≪뀡諛? ?뺤젙 ?꾩뿉???쒗솗?뺥븯湲겸앸쭔 */}
           <div className="flex items-center justify-end gap-2 pt-2">
             <button
               type="submit"
               disabled={saving}
               className="px-4 py-2 rounded-md bg-black text-white text-sm disabled:opacity-50"
             >
-              {saving ? "저장 중..." : "확정하기"}
+              {saving ? "???以?.." : "?뺤젙?섍린"}
             </button>
           </div>
         </div>
       </form>
 
-      {/* 예식장 검색 모달 */}
+      {/* ?덉떇??寃??紐⑤떖 */}
       {venueSearchOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
           <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl p-4 space-y-3">
             <div className="flex items-center justify-between mb-1">
-              <h3 className="text-base font-semibold">예식장 검색</h3>
+              <h3 className="text-base font-semibold">?덉떇??寃??/h3>
               <button
                 type="button"
                 className="text-sm text-gray-500"
                 onClick={() => setVenueSearchOpen(false)}
               >
-                닫기
+                ?リ린
               </button>
             </div>
 
@@ -1370,7 +1370,7 @@ export default function ConfirmPage() {
               <input
                 type="text"
                 className="flex-1 border rounded-md px-3 py-2 text-sm"
-                placeholder="예: ○○웨딩홀, ○○성당"
+                placeholder="?? ?뗢뿃?⑤뵫?, ?뗢뿃?깅떦"
                 value={venueSearchKeyword}
                 onChange={(e) => setVenueSearchKeyword(e.target.value)}
                 onKeyDown={(e) => {
@@ -1386,16 +1386,16 @@ export default function ConfirmPage() {
                 onClick={runVenueSearch}
                 disabled={venueSearchLoading}
               >
-                {venueSearchLoading ? "검색 중..." : "검색"}
+                {venueSearchLoading ? "寃??以?.." : "寃??}
               </button>
             </div>
 
             <div className="max-h-72 overflow-auto border rounded-lg">
               {venueSearchLoading ? (
-                <div className="py-8 text-center text-sm text-gray-500">검색 중입니다…</div>
+                <div className="py-8 text-center text-sm text-gray-500">寃??以묒엯?덈떎??/div>
               ) : venueSearchResults.length === 0 ? (
                 <div className="py-8 text-center text-sm text-gray-500">
-                  검색 결과가 없습니다. 이름을 조금 다르게 입력해 보세요.
+                  寃??寃곌낵媛 ?놁뒿?덈떎. ?대쫫??議곌툑 ?ㅻⅤ寃??낅젰??蹂댁꽭??
                 </div>
               ) : (
                 <ul className="divide-y">
@@ -1418,7 +1418,7 @@ export default function ConfirmPage() {
             </div>
 
             <p className="text-[11px] text-gray-400">
-              카카오 지도 장소 검색을 이용합니다. 검색 결과는 Kakao에서 제공하는 정보에 따라 달라질 수 있습니다.
+              移댁뭅??吏???μ냼 寃?됱쓣 ?댁슜?⑸땲?? 寃??寃곌낵??Kakao?먯꽌 ?쒓났?섎뒗 ?뺣낫???곕씪 ?щ씪吏????덉뒿?덈떎.
             </p>
           </div>
         </div>
@@ -1426,4 +1426,5 @@ export default function ConfirmPage() {
     </div>
   );
 }
+
 
