@@ -1,4 +1,4 @@
-﻿// src/pages/ConfirmPage.tsx
+// src/pages/ConfirmPage.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -1418,7 +1418,7 @@ export default function ConfirmPage() {
             </div>
 
             <p className="text-[11px] text-gray-400">
-              移댁뭅??吏???μ냼 寃?됱쓣 ?댁슜?⑸땲?? 검색寃곌낵??Kakao?먯꽌 ?쒓났?섎뒗 ?뺣낫???곕씪 ?щ씪吏????덉뒿?덈떎.
+              카카오 지도 주소 검색을 이용합니다. 검색 결과는 Kakao에서 제공하는 정보에 따라 다를 수 있습니다.
             </p>
           </div>
         </div>

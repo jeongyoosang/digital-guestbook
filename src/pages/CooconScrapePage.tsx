@@ -1,4 +1,4 @@
-﻿// src/pages/CooconScrapePage.tsx
+// src/pages/CooconScrapePage.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
