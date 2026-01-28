@@ -324,11 +324,17 @@ export default function CooconScrapePage() {
    */
   async function upsertConnectedAccountSafe(evId: string, certMeta: any): Promise<string> {
     const { data: userRes } = await supabase.auth.getUser();
+    const userId = userRes?.user?.id || null;
     const userEmail = userRes?.user?.email || null;
+
+    if (!userId) {
+      throw new Error("로그인이 필요합니다.");
+    }
 
     // 1차(확장 payload)
     const payloadFull: any = {
       event_id: evId,
+      owner_user_id: userId,
       verified_at: new Date().toISOString(),
       connected_by_email: userEmail,
       cert_meta_json: certMeta ?? null,
@@ -337,6 +343,7 @@ export default function CooconScrapePage() {
     // 2차(최소 payload)
     const payloadMin: any = {
       event_id: evId,
+      owner_user_id: userId,
       verified_at: new Date().toISOString(),
     };
 
