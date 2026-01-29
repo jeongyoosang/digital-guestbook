@@ -67,10 +67,11 @@ type LedgerRow = {
 const PAGE_SIZE = 10;
 
 function sourceLabel(src?: string | null) {
-  if (src === "scrape") return "은행 자동 반영 (수정 불가)";
-  if (src === "import") return "엑셀 업로드";
-  if (src === "guestpage") return "하객 입력";
-  return "수기 입력";
+  if (src === "import") return "엑셀업로드";
+  if (src === "manual") return "빠른추가";
+  if (src === "guestpage") return "현장QR스캔";
+  if (src === "scrape") return "현장QR스캔";
+  return "빠른추가";
 }
 
 function onlyDigits(s: string) {
@@ -89,8 +90,8 @@ function normalizeBool(v: any): boolean | null {
   if (typeof v === "boolean") return v;
   const s = String(v).trim().toLowerCase();
   if (!s) return null;
-  if (["y", "yes", "true", "1", "o", "ok", "참", "참석"].includes(s)) return true;
-  if (["n", "no", "false", "0", "x", "불", "미참석"].includes(s)) return false;
+  if (["y", "yes", "true", "1", "o", "ok", "참석", "출석", "참"].includes(s)) return true;
+  if (["n", "no", "false", "0", "x", "불참", "미참석", "불출석", "미참"].includes(s)) return false;
   return null;
 }
 
@@ -108,6 +109,27 @@ function normalizeSide(v: any): "groom" | "bride" | "" {
   if (s.includes("신랑") || s === "groom") return "groom";
   if (s.includes("신부") || s === "bride") return "bride";
   return "";
+}
+
+function sideToDb(side: "groom" | "bride" | null): boolean | null {
+  if (side === "groom") return true;
+  if (side === "bride") return false;
+  return null;
+}
+
+function sideFromDb(value: any): "groom" | "bride" | null {
+  if (value === true) return "groom";
+  if (value === false) return "bride";
+  return null;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function toIsoMaybe(v: any): string | null {
@@ -174,10 +196,10 @@ export default function ResultPage() {
 
   // 장부(원장)
   const [ownerMemberId, setOwnerMemberId] = useState<string | null>(null);
+  const [ownerRole, setOwnerRole] = useState<string | null>(null);
   const [ownerLabel, setOwnerLabel] = useState<string>("내");
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
-  const [savingId, setSavingId] = useState<string | null>(null);
 
   // ✅ (중요) 최신 ledger row를 ref에 보관 (stale 방지) — 하나만 유지
   const ledgerRef = useRef<Record<string, LedgerRow>>({});
@@ -190,13 +212,13 @@ export default function ResultPage() {
   // 장부 필터/검색
   const [q, setQ] = useState("");
   const [onlyAttended, setOnlyAttended] = useState(false);
-  const [onlyThanksPending, setOnlyThanksPending] = useState(false);
 
   // 장부 수기 추가
   const [newName, setNewName] = useState("");
-  const [newPhone, setNewPhone] = useState("");
-  const [newRel, setNewRel] = useState("");
-  const [newSide, setNewSide] = useState<"" | "groom" | "bride">("");
+  const [newRelOption, setNewRelOption] = useState("친구");
+  const [newRelCustom, setNewRelCustom] = useState("");
+  const [newAmount, setNewAmount] = useState("");
+  const [newAttended, setNewAttended] = useState<boolean | null>(null);
 
   // Excel UI
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -238,10 +260,12 @@ export default function ResultPage() {
 
     if (data?.id) {
       setOwnerLabel(data.role === "owner" ? "주최" : "내");
+      setOwnerRole(data.role ?? null);
       return data.id;
     }
 
     setOwnerLabel("내");
+    setOwnerRole(null);
     return null;
   }
 
@@ -332,6 +356,7 @@ export default function ResultPage() {
     const fetchLedger = async () => {
       setLedgerLoading(true);
       try {
+        // side: boolean (true=신랑, false=신부)
         const { data, error } = await supabase
           .from("event_ledger_entries")
           .select(
@@ -350,7 +375,12 @@ export default function ResultPage() {
           .order("updated_at", { ascending: false });
 
         if (error) throw error;
-        setLedger((data as LedgerRow[]) || []);
+        const rows =
+          (data as any[])?.map((r) => ({
+            ...r,
+            side: sideFromDb((r as any).side),
+          })) ?? [];
+        setLedger(rows as LedgerRow[]);
       } catch (e) {
         console.error(e);
       } finally {
@@ -367,7 +397,7 @@ export default function ResultPage() {
 
     // 컷오프 잠금: 종료 이후엔 안내만(버튼은 눌리게)
     if (!canRunScrape) {
-      setScrapeResult("예식 종료 이후에는 은행 자동 반영(갱신)이 잠깁니다. (수기/엑셀 입력은 계속 가능)");
+      setScrapeResult("예식 종료 이후에는 QR 축의금 자동 반영이 잠깁니다. (빠른추가/엑셀 입력은 계속 가능)");
       return;
     }
 
@@ -429,7 +459,7 @@ export default function ResultPage() {
       // ✅ 안전: count 재조회
       await refreshTxCount();
 
-      setScrapeResult(`은행 내역 갱신 완료 (${inserted}건 반영)`);
+      setScrapeResult(`QR 축의금 갱신 완료 (${inserted}건 반영)`);
     } catch (e: any) {
       setScrapeResult(e?.message ?? "갱신 중 오류가 발생했습니다.");
     } finally {
@@ -460,10 +490,8 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
   // ref도 즉시 동기화 (최신값 보장)
   ledgerRef.current[row.id] = row;
 
-  setSavingId(row.id);
-
   const payload = {
-    side: row.side,
+    side: sideToDb(row.side),
     guest_name: row.guest_name,
     relationship: row.relationship,
     guest_phone: row.guest_phone,
@@ -482,8 +510,6 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
 
   const { error } = await supabase.from("event_ledger_entries").update(payload).eq("id", row.id);
 
-  setSavingId(null);
-
   if (error) {
     console.error(error);
     alert(`저장 실패: ${error.message}`);
@@ -499,13 +525,20 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
       return;
     }
 
+    const relationship =
+      newRelOption === "기타" ? newRelCustom.trim() : newRelOption.trim();
+    const giftAmount = safeNumber(newAmount);
+
     const payload: any = {
       event_id: eventId,
       owner_member_id: ownerMemberId,
-      side: newSide || null,
+      side: null,
       guest_name: newName.trim(),
-      relationship: newRel.trim() ? newRel.trim() : null,
-      guest_phone: newPhone.trim() ? formatKoreanMobile(newPhone) : null,
+      relationship: relationship ? relationship : null,
+      guest_phone: null,
+      attended: newAttended,
+      attended_at: newAttended === true ? new Date().toISOString() : null,
+      gift_amount: giftAmount,
       gift_method: "unknown" as GiftMethod,
       ticket_count: 0,
       return_given: false,
@@ -535,43 +568,66 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
       return;
     }
 
-    if (data) setLedger((prev) => [data as LedgerRow, ...prev]);
+    if (data) {
+      const nextRow = {
+        ...(data as any),
+        side: sideFromDb((data as any).side),
+      } as LedgerRow;
+      setLedger((prev) => [nextRow, ...prev]);
+    }
 
     setNewName("");
-    setNewPhone("");
-    setNewRel("");
-    setNewSide("");
+    setNewRelOption("친구");
+    setNewRelCustom("");
+    setNewAmount("");
+    setNewAttended(null);
   }
 
   /* ------------------ 엑셀: 샘플 다운로드 (항상 활성) ------------------ */
   function downloadLedgerSampleExcel() {
     const sample = [
       {
-        이름: "김철수",
+        이름: "홍길동",
         관계: "친구",
         연락처: "010-1234-5678",
         "참석여부(QR스캔기준)": "참석",
         참석시간: "",
         축의금: 50000,
-        "축의방식(선택)": "현금",
-        "식권(개수)": 0,
+        "축의금방식(선택)": "현금",
+        출처: "",
+        "식권(매수)": 0,
         답례: "미완료",
         감사인사: "미완료",
         메모: "",
-        "구분(선택)": "신랑측",
       },
     ];
 
     const ws = XLSX.utils.json_to_sheet(sample);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "장부_업로드샘플");
+    XLSX.utils.book_append_sheet(wb, ws, "장부_입력양식");
 
-    const filename = `장부_업로드샘플_${yyyymmdd(settings?.ceremony_date)}.xlsx`;
+    if (ws["!ref"]) {
+      const range = XLSX.utils.decode_range(ws["!ref"]);
+      ws["!autofilter"] = {
+        ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 0, c: range.e.c } }),
+      };
+    }
+
+    const filename = `장부_입력양식_${yyyymmdd(settings?.ceremony_date)}.xlsx`;
     XLSX.writeFile(wb, filename);
   }
 
   /* ------------------ 엑셀: 장부 다운로드 ------------------ */
   function downloadLedgerExcel() {
+    const recipients = settings?.recipients ?? [];
+    const groomName =
+      recipients.find((r) => r.role === "groom" || String(r.role ?? "").includes("신랑"))?.name ?? "";
+    const brideName =
+      recipients.find((r) => r.role === "bride" || String(r.role ?? "").includes("신부"))?.name ?? "";
+
+    const roleLabel = ownerRole === "groom" ? "신랑" : ownerRole === "bride" ? "신부" : "신랑or신부";
+    const roleName = ownerRole === "groom" ? groomName : ownerRole === "bride" ? brideName : "";
+
     const rows = ledger
       .slice()
       .sort((a, b) => (a.guest_name ?? "").localeCompare(b.guest_name ?? ""))
@@ -582,20 +638,26 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
         "참석여부(QR스캔기준)": r.attended === true ? "참석" : r.attended === false ? "미참석" : "",
         참석시간: r.attended_at ? new Date(r.attended_at).toLocaleString() : "",
         축의금: r.gift_amount ?? "",
-        "축의방식(선택)": r.gift_method === "cash" ? "현금" : r.gift_method === "account" ? "계좌" : "",
-        "식권(개수)": r.ticket_count ?? 0,
+        "축의금방식(선택)": r.gift_method === "cash" ? "현금" : r.gift_method === "account" ? "계좌" : "",
+        출처: sourceLabel(r.created_source ?? null),
+        "식권(매수)": r.ticket_count ?? 0,
         답례: r.return_given ? "완료" : "미완료",
         감사인사: r.thanks_done ? "완료" : "미완료",
         메모: r.memo ?? "",
-        "구분(선택)": r.side === "groom" ? "신랑측" : r.side === "bride" ? "신부측" : "",
-        출처: sourceLabel(r.created_source ?? null),
       }));
 
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "장부");
 
-    const filename = `${ownerLabel}_장부_${yyyymmdd(settings?.ceremony_date)}.xlsx`;
+    if (ws["!ref"]) {
+      const range = XLSX.utils.decode_range(ws["!ref"]);
+      ws["!autofilter"] = {
+        ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 0, c: range.e.c } }),
+      };
+    }
+
+    const filename = `${roleLabel}_${roleName || "이름"}_웨딩리포트_${yyyymmdd(settings?.ceremony_date)}.xlsx`;
     XLSX.writeFile(wb, filename);
   }
 
@@ -635,7 +697,7 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
           if (!guest_name) return null;
 
           const relationship = String(key(r, ["관계", "관계(선택)"])).trim() || null;
-          const guest_phone_raw = String(key(r, ["연락처", "전화번호", "휴대폰"])).trim();
+          const guest_phone_raw = String(key(r, ["연락처", "휴대폰", "전화번호"])).trim();
           const guest_phone = guest_phone_raw ? formatKoreanMobile(guest_phone_raw) : null;
 
           const attendedRaw = key(r, ["참석여부(QR스캔기준)", "참석여부", "참석", "출석"]);
@@ -645,21 +707,23 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
           const attended_at = toIsoMaybe(attendedAtRaw);
 
           const gift_amount = safeNumber(key(r, ["축의금", "금액", "축의금액"]));
-          const gift_method = normalizeGiftMethod(key(r, ["축의방식(선택)", "축의방식", "방식", "gift_method"]));
+          const gift_method = normalizeGiftMethod(
+            key(r, ["축의금방식(선택)", "축의금방식", "방식", "gift_method"])
+          );
 
-          const ticket_count = safeNumber(key(r, ["식권(개수)", "식권", "식권수", "ticket_count"])) ?? 0;
+          const ticket_count = safeNumber(key(r, ["식권(매수)", "식권", "식권매수", "ticket_count"])) ?? 0;
 
-          const return_given_raw = key(r, ["답례", "답례품", "return_given"]);
+          const return_given_raw = key(r, ["답례", "답례여부", "return_given"]);
           const return_given = normalizeBool(return_given_raw) ?? false;
 
-          const thanks_done_raw = key(r, ["감사인사", "인사", "thanks_done"]);
+          const thanks_done_raw = key(r, ["감사인사", "감사", "thanks_done"]);
           const thanks_done = normalizeBool(thanks_done_raw) ?? false;
 
           const memo = String(key(r, ["메모", "비고", "memo"])).trim() || null;
 
           const sideRaw = key(r, ["구분(선택)", "구분", "side"]);
           const sideNorm = normalizeSide(sideRaw);
-          const side = sideNorm ? (sideNorm as any) : null;
+          const side = sideNorm === "groom" ? true : sideNorm === "bride" ? false : null;
 
           return {
             event_id: eventId,
@@ -702,8 +766,12 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
 
       if (error) throw error;
 
-      const inserted = (data as LedgerRow[]) || [];
-      setLedger((prev) => [...inserted, ...prev]);
+      const inserted =
+        (data as any[])?.map((r) => ({
+          ...r,
+          side: sideFromDb((r as any).side),
+        })) ?? [];
+      setLedger((prev) => [...(inserted as LedgerRow[]), ...prev]);
 
       setExcelUploadResult(`업로드 완료: ${inserted.length}건이 장부에 추가되었습니다.`);
     } catch (e: any) {
@@ -723,6 +791,70 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
     fileInputRef.current?.click();
   }
 
+  function downloadMessagesPdf() {
+    if (!messages.length) {
+      alert("축하 메시지가 없습니다.");
+      return;
+    }
+
+    const title = `${ceremonyDateText ?? ""} 축하 메시지`;
+    const w = window.open("", "_blank", "width=900,height=700");
+    if (!w) return;
+
+    const cards = messages
+      .map((m) => {
+        const realName = (m.guest_name ?? "").trim();
+        const nickName = (m.nickname ?? "").trim();
+        const nameText =
+          realName && nickName && realName !== nickName
+            ? `${realName} (${nickName})`
+            : realName || nickName || "익명";
+        const relation = m.relationship ? ` · ${m.relationship}` : "";
+        const created = m.created_at ? new Date(m.created_at).toLocaleString() : "";
+        const body = escapeHtml(m.body ?? "").replace(/\n/g, "<br/>");
+
+        return `
+          <div class="card">
+            <div class="meta">
+              <div class="name">${escapeHtml(nameText)}${escapeHtml(relation)}</div>
+              <div class="time">${escapeHtml(created)}</div>
+            </div>
+            <div class="body">${body}</div>
+          </div>
+        `;
+      })
+      .join("");
+
+    w.document.write(`<!doctype html>
+      <html lang="ko">
+      <head>
+        <meta charset="utf-8" />
+        <title>${escapeHtml(title)}</title>
+        <style>
+          body { font-family: 'Pretendard', 'Apple SD Gothic Neo', sans-serif; background: #f8fafc; color: #0f172a; }
+          .wrap { max-width: 900px; margin: 32px auto 48px; padding: 0 24px; }
+          h1 { font-size: 22px; margin: 0 0 6px; }
+          p.sub { margin: 0 0 20px; color: #64748b; font-size: 12px; }
+          .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 18px 20px; margin-bottom: 14px; box-shadow: 0 8px 20px rgba(15,23,42,.06); }
+          .meta { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; color: #94a3b8; margin-bottom: 8px; }
+          .name { font-weight: 700; color: #0f172a; }
+          .body { font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+          @media print { body { background: #fff; } .card { box-shadow: none; } }
+        </style>
+      </head>
+      <body>
+        <div class="wrap">
+          <h1>${escapeHtml(title)}</h1>
+          <p class="sub">축하 메시지 모음 · PDF로 저장하세요</p>
+          ${cards}
+        </div>
+      </body>
+      </html>`);
+    w.document.close();
+    w.focus();
+    w.print();
+  }
+
   /* ------------------ 계산 ------------------ */
   const ceremonyDateText =
     settings?.ceremony_date &&
@@ -740,9 +872,10 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
     const total = ledger.length;
     const attended = ledger.filter((r) => r.attended === true).length;
     const totalAmount = ledger.reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
-    const thanksPending = ledger.filter((r) => r.thanks_done === false).length;
-    const locked = ledger.filter((r) => isLockedRow(r)).length;
-    return { total, attended, totalAmount, thanksPending, locked };
+    const attendedAmount = ledger
+      .filter((r) => r.attended === true)
+      .reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
+    return { total, attended, totalAmount, attendedAmount };
   }, [ledger]);
 
   const filteredLedger = useMemo(() => {
@@ -757,9 +890,8 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
         return hay.includes(query);
       })
       .filter((r) => (onlyAttended ? r.attended === true : true))
-      .filter((r) => (onlyThanksPending ? r.thanks_done === false : true))
       .sort((a, b) => (a.guest_name ?? "").localeCompare(b.guest_name ?? ""));
-  }, [ledger, q, onlyAttended, onlyThanksPending]);
+  }, [ledger, q, onlyAttended]);
 
   /* ------------------ 가드 ------------------ */
   if (loading) {
@@ -803,7 +935,8 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
             </p>
 
             <p className="text-[11px] text-slate-400">
-              이 화면은 <span className="font-bold text-slate-700">개인 기준</span> 리포트입니다. (각 계정/구성원별 분리)
+              해당 화면은 <span className="font-bold text-slate-700">로그인한 본인만</span> 보는 개인 장부입니다.
+              (신랑/신부 공유 없음)
             </p>
           </div>
 
@@ -812,13 +945,13 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
               onClick={handleGenerateReport}
               disabled={scraping}
               className="flex-1 md:flex-none px-6 py-3.5 bg-slate-900 text-white rounded-2xl text-sm font-bold shadow-xl shadow-slate-200 active:scale-95 transition-all disabled:opacity-50"
-              title={!canRunScrape ? "예식 종료 이후에는 자동 반영이 잠깁니다." : ""}
+              title={!canRunScrape ? "예식 종료 이후에는 QR 축의금 자동 반영이 잠깁니다." : ""}
             >
-              {scraping ? "조회 중..." : "은행 내역 갱신"}
+              {scraping ? "갱신 중..." : "QR 축의금 갱신하기"}
             </button>
 
             <div className="bg-white border border-slate-100 px-6 py-3 rounded-2xl shadow-sm">
-              <p className="text-[10px] font-black text-slate-300 uppercase leading-none mb-1">Data Cutoff</p>
+              <p className="text-[10px] font-black text-slate-300 uppercase leading-none mb-1">QR 반영 마감</p>
               <p className="text-xs font-bold text-slate-600">{cutoffText}</p>
             </div>
           </div>
@@ -837,25 +970,25 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
             {
               label: "총 축의금",
               value: `${ledgerStats.totalAmount.toLocaleString()}원`,
-              sub: `하객 ${ledgerStats.total}명`,
+              sub: "전체 입력 합계 (수기/엑셀 포함)",
               color: "text-slate-900",
             },
             {
-              label: "실제 참석",
-              value: `${ledgerStats.attended}명`,
-              sub: "QR 스캔 기준",
+              label: "QR 기준 축의금",
+              value: `${ledgerStats.attendedAmount.toLocaleString()}원`,
+              sub: "현장 QR 스캔 기준",
               color: "text-blue-600",
             },
             {
-              label: "답례 미완료",
-              value: `${ledgerStats.thanksPending}명`,
-              sub: "관리 필요",
+              label: "총 하객",
+              value: `${ledgerStats.total}명`,
+              sub: "QR 스캔 + 직접 입력 포함",
               color: "text-pink-500",
             },
             {
-              label: "자동 반영",
-              value: `${txCount}건`,
-              sub: scrapeLocked ? "예식 종료로 잠김" : "은행 스크래핑",
+              label: "QR 기준 하객",
+              value: `${ledgerStats.attended}명`,
+              sub: "현장 QR 스캔 기준",
               color: "text-slate-500",
             },
           ].map((s, i) => (
@@ -918,13 +1051,13 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
 
             {/* 컷오프 안내 */}
             {cutoffIso && (
-              <div className="mx-6 md:mx-10 rounded-[2rem] bg-white border border-slate-100 p-5 text-xs text-slate-500">
-                <div className="font-bold text-slate-700 mb-1">은행 자동 반영(스크래핑) 컷오프</div>
+              <div className="mx-6 md:mx-10 rounded-[2.5rem] bg-white border border-slate-100 p-5 text-xs text-slate-500">
+                <div className="font-bold text-slate-700 mb-1">QR 축의금 반영 마감</div>
                 <div className="leading-relaxed">
-                  예식 종료 시각(<span className="font-bold">{cutoffText}</span>) 이후에는{" "}
-                  <span className="font-bold">은행 자동 반영이 잠깁니다.</span>
+                  예식 종료 시간(<span className="font-bold">{cutoffText}</span>) 이후에는{" "}
+                  <span className="font-bold">QR 축의금 자동 반영이 잠깁니다.</span>
                   <br />
-                  수기 입력/엑셀 업로드는 예식 이후에도 계속 수정할 수 있습니다.
+                  빠른추가/엑셀 업로드는 예식 이후에도 계속 수정 가능합니다.
                 </div>
               </div>
             )}
@@ -956,24 +1089,10 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
 
                 <button
                   type="button"
-                  onClick={() => setOnlyThanksPending((v) => !v)}
-                  disabled={ledgerLoading}
-                  className={[
-                    "flex-1 md:flex-none px-6 py-4 rounded-[1.5rem] text-xs font-bold transition-all ring-1",
-                    onlyThanksPending
-                      ? "bg-pink-50 text-pink-600 ring-pink-200"
-                      : "bg-white text-slate-400 ring-slate-100",
-                  ].join(" ")}
-                >
-                  답례 미완료만
-                </button>
-
-                <button
-                  type="button"
                   onClick={() => setExcelHelpOpen((v) => !v)}
                   className="px-6 py-4 bg-white text-slate-600 rounded-[1.5rem] text-xs font-bold border border-slate-100 shadow-sm"
                 >
-                  데이터 관리 ⚙️
+                  엑셀/빠른추가 관리 ⚙️
                 </button>
               </div>
             </div>
@@ -982,7 +1101,7 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
             {excelHelpOpen && (
               <div className="mx-6 md:mx-10 p-8 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-10">
                 <div className="space-y-4">
-                  <h4 className="text-sm font-black text-slate-900 uppercase tracking-tighter">Excel Management</h4>
+                  <h4 className="text-sm font-black text-slate-900 uppercase tracking-tighter">엑셀로 관리하기</h4>
 
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -1005,7 +1124,7 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                       onClick={downloadLedgerSampleExcel}
                       className="px-5 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold underline"
                     >
-                      양식 받기
+                      양식 다운로드
                     </button>
                   </div>
 
@@ -1024,13 +1143,13 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                   {excelUploadResult && <div className="text-xs text-slate-500">{excelUploadResult}</div>}
 
                   <div className="text-[11px] text-slate-400 leading-relaxed">
-                    * 업로드는 현재 <span className="font-bold text-slate-600">새 행 추가</span> 방식입니다.
-                    <br />* <span className="font-bold text-slate-600">은행 자동 반영</span> 내역은 항상 수정 불가입니다.
+                    * 업로드는 기존 기록에 추가됩니다.
+                    <br />* QR 축의금 자동 반영 내역은 수정할 수 없습니다.
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                  <h4 className="text-sm font-black text-slate-900 uppercase tracking-tighter">Quick Add</h4>
+                  <h4 className="text-sm font-black text-slate-900 uppercase tracking-tighter">빠른 추가</h4>
 
                   <div className="grid grid-cols-2 gap-2">
                     <input
@@ -1040,29 +1159,52 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                       disabled={!ownerMemberId}
                       className="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
                     />
-                    <input
-                      value={newPhone}
-                      onChange={(e) => setNewPhone(formatKoreanMobile(e.target.value))}
-                      placeholder="연락처"
-                      disabled={!ownerMemberId}
-                      className="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
-                    />
-                    <input
-                      value={newRel}
-                      onChange={(e) => setNewRel(e.target.value)}
-                      placeholder="관계"
-                      disabled={!ownerMemberId}
-                      className="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
-                    />
+
                     <select
-                      value={newSide}
-                      onChange={(e) => setNewSide(e.target.value as any)}
+                      value={newRelOption}
+                      onChange={(e) => setNewRelOption(e.target.value)}
                       disabled={!ownerMemberId}
                       className="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs disabled:opacity-50"
                     >
-                      <option value="">구분 선택</option>
-                      <option value="groom">신랑측</option>
-                      <option value="bride">신부측</option>
+                      <option value="친구">친구</option>
+                      <option value="가족">가족</option>
+                      <option value="직장">직장</option>
+                      <option value="지인">지인</option>
+                      <option value="기타">기타</option>
+                    </select>
+
+                    {newRelOption === "기타" && (
+                      <input
+                        value={newRelCustom}
+                        onChange={(e) => setNewRelCustom(e.target.value)}
+                        placeholder="관계 직접 입력"
+                        disabled={!ownerMemberId}
+                        className="col-span-2 bg-slate-50 border-none rounded-xl px-4 py-3 text-xs focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                      />
+                    )}
+
+                    <input
+                      inputMode="numeric"
+                      value={newAmount}
+                      onChange={(e) => setNewAmount(e.target.value)}
+                      placeholder="금액"
+                      disabled={!ownerMemberId}
+                      className="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                    />
+
+                    <select
+                      value={newAttended === true ? "attended" : newAttended === false ? "absent" : ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (!v) setNewAttended(null);
+                        else setNewAttended(v === "attended");
+                      }}
+                      disabled={!ownerMemberId}
+                      className="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs disabled:opacity-50"
+                    >
+                      <option value="">참석 여부</option>
+                      <option value="attended">참석</option>
+                      <option value="absent">미참석</option>
                     </select>
 
                     <button
@@ -1085,6 +1227,7 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
               </div>
             )}
 
+
             {/* [모바일] 카드형 리스트 */}
             <div className="md:hidden px-6 space-y-4">
               {ledgerLoading ? (
@@ -1100,34 +1243,47 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-xl font-black text-slate-900">{r.guest_name}</span>
-                            <span
-                              className={[
-                                "text-[10px] px-2 py-0.5 rounded-full font-black uppercase",
-                                r.side === "groom"
-                                  ? "bg-blue-50 text-blue-500"
-                                  : r.side === "bride"
-                                  ? "bg-pink-50 text-pink-500"
-                                  : "bg-slate-50 text-slate-400",
-                              ].join(" ")}
-                            >
-                              {r.side === "groom" ? "Groom" : r.side === "bride" ? "Bride" : "Side"}
-                            </span>
                             {locked && <span className="text-[10px] font-bold text-slate-300">자동</span>}
                           </div>
                           <p className="text-xs text-slate-400 font-medium">
-                            {(r.relationship || "관계 미입력") + " • " + (r.guest_phone || "연락처 없음")}
+                            {(r.relationship || "관계 미입력") + " · " + (r.guest_phone || "연락처 없음")}
                           </p>
+                          <div className="mt-2 text-[10px] text-slate-400 font-bold uppercase">
+                            {sourceLabel(r.created_source ?? null)}
+                          </div>
                         </div>
 
                         <div className="text-right">
-                          <p className="text-xl font-black text-slate-900">{(r.gift_amount ?? 0).toLocaleString()}원</p>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase">
-                            {r.gift_method === "cash" ? "CASH" : r.gift_method === "account" ? "ACCOUNT" : "UNKNOWN"}
-                          </p>
+                          <input
+                            inputMode="numeric"
+                            className="w-28 text-right bg-slate-50 border-none rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                            value={r.gift_amount ?? ""}
+                            disabled={locked}
+                            placeholder="금액"
+                            onChange={(e) => {
+                              const nextRow: LedgerRow = { ...r, gift_amount: safeNumber(e.target.value) };
+                              patchLedger(r.id, nextRow);
+                            }}
+                            onBlur={() => saveLedgerRow(r)}
+                          />
+                          <select
+                            className="mt-2 bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-28 disabled:opacity-50"
+                            value={r.gift_method}
+                            disabled={locked}
+                            onChange={(e) => {
+                              const nextRow: LedgerRow = { ...r, gift_method: e.target.value as GiftMethod };
+                              patchLedger(r.id, nextRow);
+                            }}
+                            onBlur={() => saveLedgerRow(r)}
+                          >
+                            <option value="unknown">미정</option>
+                            <option value="account">계좌</option>
+                            <option value="cash">현금</option>
+                          </select>
                         </div>
                       </div>
 
-                      <div className="mb-3">
+                      <div>
                         <button
                           type="button"
                           disabled={locked}
@@ -1149,69 +1305,7 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                             saveLedgerRow(nextRow);
                           }}
                         >
-                          참석 {r.attended ? "확인" : "미확인"}{" "}
-                          <span className="ml-2 text-[10px] font-bold text-slate-300">
-                            {r.attended_at ? new Date(r.attended_at).toLocaleString() : ""}
-                          </span>
-                        </button>
-                      </div>
-
-                      <div className="flex gap-2">
-                        <button
-                          disabled={locked}
-                          onClick={() => {
-                            const nextRow: LedgerRow = { ...r, return_given: !r.return_given };
-                            patchLedger(r.id, nextRow);
-                            saveLedgerRow(nextRow);
-                          }}
-                          className={[
-                            "flex-1 py-3.5 rounded-2xl text-[11px] font-black transition-all",
-                            r.return_given ? "bg-pink-500 text-white shadow-md shadow-pink-100" : "bg-slate-50 text-slate-400",
-                            locked ? "opacity-50" : "",
-                          ].join(" ")}
-                        >
-                          답례 {r.return_given ? "완료" : "대기"}
-                        </button>
-
-                        <button
-                          disabled={locked}
-                          onClick={() => {
-                            const nextRow: LedgerRow = { ...r, thanks_done: !r.thanks_done };
-                            patchLedger(r.id, nextRow);
-                            saveLedgerRow(nextRow);
-                          }}
-                          className={[
-                            "flex-1 py-3.5 rounded-2xl text-[11px] font-black transition-all",
-                            r.thanks_done ? "bg-pink-500 text-white shadow-md shadow-pink-100" : "bg-slate-50 text-slate-400",
-                            locked ? "opacity-50" : "",
-                          ].join(" ")}
-                        >
-                          인사 {r.thanks_done ? "완료" : "대기"}
-                        </button>
-                      </div>
-
-                      <div className="mt-3">
-                        <input
-                          value={r.memo ?? ""}
-                          disabled={locked}
-                          onChange={(e) => {
-                            const nextRow: LedgerRow = { ...r, memo: e.target.value };
-                            patchLedger(r.id, nextRow);
-                          }}
-                          onBlur={() => saveLedgerRow({ ...r, memo: r.memo ?? "" })}
-                          placeholder="메모"
-                          className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-xs text-slate-600 placeholder:text-slate-300 disabled:opacity-50"
-                        />
-                      </div>
-
-                      <div className="mt-3 flex justify-between items-center text-[11px]">
-                        <div className="text-slate-400">{sourceLabel(r.created_source ?? null)}</div>
-                        <button
-                          className="px-4 py-2 rounded-xl border text-[11px] font-bold hover:bg-slate-50 disabled:opacity-50"
-                          disabled={locked || savingId === r.id}
-                          onClick={() => saveLedgerRow(r)}
-                        >
-                          {savingId === r.id ? "저장중" : locked ? "잠김" : "저장"}
+                          참석 {r.attended ? "확인" : "미확인"}
                         </button>
                       </div>
                     </div>
@@ -1227,25 +1321,21 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                   <thead className="bg-slate-50/50 border-b border-slate-50">
                     <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                       <th className="px-8 py-5">하객 정보</th>
-                      <th className="px-8 py-5">참석</th>
+                      <th className="px-8 py-5">참석 여부</th>
                       <th className="px-8 py-5">축의금/방식</th>
-                      <th className="px-8 py-5 text-center">식권</th>
-                      <th className="px-8 py-5 text-center">상태</th>
-                      <th className="px-8 py-5">메모</th>
-                      <th className="px-8 py-5 text-right">저장</th>
                     </tr>
                   </thead>
 
                   <tbody className="divide-y divide-slate-50">
                     {ledgerLoading ? (
                       <tr>
-                        <td colSpan={7} className="px-8 py-12 text-center text-slate-400">
+                        <td colSpan={3} className="px-8 py-12 text-center text-slate-400">
                           장부를 불러오는 중...
                         </td>
                       </tr>
                     ) : filteredLedger.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-8 py-12 text-center text-slate-400">
+                        <td colSpan={3} className="px-8 py-12 text-center text-slate-400">
                           표시할 데이터가 없습니다.
                         </td>
                       </tr>
@@ -1267,19 +1357,6 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                                   }}
                                   onBlur={() => saveLedgerRow(r)}
                                 />
-
-                                <span
-                                  className={[
-                                    "text-[9px] px-2 py-0.5 rounded-full font-black uppercase",
-                                    r.side === "groom"
-                                      ? "bg-blue-50 text-blue-500"
-                                      : r.side === "bride"
-                                      ? "bg-pink-50 text-pink-500"
-                                      : "bg-slate-50 text-slate-400",
-                                  ].join(" ")}
-                                >
-                                  {r.side === "groom" ? "Groom" : r.side === "bride" ? "Bride" : "Side"}
-                                </span>
                               </div>
 
                               <div className="mt-2 flex gap-2">
@@ -1339,10 +1416,6 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                               >
                                 {r.attended ? "참석" : "미참석"}
                               </button>
-
-                              <div className="mt-2 text-[10px] text-slate-300 font-bold">
-                                {r.attended_at ? new Date(r.attended_at).toLocaleString() : ""}
-                              </div>
                             </td>
 
                             <td className="px-8 py-5">
@@ -1359,7 +1432,7 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                                 onBlur={() => saveLedgerRow(r)}
                               />
 
-                              <div className="mt-2 flex gap-2">
+                              <div className="mt-2">
                                 <select
                                   className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-32 disabled:opacity-50"
                                   value={r.gift_method}
@@ -1370,112 +1443,11 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                                   }}
                                   onBlur={() => saveLedgerRow(r)}
                                 >
-                                  <option value="unknown">미지정</option>
+                                  <option value="unknown">미정</option>
                                   <option value="account">계좌</option>
                                   <option value="cash">현금</option>
                                 </select>
-
-                                <select
-                                  className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-32 disabled:opacity-50"
-                                  value={r.side ?? ""}
-                                  disabled={locked}
-                                  onChange={(e) => {
-                                    const nextRow: LedgerRow = {
-                                      ...r,
-                                      side: (e.target.value || null) as any,
-                                    };
-                                    patchLedger(r.id, nextRow);
-                                  }}
-                                  onBlur={() => saveLedgerRow(r)}
-                                >
-                                  <option value="">구분 없음</option>
-                                  <option value="groom">신랑측</option>
-                                  <option value="bride">신부측</option>
-                                </select>
                               </div>
-                            </td>
-
-                            <td className="px-8 py-5 text-center">
-                              <input
-                                inputMode="numeric"
-                                className="w-16 text-center bg-slate-50 border-none rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
-                                value={r.ticket_count ?? 0}
-                                disabled={locked}
-                                onChange={(e) => {
-                                  const nextRow: LedgerRow = {
-                                    ...r,
-                                    ticket_count: safeNumber(e.target.value) ?? 0,
-                                  };
-                                  patchLedger(r.id, nextRow);
-                                }}
-                                onBlur={() => saveLedgerRow(r)}
-                              />
-                            </td>
-
-                            <td className="px-8 py-5 text-center">
-                              <div className="flex items-center justify-center gap-2">
-                                <button
-                                  disabled={locked}
-                                  onClick={() => {
-                                    const nextRow: LedgerRow = { ...r, return_given: !r.return_given };
-                                    patchLedger(r.id, nextRow);
-                                    saveLedgerRow(nextRow);
-                                  }}
-                                  className={[
-                                    "h-9 px-4 rounded-2xl text-[11px] font-black transition-all",
-                                    r.return_given
-                                      ? "bg-pink-500 text-white shadow-md shadow-pink-100"
-                                      : "bg-slate-50 text-slate-400",
-                                    locked ? "opacity-50" : "",
-                                  ].join(" ")}
-                                >
-                                  답례 {r.return_given ? "완료" : "대기"}
-                                </button>
-
-                                <button
-                                  disabled={locked}
-                                  onClick={() => {
-                                    const nextRow: LedgerRow = { ...r, thanks_done: !r.thanks_done };
-                                    patchLedger(r.id, nextRow);
-                                    saveLedgerRow(nextRow);
-                                  }}
-                                  className={[
-                                    "h-9 px-4 rounded-2xl text-[11px] font-black transition-all",
-                                    r.thanks_done
-                                      ? "bg-pink-500 text-white shadow-md shadow-pink-100"
-                                      : "bg-slate-50 text-slate-400",
-                                    locked ? "opacity-50" : "",
-                                  ].join(" ")}
-                                >
-                                  인사 {r.thanks_done ? "완료" : "대기"}
-                                </button>
-                              </div>
-
-                              {locked && <div className="mt-2 text-[10px] text-slate-300 font-bold">자동 반영 내역은 잠김</div>}
-                            </td>
-
-                            <td className="px-8 py-5">
-                              <input
-                                value={r.memo ?? ""}
-                                disabled={locked}
-                                onChange={(e) => {
-                                  const nextRow: LedgerRow = { ...r, memo: e.target.value };
-                                  patchLedger(r.id, nextRow);
-                                }}
-                                onBlur={() => saveLedgerRow(r)}
-                                placeholder="메모"
-                                className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-xs text-slate-600 placeholder:text-slate-300 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
-                              />
-                            </td>
-
-                            <td className="px-8 py-5 text-right">
-                              <button
-                                className="h-9 px-4 rounded-2xl border text-[11px] font-black hover:bg-slate-50 disabled:opacity-50"
-                                disabled={locked || savingId === r.id}
-                                onClick={() => saveLedgerRow(r)}
-                              >
-                                {savingId === r.id ? "저장중" : locked ? "잠김" : "저장"}
-                              </button>
                             </td>
                           </tr>
                         );
@@ -1486,9 +1458,9 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
               </div>
 
               <div className="mt-4 text-[11px] text-slate-400">
-                * “양식 받기”는 항상 가능 / 업로드는 로그인 멤버(event_members) 매칭이 필요합니다.
+                * 화면에는 핵심 정보(하객정보/참석여부/축의금/방식)만 표시됩니다. 자세한 항목은 엑셀 다운로드에서 확인하세요.
                 <br />
-                * 은행 자동 반영(스크래핑)은 예식 종료 컷오프 이후 잠깁니다. (수기/엑셀은 계속 가능)
+                * QR 축의금 자동 반영은 예식 종료 이후 잠깁니다. (빠른추가/엑셀은 계속 가능)
               </div>
             </div>
           </div>
@@ -1503,7 +1475,13 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                   <h2 className="text-lg md:text-xl font-black text-slate-900">축하 메시지</h2>
                   <p className="text-xs text-slate-400 mt-1">하객이 남긴 메시지를 시간순으로 확인할 수 있어요.</p>
                 </div>
-                <div className="text-xs font-bold text-slate-400">총 {messages.length.toLocaleString()}개</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={downloadMessagesPdf}
+                    className="px-4 py-2 rounded-xl bg-slate-900 text-white text-[11px] font-bold shadow-sm"
+                  >축하메시지 PDF 저장</button>
+                  <div className="text-xs font-bold text-slate-400">총 {messages.length.toLocaleString()}개</div>
+                </div>
               </div>
 
               {messages.length === 0 ? (
@@ -1518,37 +1496,46 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                   return (
                     <>
                       <div className="space-y-3">
-                        {slice.map((m) => (
-                          <div key={m.id} className="p-5 rounded-[2rem] border border-slate-100 bg-slate-50/40">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-black text-slate-900">{m.guest_name || m.nickname || "익명"}</span>
-                                <span className="text-[10px] font-bold text-slate-400">
-                                  {m.relationship ? `(${m.relationship})` : ""}
-                                </span>
+                        {slice.map((m) => {
+                          const realName = (m.guest_name ?? "").trim();
+                          const nickName = (m.nickname ?? "").trim();
+                          const nameText =
+                            realName && nickName && realName !== nickName
+                              ? `${realName} (${nickName})`
+                              : realName || nickName || "익명";
 
-                                <span
-                                  className={[
-                                    "text-[9px] px-2 py-0.5 rounded-full font-black uppercase",
-                                    m.side === "groom"
-                                      ? "bg-blue-50 text-blue-500"
-                                      : m.side === "bride"
-                                      ? "bg-pink-50 text-pink-500"
-                                      : "bg-slate-100 text-slate-400",
-                                  ].join(" ")}
-                                >
-                                  {m.side === "groom" ? "Groom" : m.side === "bride" ? "Bride" : "Side"}
-                                </span>
+                          return (
+                            <div key={m.id} className="p-5 rounded-[2rem] border border-slate-100 bg-slate-50/40">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-black text-slate-900">{nameText}</span>
+                                  <span className="text-[10px] font-bold text-slate-400">
+                                    {m.relationship ? `(${m.relationship})` : ""}
+                                  </span>
+
+                                  <span
+                                    className={[
+                                      "text-[9px] px-2 py-0.5 rounded-full font-black uppercase",
+                                      m.side === "groom"
+                                        ? "bg-blue-50 text-blue-500"
+                                        : m.side === "bride"
+                                        ? "bg-pink-50 text-pink-500"
+                                        : "bg-slate-100 text-slate-400",
+                                    ].join(" ")}
+                                  >
+                                    {m.side === "groom" ? "Groom" : m.side === "bride" ? "Bride" : "Side"}
+                                  </span>
+                                </div>
+
+                                <div className="text-[10px] text-slate-400 font-bold">
+                                  {m.created_at ? new Date(m.created_at).toLocaleString() : ""}
+                                </div>
                               </div>
 
-                              <div className="text-[10px] text-slate-400 font-bold">
-                                {m.created_at ? new Date(m.created_at).toLocaleString() : ""}
-                              </div>
+                              <div className="mt-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{m.body}</div>
                             </div>
-
-                            <div className="mt-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{m.body}</div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       {/* pagination */}
