@@ -66,9 +66,9 @@ type AccountForm = {
 const MAX_ACCOUNTS = 6;
 
 // 미디어 정책
-const MAX_MEDIA_TOTAL = 10;
-const MAX_VIDEOS = 2;
-const MAX_VIDEO_MB = 50;
+const MAX_MEDIA_TOTAL = 18; // 사진+영상 합쳐서 최대 18개
+const MAX_VIDEOS = 2; // 영상은 최대 2개
+const MAX_MEDIA_FILE_MB = 50; // 사진/영상 모두 파일 1개당 50MB 이하
 
 const DEFAULT_TITLE = "WEDDING MESSAGES";
 const DEFAULT_SUBTITLE = "소중한 분들의 마음을 전하는 메시지를 남겨주세요";
@@ -123,7 +123,6 @@ function isVideoUrl(url: string) {
   );
 }
 
-
 function countVideosInUrls(urls: string[]) {
   return urls.reduce((acc, u) => (isVideoUrl(u) ? acc + 1 : acc), 0);
 }
@@ -134,6 +133,13 @@ function bytesToMB(bytes: number) {
 
 function isKnownBankName(name: string) {
   return BANK_OPTIONS.includes(name) && name !== "기타(직접 입력)";
+}
+
+function summarizeSkipped(skipped: string[], maxItems = 2) {
+  if (!skipped || skipped.length === 0) return null;
+  const head = skipped.slice(0, maxItems);
+  const rest = skipped.length - head.length;
+  return rest > 0 ? `${head.join(", ")} 외 ${rest}개` : head.join(", ");
 }
 
 export default function ConfirmPage() {
@@ -187,6 +193,9 @@ export default function ConfirmPage() {
   const [settings, setSettings] = useState<EventSettingsRow | null>(null);
   const [accounts, setAccounts] = useState<AccountForm[]>([]);
 
+  // ✅ 토스트 (짧게, 자동 사라짐)
+  const [toast, setToast] = useState<{ type: "info" | "error"; text: string } | null>(null);
+
   // 기본 정보
   const [groomName, setGroomName] = useState("");
   const [brideName, setBrideName] = useState("");
@@ -209,9 +218,7 @@ export default function ConfirmPage() {
   const [mobileInvitationLink, setMobileInvitationLink] = useState("");
 
   // 배경 모드 & 업로드된 미디어 URL
-  const [backgroundMode, setBackgroundMode] = useState<"template" | "photo">(
-    "photo"
-  );
+  const [backgroundMode, setBackgroundMode] = useState<"template" | "photo">("photo");
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
 
@@ -230,7 +237,7 @@ export default function ConfirmPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
-  // ???�플�?미리보기 URL
+  // 템플릿 미리보기 URL
   const templatePreviewUrl = useMemo(() => {
     return `/display-templates/${displayStyle}/background.jpg`;
   }, [displayStyle]);
@@ -239,6 +246,13 @@ export default function ConfirmPage() {
   useEffect(() => {
     setTemplatePreviewError(false);
   }, [displayStyle]);
+
+  // ✅ 토스트 자동 닫힘
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(null), 2600);
+    return () => window.clearTimeout(t);
+  }, [toast]);
 
   async function fetchData(id: string) {
     setLoading(true);
@@ -326,8 +340,7 @@ export default function ConfirmPage() {
             : "template";
         setBackgroundMode(mode);
 
-        if (Array.isArray(s.media_urls) && s.media_urls.length > 0)
-          setMediaUrls(s.media_urls);
+        if (Array.isArray(s.media_urls) && s.media_urls.length > 0) setMediaUrls(s.media_urls);
         else setMediaUrls([]);
 
         setMobileInvitationLink(s.mobile_invitation_link ?? "");
@@ -366,13 +379,11 @@ export default function ConfirmPage() {
 
       if (accountError && accountError.code !== "42P01") throw accountError;
 
-
       if (accountData && accountData.length > 0) {
         setAccounts(
           accountData.map((row: any) => {
             const bankName = row.bank_name ?? "";
-            const mode: BankMode =
-              bankName && isKnownBankName(bankName) ? "select" : "custom";
+            const mode: BankMode = bankName && isKnownBankName(bankName) ? "select" : "custom";
             return {
               id: row.id,
               label: row.label,
@@ -415,14 +426,8 @@ export default function ConfirmPage() {
     }
   }
 
-  function handleAccountChange(
-    index: number,
-    field: keyof AccountForm,
-    value: string | boolean
-  ) {
-    setAccounts((prev) =>
-      prev.map((acct, i) => (i === index ? { ...acct, [field]: value } : acct))
-    );
+  function handleAccountChange(index: number, field: keyof AccountForm, value: string | boolean) {
+    setAccounts((prev) => prev.map((acct, i) => (i === index ? { ...acct, [field]: value } : acct)));
   }
 
   function addAccount() {
@@ -442,11 +447,7 @@ export default function ConfirmPage() {
   }
 
   function removeAccount(index: number) {
-    setAccounts((prev) =>
-      prev
-        .filter((_, i) => i !== index)
-        .map((acct, i) => ({ ...acct, sort_order: i }))
-    );
+    setAccounts((prev) => prev.filter((_, i) => i !== index).map((acct, i) => ({ ...acct, sort_order: i })));
   }
 
   function removeMedia(index: number) {
@@ -474,7 +475,7 @@ export default function ConfirmPage() {
         const file = files[i];
 
         if (totalCount >= MAX_MEDIA_TOTAL) {
-          skipped.push(`"${file.name}" (최대 ${MAX_MEDIA_TOTAL}개 초과)`);
+          skipped.push(`"${file.name}" (최대 ${MAX_MEDIA_TOTAL}개)`);
           continue;
         }
 
@@ -482,34 +483,30 @@ export default function ConfirmPage() {
         const isImage = (file.type || "").startsWith("image/");
 
         if (!isVideo && !isImage) {
-          skipped.push(`"${file.name}" (지원하지 않는 파일 형식)`);
+          skipped.push(`"${file.name}" (형식)`);
           continue;
         }
 
         if (isVideo && videoCount >= MAX_VIDEOS) {
-          skipped.push(`"${file.name}" (영상은 최대 ${MAX_VIDEOS}개)`);
+          skipped.push(`"${file.name}" (영상 ${MAX_VIDEOS}개)`);
           continue;
         }
 
-        if (isVideo) {
-          const mb = bytesToMB(file.size);
-          if (mb > MAX_VIDEO_MB) {
-            skipped.push(`"${file.name}" (영상 파일은 ${MAX_VIDEO_MB}MB 이하)`);
-            continue;
-          }
+        // ✅ 파일 1개당 용량 제한(사진/영상 공통)
+        const mb = bytesToMB(file.size);
+        if (mb > MAX_MEDIA_FILE_MB) {
+          skipped.push(`"${file.name}" (${MAX_MEDIA_FILE_MB}MB+)`);
+          continue;
         }
 
         const ext = file.name.split(".").pop() || (isVideo ? "mp4" : "jpg");
-        const safeExt =
-          ext.replace(/[^a-zA-Z0-9]/g, "") || (isVideo ? "mp4" : "jpg");
+        const safeExt = ext.replace(/[^a-zA-Z0-9]/g, "") || (isVideo ? "mp4" : "jpg");
         const filename = `${Date.now()}_${i}.${safeExt}`;
         const path = `${eventId}/${filename}`;
 
-        const { error: uploadError } = await supabase.storage
-        .from("event-media")
-        .upload(path, file, {
+        const { error: uploadError } = await supabase.storage.from("event-media").upload(path, file, {
           upsert: false,
-          contentType: file.type || undefined, // 중요: video/mp4, image/jpeg 명시
+          contentType: file.type || undefined,
           cacheControl: "3600",
         });
 
@@ -528,16 +525,19 @@ export default function ConfirmPage() {
       setBackgroundMode("photo");
 
       if (skipped.length > 0) {
-        setUploadStatus(
-          `업로드 완료. 일부 파일이 제외되었습니다. ${skipped.join(", ")}`
-        );
+        setUploadStatus("업로드 완료 (일부 제외)");
+        const shortMsg = summarizeSkipped(skipped, 2);
+        setToast({ type: "info", text: `일부 파일 제외: ${shortMsg}` });
       } else {
-        setUploadStatus("업로드가 완료되었습니다. 하단 미디어를 확인해주세요.");
+        setUploadStatus("업로드 완료");
+        setToast({ type: "info", text: "업로드 완료" });
       }
     } catch (err: any) {
       console.error("[ConfirmPage] file upload error", err);
-      setError(err.message ?? "업로드 중 오류가 발생했습니다. 다시 시도해주세요.");
+      const msg = err.message ?? "업로드 중 오류가 발생했습니다. 다시 시도해주세요.";
+      setError(msg);
       setUploadStatus(null);
+      setToast({ type: "error", text: msg });
     } finally {
       setSaving(false);
       e.target.value = "";
@@ -587,31 +587,22 @@ export default function ConfirmPage() {
   // 필수값 검증
   const validateBeforeSave = () => {
     if (!mobileInvitationLink.trim()) return "모바일 초대장 링크가 필요합니다.";
-    if (!isValidUrl(mobileInvitationLink.trim()))
-      return "모바일 초대장 링크가 유효한 URL 형식이 아닙니다.";
+    if (!isValidUrl(mobileInvitationLink.trim())) return "모바일 초대장 링크가 유효한 URL 형식이 아닙니다.";
 
     if (!groomName.trim()) return "신랑 이름을 입력해주세요.";
     if (!brideName.trim()) return "신부 이름을 입력해주세요.";
     if (!venueName.trim()) return "예식장 이름을 입력해주세요.";
-    if (!venueAddress.trim())
-      return "예식장 주소가 필요합니다. (검색을 통해 선택해주세요.)";
+    if (!venueAddress.trim()) return "예식장 주소가 필요합니다. (검색을 통해 선택해주세요.)";
 
     if (!ceremonyDate) return "예식 날짜를 입력해주세요.";
     if (!ceremonyStartTime) return "예식 시작 시간을 선택해주세요.";
     if (!ceremonyEndTime) return "예식 종료 시간을 선택해주세요.";
 
-    if (backgroundMode === "template" && !displayStyle)
-      return "디스플레이 테마를 선택해주세요.";
+    if (backgroundMode === "template" && !displayStyle) return "디스플레이 테마를 선택해주세요.";
 
     const validAccounts = accounts
       .filter((a) => a.is_active)
-      .filter(
-        (a) =>
-          a.label.trim() &&
-          a.holder_name.trim() &&
-          a.bank_name.trim() &&
-          a.account_number.trim()
-      );
+      .filter((a) => a.label.trim() && a.holder_name.trim() && a.bank_name.trim() && a.account_number.trim());
 
     if (validAccounts.length === 0) {
       return "축의금 계좌를 최소 1개 이상 등록해주세요. (라벨/예금주/은행/계좌번호 모두 필요)";
@@ -646,25 +637,19 @@ export default function ConfirmPage() {
         venue_lng: venueLng,
       };
 
-      const { error: eventUpdateError } = await supabase
-        .from("events")
-        .update(eventPayload)
-        .eq("id", eventId);
+      const { error: eventUpdateError } = await supabase.from("events").update(eventPayload).eq("id", eventId);
       if (eventUpdateError) throw eventUpdateError;
 
       // 2) recipients (신랑/신부)
       const recipients: any[] = [];
-      if (groomName.trim())
-        recipients.push({ name: groomName.trim(), role: "신랑", contact: null });
-      if (brideName.trim())
-        recipients.push({ name: brideName.trim(), role: "신부", contact: null });
+      if (groomName.trim()) recipients.push({ name: groomName.trim(), role: "신랑", contact: null });
+      if (brideName.trim()) recipients.push({ name: brideName.trim(), role: "신부", contact: null });
 
-      // 배경모드/미디??배열
+      // 배경모드/미디어 배열
       const cleaned = mediaUrls.map((u) => u.trim()).filter(Boolean);
       const isPhotoValid = cleaned.length > 0;
 
-      const modeToSave: "photo" | "template" =
-        backgroundMode === "photo" && isPhotoValid ? "photo" : "template";
+      const modeToSave: "photo" | "template" = backgroundMode === "photo" && isPhotoValid ? "photo" : "template";
       const mediaToSave = modeToSave === "photo" ? cleaned : null;
 
       const payload = {
@@ -687,10 +672,7 @@ export default function ConfirmPage() {
 
       // 3) event_settings upsert
       if (settings?.id) {
-        const { error: updateError } = await supabase
-          .from("event_settings")
-          .update(payload)
-          .eq("id", settings.id);
+        const { error: updateError } = await supabase.from("event_settings").update(payload).eq("id", settings.id);
         if (updateError) throw updateError;
       } else {
         const { data: inserted, error: insertError } = await supabase
@@ -707,16 +689,10 @@ export default function ConfirmPage() {
 
       const validAccounts = accounts
         .filter((a) => a.is_active)
-        .filter(
-          (a) =>
-            a.label.trim() &&
-            a.holder_name.trim() &&
-            a.bank_name.trim() &&
-            a.account_number.trim()
-        )
+        .filter((a) => a.label.trim() && a.holder_name.trim() && a.bank_name.trim() && a.account_number.trim())
         .map((a, index) => ({
           event_id: eventId,
-          owner_member_id: myMemberId, // 계좌 소유자
+          owner_member_id: myMemberId,
           label: a.label.trim(),
           holder_name: a.holder_name.trim(),
           bank_name: a.bank_name.trim(),
@@ -729,16 +705,12 @@ export default function ConfirmPage() {
         .from("event_accounts")
         .delete()
         .eq("event_id", eventId)
-        .eq("owner_member_id", myMemberId); // 본인 계좌만 삭제
+        .eq("owner_member_id", myMemberId);
       if (deleteError && deleteError.code !== "42P01") throw deleteError;
 
-      const { error: insertAccountsError } = await supabase
-        .from("event_accounts")
-        .insert(validAccounts);
-      if (insertAccountsError && insertAccountsError.code !== "42P01")
-        throw insertAccountsError;
+      const { error: insertAccountsError } = await supabase.from("event_accounts").insert(validAccounts);
+      if (insertAccountsError && insertAccountsError.code !== "42P01") throw insertAccountsError;
 
-      // 저장 성공 UX
       setSuccess("저장이 완료되었습니다. 상세 설정은 예식 1시간 전까지 변경할 수 있습니다.");
     } catch (e: any) {
       console.error("[ConfirmPage] handleSave error:", e);
@@ -777,6 +749,19 @@ export default function ConfirmPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
+      {/* ✅ 토스트 */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999]">
+          <div
+            className={`px-4 py-2 rounded-full text-xs shadow-lg border backdrop-blur bg-white/90 ${
+              toast.type === "error" ? "border-red-200 text-red-700" : "border-gray-200 text-gray-700"
+            }`}
+          >
+            {toast.text}
+          </div>
+        </div>
+      )}
+
       {/* 상단: 우측 링크 + 타이틀 */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-end gap-3">
@@ -809,9 +794,7 @@ export default function ConfirmPage() {
         {/* 모바일 초대장 */}
         <section className="bg-white/70 border border-rose-200/70 ring-1 ring-rose-200/40 rounded-2xl p-4 space-y-4 shadow-2xl shadow-rose-200/30 backdrop-blur-xl transition-all hover:border-rose-300/80">
           <h2 className="text-sm md:text-lg font-semibold">모바일 초대장</h2>
-          <p className="text-[11px] text-gray-500">
-            모바일 초대장 링크가 필요합니다. (카카오톡 공유용 링크)
-          </p>
+          <p className="text-[11px] text-gray-500">모바일 초대장 링크가 필요합니다. (카카오톡 공유용 링크)</p>
 
           <div className="flex flex-col sm:flex-row gap-2">
             <input
@@ -886,17 +869,15 @@ export default function ConfirmPage() {
             </div>
           </div>
 
-          <p className="text-[11px] text-gray-500 mt-1">
-            여기서 입력한 정보는 전광판과 청첩장 화면에 그대로 반영됩니다.
-          </p>
+          <p className="text-[11px] text-gray-500 mt-1">여기서 입력한 정보는 전광판과 청첩장 화면에 그대로 반영됩니다.</p>
         </section>
 
         {/* 예식 시간 */}
         <section className="bg-white/70 border border-rose-200/70 ring-1 ring-rose-200/40 rounded-2xl p-4 space-y-4 shadow-2xl shadow-rose-200/30 backdrop-blur-xl transition-all hover:border-rose-300/80">
           <h2 className="text-sm md:text-lg font-semibold">예식 시간</h2>
           <p className="text-[11px] text-gray-500">
-            예식 시작 <span className="font-semibold">1시간 전</span>부터 예식{" "}
-            <span className="font-semibold">10분 전</span>까지 디스플레이가 활성화됩니다.
+            예식 시작 <span className="font-semibold">1시간 전</span>부터 예식 <span className="font-semibold">10분 전</span>까지
+            디스플레이가 활성화됩니다.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -911,9 +892,7 @@ export default function ConfirmPage() {
             </div>
 
             <div>
-              <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                예식 시작 시간
-              </label>
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">예식 시작 시간</label>
               <div className="flex gap-2">
                 <select
                   className="w-full border rounded-md px-3 py-2 text-sm"
@@ -951,9 +930,7 @@ export default function ConfirmPage() {
             </div>
 
             <div>
-              <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                예식 종료 시간
-              </label>
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">예식 종료 시간</label>
               <div className="flex gap-2">
                 <select
                   className="w-full border rounded-md px-3 py-2 text-sm"
@@ -1022,37 +999,26 @@ export default function ConfirmPage() {
               </label>
             </div>
 
-            <p className="text-[11px] text-gray-500">
-              사진/영상은 전광판에 자동 재생되며 메시지는 위에 오버레이로 표시됩니다.
-            </p>
+            <p className="text-[11px] text-gray-500">사진/영상은 전광판에 자동 재생되며 메시지는 위에 오버레이로 표시됩니다.</p>
           </div>
 
           {backgroundMode === "photo" && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                  신랑/신부 사진/영상 올리기(권장)
-                </label>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">신랑/신부 사진/영상 올리기(권장)</label>
 
                 <label className="block">
                   <div className="w-full border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-center bg-white active:scale-[0.99] transition">
-                    <span className="text-3xl mb-1">사진</span>
-                    <p className="text-sm font-medium text-gray-800">
-                      컴퓨터에서 사진/영상 선택하기
-                    </p>
+                    <span className="text-xl mb-1">🖼️ 사진 / 🎬 영상</span>
+                    <p className="text-sm font-medium text-gray-800">컴퓨터에서 파일 선택하기</p>
                     <p className="mt-1 text-[11px] text-gray-500">
-                      사진+영상 합쳐서 최대 {MAX_MEDIA_TOTAL}개까지 업로드할 수 있어요. (영상은 최대{" "}
-                      {MAX_VIDEOS}개, 영상 파일은 {MAX_VIDEO_MB}MB 이하)
+                      사진+영상 합쳐서 최대 {MAX_MEDIA_TOTAL}개까지 업로드할 수 있어요. (영상은 최대 {MAX_VIDEOS}개)
+                      <br />
+                      파일 1개당 {MAX_MEDIA_FILE_MB}MB 이하만 지원합니다. (긴 영상은 용량 때문에 업로드가 제한될 수 있어요)
                     </p>
                   </div>
 
-                  <input
-                    type="file"
-                    accept="image/*,video/*"
-                    multiple
-                    onChange={handleFilesSelected}
-                    className="hidden"
-                  />
+                  <input type="file" accept="image/*,video/*" multiple onChange={handleFilesSelected} className="hidden" />
                 </label>
 
                 {uploadStatus && <p className="text-[11px] text-gray-500">{uploadStatus}</p>}
@@ -1063,9 +1029,7 @@ export default function ConfirmPage() {
                   <span className="text-xs font-semibold text-gray-700">
                     업로드 미디어({mediaUrls.length}/{MAX_MEDIA_TOTAL}) / 영상 {videoCount}/{MAX_VIDEOS}
                   </span>
-                  <span className="text-[11px] text-gray-500">
-                    오른쪽부터 자동 재생됩니다.
-                  </span>
+                  <span className="text-[11px] text-gray-500">업로드한 순서대로 자동 재생됩니다.</span>
                 </div>
 
                 {mediaUrls.length === 0 ? (
@@ -1077,10 +1041,7 @@ export default function ConfirmPage() {
                     {mediaUrls.map((url, idx) => {
                       const vid = isVideoUrl(url);
                       return (
-                        <div
-                          key={idx}
-                          className="relative flex-shrink-0 w-20 h-28 rounded-lg overflow-hidden border bg-gray-100"
-                        >
+                        <div key={idx} className="relative flex-shrink-0 w-20 h-28 rounded-lg overflow-hidden border bg-gray-100">
                           {vid ? (
                             <video
                               src={url}
@@ -1094,7 +1055,6 @@ export default function ConfirmPage() {
                           ) : (
                             <img src={url} className="w-full h-full object-cover" />
                           )}
-
 
                           <div className="absolute left-1 bottom-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px]">
                             {vid ? "VIDEO" : "PHOTO"}
@@ -1114,8 +1074,7 @@ export default function ConfirmPage() {
                 )}
 
                 <p className="text-[11px] text-gray-500">
-                  * 사진/영상이 없으면 자동으로 <span className="font-semibold">기본 템플릿</span>이
-                  적용됩니다.
+                  * 사진/영상이 없으면 자동으로 <span className="font-semibold">기본 템플릿</span>이 적용됩니다.
                 </p>
               </div>
             </div>
@@ -1124,9 +1083,7 @@ export default function ConfirmPage() {
           {backgroundMode === "template" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                  디스플레이 테마
-                </label>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">디스플레이 테마</label>
                 <select
                   className="w-full border rounded-md px-3 py-2 text-sm"
                   value={displayStyle}
@@ -1140,9 +1097,7 @@ export default function ConfirmPage() {
                 </select>
 
                 <div className="md:hidden border rounded-xl overflow-hidden bg-gray-50">
-                  <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">
-                    미리보기
-                  </div>
+                  <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">미리보기</div>
                   <div className="p-3 flex justify-center">
                     {!templatePreviewError ? (
                       <div className="w-[220px] aspect-[9/16] rounded-xl overflow-hidden border bg-white shadow">
@@ -1164,9 +1119,7 @@ export default function ConfirmPage() {
 
               <div className="hidden md:flex justify-end">
                 <div className="border rounded-xl overflow-hidden bg-gray-50 w-fit">
-                  <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">
-                    미리보기
-                  </div>
+                  <div className="px-3 py-2 text-[11px] text-gray-500 border-b bg-white">미리보기</div>
                   <div className="p-3 flex justify-center">
                     {!templatePreviewError ? (
                       <div className="w-[260px] aspect-[9/16] rounded-xl overflow-hidden border bg-white shadow">
@@ -1204,33 +1157,23 @@ export default function ConfirmPage() {
           </div>
 
           <p className="text-[11px] text-gray-500">
-            신랑 / 신부 / 부모님 포함 최대 {MAX_ACCOUNTS}개의 계좌를 등록할 수 있습니다. QR을
-            스캔하면 하객이 송금할 계좌를 선택하게 됩니다.
+            신랑 / 신부 / 부모님 포함 최대 {MAX_ACCOUNTS}개의 계좌를 등록할 수 있습니다. QR을 스캔하면 하객이 송금할 계좌를
+            선택하게 됩니다.
           </p>
 
           <div className="space-y-4">
             {accounts.map((acct, index) => {
               const bankMode: BankMode =
-                acct.bank_mode ??
-                (acct.bank_name && isKnownBankName(acct.bank_name) ? "select" : "custom");
+                acct.bank_mode ?? (acct.bank_name && isKnownBankName(acct.bank_name) ? "select" : "custom");
 
-              const selectValue =
-                bankMode === "custom"
-                  ? "��Ÿ(���� �Է�)"
-                  : acct.bank_name
-                  ? acct.bank_name
-                  : "";
+              const selectValue = bankMode === "custom" ? "기타(직접 입력)" : acct.bank_name ? acct.bank_name : "";
 
               return (
                 <div key={index} className="border rounded-lg p-3 bg-gray-50 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="text-[11px] font-semibold text-gray-600">계좌 #{index + 1}</div>
                     {accounts.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeAccount(index)}
-                        className="text-[11px] text-red-500"
-                      >
+                      <button type="button" onClick={() => removeAccount(index)} className="text-[11px] text-red-500">
                         삭제
                       </button>
                     )}
@@ -1281,11 +1224,9 @@ export default function ConfirmPage() {
 
                           if (v === "기타(직접 입력)") {
                             handleAccountChange(index, "bank_mode", "custom");
-                            // bank_name은 직접 입력칸에서 입력
                             return;
                           }
 
-                          // 일반 은행 선택
                           handleAccountChange(index, "bank_mode", "select");
                           handleAccountChange(index, "bank_name", v);
                         }}
@@ -1298,7 +1239,6 @@ export default function ConfirmPage() {
                         ))}
                       </select>
 
-                      {/* bank_mode === custom 이면 직접 입력 */}
                       {bankMode === "custom" && (
                         <input
                           type="text"
@@ -1311,9 +1251,7 @@ export default function ConfirmPage() {
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                        계좌번호
-                      </label>
+                      <label className="block text-[11px] font-medium text-gray-600 mb-1">계좌번호</label>
                       <input
                         type="text"
                         className="w-full border rounded-md px-2 py-1.5 text-xs"
@@ -1328,7 +1266,7 @@ export default function ConfirmPage() {
           </div>
         </section>
 
-        {/* ���� / ��ư */}
+        {/* 에러 / 성공 */}
         <div className="flex flex-col gap-2">
           {error && (
             <div className="text-xs md:text-sm text-red-600 bg-red-50 border border-red-100 px-3 py-2 rounded-md">
@@ -1360,13 +1298,8 @@ export default function ConfirmPage() {
             </div>
           )}
 
-          {/* 하단 액션: 저장 버튼만 */}
           <div className="flex items-center justify-end gap-2 pt-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-4 py-2 rounded-md bg-black text-white text-sm disabled:opacity-50"
-            >
+            <button type="submit" disabled={saving} className="px-4 py-2 rounded-md bg-black text-white text-sm disabled:opacity-50">
               {saving ? "저장 중..." : "저장하기"}
             </button>
           </div>
@@ -1379,11 +1312,7 @@ export default function ConfirmPage() {
           <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl p-4 space-y-3">
             <div className="flex items-center justify-between mb-1">
               <h3 className="text-base font-semibold">예식장 검색</h3>
-              <button
-                type="button"
-                className="text-sm text-gray-500"
-                onClick={() => setVenueSearchOpen(false)}
-              >
+              <button type="button" className="text-sm text-gray-500" onClick={() => setVenueSearchOpen(false)}>
                 닫기
               </button>
             </div>
@@ -1416,9 +1345,7 @@ export default function ConfirmPage() {
               {venueSearchLoading ? (
                 <div className="py-8 text-center text-sm text-gray-500">검색 중입니다.</div>
               ) : venueSearchResults.length === 0 ? (
-                <div className="py-8 text-center text-sm text-gray-500">
-                  검색 결과가 없습니다. 이름을 조금 다르게 입력해보세요.
-                </div>
+                <div className="py-8 text-center text-sm text-gray-500">검색 결과가 없습니다. 이름을 조금 다르게 입력해보세요.</div>
               ) : (
                 <ul className="divide-y">
                   {venueSearchResults.map((place) => (
@@ -1429,9 +1356,7 @@ export default function ConfirmPage() {
                         onClick={() => handleSelectVenue(place)}
                       >
                         <div className="font-medium">{place.place_name}</div>
-                        <div className="text-xs text-gray-600">
-                          {place.road_address_name || place.address_name}
-                        </div>
+                        <div className="text-xs text-gray-600">{place.road_address_name || place.address_name}</div>
                       </button>
                     </li>
                   ))}
@@ -1448,16 +1373,3 @@ export default function ConfirmPage() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
