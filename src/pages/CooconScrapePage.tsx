@@ -86,44 +86,66 @@ function isYmd(s: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
 
+function normalizeAccountNo(v: string) {
+  return (v || "").replace(/[^\d]/g, "").trim(); // 숫자만
+}
+
 /**
  * Coocon API caller wrapper (sample/contract differs per customer)
+ * - Adds timeout to avoid "hanging forever"
  */
-async function callCooconApi(nx: any, apiId: string, params: any) {
+async function callCooconApi(nx: any, apiId: string, params: any, timeoutMs = 30000) {
+  const withTimeout = <T,>(p: Promise<T>) =>
+    new Promise<T>((resolve, reject) => {
+      const t = setTimeout(() => {
+        reject(new Error(`조회 API 응답 지연(>${Math.round(timeoutMs / 1000)}s). 필수 파라미터(bankCode/accountNo) 누락 가능성이 큽니다.`));
+      }, timeoutMs);
+      p.then((v) => {
+        clearTimeout(t);
+        resolve(v);
+      }).catch((e) => {
+        clearTimeout(t);
+        reject(e);
+      });
+    });
+
   // 1) nx.execute(apiId, params, cb)
   if (typeof nx?.execute === "function") {
-    const out = await new Promise<any>((resolve, reject) => {
-      try {
-        nx.execute(apiId, params, (res: any) => resolve(res));
-      } catch (e) {
-        reject(e);
-      }
-    });
-    return out;
+    return withTimeout(
+      new Promise<any>((resolve, reject) => {
+        try {
+          nx.execute(apiId, params, (res: any) => resolve(res));
+        } catch (e) {
+          reject(e);
+        }
+      })
+    );
   }
 
   // 2) nx.call(apiId, params, cb)
   if (typeof nx?.call === "function") {
-    const out = await new Promise<any>((resolve, reject) => {
-      try {
-        nx.call(apiId, params, (res: any) => resolve(res));
-      } catch (e) {
-        reject(e);
-      }
-    });
-    return out;
+    return withTimeout(
+      new Promise<any>((resolve, reject) => {
+        try {
+          nx.call(apiId, params, (res: any) => resolve(res));
+        } catch (e) {
+          reject(e);
+        }
+      })
+    );
   }
 
   // 3) nx.run(apiId, params, cb)
   if (typeof nx?.run === "function") {
-    const out = await new Promise<any>((resolve, reject) => {
-      try {
-        nx.run(apiId, params, (res: any) => resolve(res));
-      } catch (e) {
-        reject(e);
-      }
-    });
-    return out;
+    return withTimeout(
+      new Promise<any>((resolve, reject) => {
+        try {
+          nx.run(apiId, params, (res: any) => resolve(res));
+        } catch (e) {
+          reject(e);
+        }
+      })
+    );
   }
 
   // 4) sometimes sample attaches helper under window.fn
@@ -131,14 +153,15 @@ async function callCooconApi(nx: any, apiId: string, params: any) {
   const fnCandidates = ["callCoocon", "execute", "getTxList", "getTradeList", "requestTxList"];
   for (const name of fnCandidates) {
     if (typeof fn?.[name] === "function") {
-      const out = await new Promise<any>((resolve, reject) => {
-        try {
-          fn[name](apiId, params, (res: any) => resolve(res));
-        } catch (e) {
-          reject(e);
-        }
-      });
-      return out;
+      return withTimeout(
+        new Promise<any>((resolve, reject) => {
+          try {
+            fn[name](apiId, params, (res: any) => resolve(res));
+          } catch (e) {
+            reject(e);
+          }
+        })
+      );
     }
   }
 
@@ -199,12 +222,15 @@ async function getMyMemberId(eventId: string): Promise<string> {
   return memberId;
 }
 
-async function getPrimaryBankInfo(eventId: string): Promise<{ bankName: string; bankCode: string }> {
+/**
+ * ✅ 핵심: 상세설정(event_accounts)에서 "은행 + 계좌번호"를 읽어와 TX_LIST에 넣는다.
+ */
+async function getPrimaryAccountInfo(eventId: string): Promise<{ bankName: string; bankCode: string; accountNo: string }> {
   const myMemberId = await getMyMemberId(eventId);
 
   const { data, error } = await supabase
     .from("event_accounts")
-    .select("bank_name, is_active, sort_order")
+    .select("bank_name, account_number, is_active, sort_order")
     .eq("event_id", eventId)
     .eq("owner_member_id", myMemberId)
     .order("is_active", { ascending: false })
@@ -215,24 +241,25 @@ async function getPrimaryBankInfo(eventId: string): Promise<{ bankName: string; 
   if (error) throw new Error(`계좌 조회 실패: ${error.message}`);
 
   const bankName = (data?.bank_name || "").trim();
-  if (!bankName) {
-    throw new Error("계좌 은행 정보가 없습니다. 상세설정에서 은행을 선택해주세요.");
-  }
+  if (!bankName) throw new Error("계좌 은행 정보가 없습니다. 상세설정에서 은행을 선택해주세요.");
 
   if (bankName === "기타(직접 입력)") {
     throw new Error("기타(직접 입력) 은행은 자동 조회를 지원하지 않습니다. 다른 은행을 선택해주세요.");
   }
-
   if (bankName === "토스뱅크") {
     throw new Error("토스뱅크는 현재 자동 조회를 지원하지 않습니다. 다른 은행을 선택해주세요.");
   }
 
   const bankCode = COOCON_BANK_CODE_MAP[bankName];
-  if (!bankCode) {
-    throw new Error(`은행 매핑 실패: ${bankName} (자동 조회 미지원)`);
+  if (!bankCode) throw new Error(`은행 매핑 실패: ${bankName} (자동 조회 미지원)`);
+
+  const rawAcc = (data as any)?.account_number || "";
+  const accountNo = normalizeAccountNo(rawAcc);
+  if (!accountNo) {
+    throw new Error("계좌번호가 없습니다. 상세설정에서 계좌번호를 입력해주세요.");
   }
 
-  return { bankName, bankCode };
+  return { bankName, bankCode, accountNo };
 }
 
 export default function CooconScrapePage() {
@@ -399,13 +426,15 @@ export default function CooconScrapePage() {
       pushLog(`CERT: ${JSON.stringify(brief)}`);
     }
 
-    const { bankName, bankCode } = await getPrimaryBankInfo(eventId);
+    // ✅ 상세설정에서 은행/계좌번호 확보
+    const { bankName, bankCode, accountNo } = await getPrimaryAccountInfo(eventId);
+    pushLog(`계좌 확인: ${bankName} / ${accountNo.slice(0, 3)}****${accountNo.slice(-3)}`);
 
     // save to DB & get scrapeAccountId
     const scrapeAccountId = await upsertConnectedAccountSafe(eventId, certMeta, bankCode, bankName);
 
     // immediate refresh after connect
-    await runScrapeWithQueryApiAndReflect(scrapeAccountId);
+    await runScrapeWithQueryApiAndReflect(scrapeAccountId, bankCode, accountNo);
   }
 
   /**
@@ -432,7 +461,11 @@ export default function CooconScrapePage() {
     if (error) throw new Error(`스크래핑 계정 조회 실패: ${error.message}`);
     if (!acc?.id) throw new Error("스크래핑 계정이 없습니다. (먼저 인증이 필요합니다)");
 
-    await runScrapeWithQueryApiAndReflect(acc.id);
+    // ✅ 상세설정 계좌로 조회
+    const { bankName, bankCode, accountNo } = await getPrimaryAccountInfo(eventId);
+    pushLog(`계좌 확인: ${bankName} / ${accountNo.slice(0, 3)}****${accountNo.slice(-3)}`);
+
+    await runScrapeWithQueryApiAndReflect(acc.id, bankCode, accountNo);
   }
 
   /**
@@ -482,12 +515,7 @@ export default function CooconScrapePage() {
       if (readErr) return { data: null, error: readErr };
 
       if (existing?.id) {
-        return supabase
-          .from("event_scrape_accounts")
-          .update(payload)
-          .eq("id", existing.id)
-          .select("id")
-          .maybeSingle();
+        return supabase.from("event_scrape_accounts").update(payload).eq("id", existing.id).select("id").maybeSingle();
       }
 
       return supabase.from("event_scrape_accounts").insert(payload).select("id").maybeSingle();
@@ -521,7 +549,7 @@ export default function CooconScrapePage() {
   /**
    * Core: run query API -> send output to Edge Function to reflect DB
    */
-  async function runScrapeWithQueryApiAndReflect(scrapeAccountId: string) {
+  async function runScrapeWithQueryApiAndReflect(scrapeAccountId: string, bankCode: string, accountNo: string) {
     setState("scraping");
 
     if (!startDate || !endDate) {
@@ -535,33 +563,36 @@ export default function CooconScrapePage() {
     if (!nx) throw new Error("CooconiSASNX가 없습니다.");
 
     pushLog(`조회 API 실행: ${apiId} (${startDate} ~ ${endDate})`);
+    pushLog(`조회 파라미터: bankCode=${bankCode}, accountNo=***${accountNo.slice(-4)}`);
 
+    // ✅ 계약마다 키 이름이 다를 수 있어 "여러 키로" 같이 보냄(호환성)
     const params: any = {
       startDate,
       endDate,
-      // TODO: add bankCode/accountNo when your coocon contract requires it
+
+      bankCode,
+      bank_code: bankCode,
+
+      accountNo,
+      acctNo: accountNo,
+      accNo: accountNo,
+      account_no: accountNo,
     };
 
     let output: any;
     try {
-      output = await callCooconApi(nx, apiId, params);
+      output = await callCooconApi(nx, apiId, params, 30000);
     } catch (e: any) {
       pushLog(`조회 API 실패: ${e?.message || String(e)}`);
       logCooconDebug(nx, pushLog);
-      throw new Error(`조회 API 호출 실패(메서드/스펙 확인 필요): ${e?.message || String(e)}`);
+      throw new Error(`조회 API 호출 실패: ${e?.message || String(e)}`);
     }
 
     pushLog("조회 결과 수신 (Output received)");
-
-    // ✅ DEBUG: log output shape (truncate to avoid huge logs)
     try {
-      const outStr = JSON.stringify(output ?? null);
-      pushLog(`OUTPUT(trunc1500): ${outStr.slice(0, 1500)}`);
-      console.log("[COOCON OUTPUT]", output);
-    } catch (e) {
-      pushLog(`OUTPUT stringify 실패: ${String(e)}`);
-      console.log("[COOCON OUTPUT raw]", output);
-    }
+      const preview = JSON.stringify(output ?? {}).slice(0, 1500);
+      pushLog(`OUTPUT(trunc1500): ${preview}`);
+    } catch {}
 
     pushLog(`Edge Function 호출: coocon-scrape-transactions (${startDate} ~ ${endDate})`);
 
@@ -580,6 +611,8 @@ export default function CooconScrapePage() {
         scrapeAccountId,
         startDate,
         endDate,
+        bankCode,
+        accountNo,
         cooconOutput: output,
       }),
     });
@@ -609,29 +642,13 @@ export default function CooconScrapePage() {
       </div>
 
       {errorMsg && (
-        <div
-          style={{
-            marginTop: 12,
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid #f5c2c7",
-            background: "#fff5f5",
-          }}
-        >
+        <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: "1px solid #f5c2c7", background: "#fff5f5" }}>
           <b>오류</b>
           <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{errorMsg}</div>
         </div>
       )}
 
-      <div
-        style={{
-          marginTop: 12,
-          padding: 12,
-          borderRadius: 12,
-          border: "1px solid #eee",
-          background: "#fafafa",
-        }}
-      >
+      <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: "1px solid #eee", background: "#fafafa" }}>
         <div style={{ fontSize: 12, opacity: 0.7 }}>
           * 본 화면은 PC에서 정상 동작(엔진/인증서 필요). 모바일은 막히거나 레이어가 깨질 수 있습니다.
         </div>
