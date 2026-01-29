@@ -82,12 +82,6 @@ function isYmd(s: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
 
-function maskAccountNo(acct: string) {
-  const t = (acct || "").replace(/\s+/g, "");
-  if (t.length <= 4) return "***";
-  return `${"*".repeat(Math.max(0, t.length - 4))}${t.slice(-4)}`;
-}
-
 /**
  * Coocon API caller wrapper (sample/contract differs per customer)
  */
@@ -197,12 +191,16 @@ async function getMyMemberId(eventId: string): Promise<string> {
   return memberId;
 }
 
-async function getPrimaryBankInfo(eventId: string): Promise<{ bankName: string; bankCode: string; accountNo: string }> {
+/**
+ * ✅ 수정: event_accounts에서는 "은행명"만 가져오고
+ * accountNo는 여기서 절대 다루지 않는다.
+ */
+async function getPrimaryBankInfo(eventId: string): Promise<{ bankName: string; bankCode: string }> {
   const myMemberId = await getMyMemberId(eventId);
 
   const { data, error } = await supabase
     .from("event_accounts")
-    .select("bank_name, account_number, is_active, sort_order")
+    .select("bank_name, is_active, sort_order")
     .eq("event_id", eventId)
     .eq("owner_member_id", myMemberId)
     .order("is_active", { ascending: false })
@@ -213,29 +211,19 @@ async function getPrimaryBankInfo(eventId: string): Promise<{ bankName: string; 
   if (error) throw new Error(`계좌 조회 실패: ${error.message}`);
 
   const bankName = (data?.bank_name || "").trim();
-  const accountNo = (data?.account_number || "").toString().replace(/\s+/g, "");
-
-  if (!bankName) {
-    throw new Error("계좌 은행 정보가 없습니다. 상세설정에서 은행을 선택해주세요.");
-  }
-  if (!accountNo) {
-    throw new Error("계좌번호가 없습니다. 상세설정에서 계좌번호를 입력해주세요.");
-  }
+  if (!bankName) throw new Error("계좌 은행 정보가 없습니다. 상세설정에서 은행을 선택해주세요.");
 
   if (bankName === "기타(직접 입력)") {
     throw new Error("기타(직접 입력) 은행은 자동 조회를 지원하지 않습니다. 다른 은행을 선택해주세요.");
   }
-
   if (bankName === "토스뱅크") {
     throw new Error("토스뱅크는 현재 자동 조회를 지원하지 않습니다. 다른 은행을 선택해주세요.");
   }
 
   const bankCode = COOCON_BANK_CODE_MAP[bankName];
-  if (!bankCode) {
-    throw new Error(`은행 매핑 실패: ${bankName} (자동 조회 미지원)`);
-  }
+  if (!bankCode) throw new Error(`은행 매핑 실패: ${bankName} (자동 조회 미지원)`);
 
-  return { bankName, bankCode, accountNo };
+  return { bankName, bankCode };
 }
 
 export default function CooconScrapePage() {
@@ -337,6 +325,9 @@ export default function CooconScrapePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
+  /**
+   * A) cert select -> save connection -> immediately scrape once -> reflect via Edge Function
+   */
   async function runConnectThenScrape() {
     setState("cert_select");
     pushLog("인증서 목록 조회");
@@ -389,13 +380,21 @@ export default function CooconScrapePage() {
       pushLog(`CERT: ${JSON.stringify(brief)}`);
     }
 
-    const { bankName, bankCode, accountNo } = await getPrimaryBankInfo(eventId);
-    pushLog(`계좌 확인: ${bankName} / ${maskAccountNo(accountNo)}`);
+    // ✅ 수정: accountNo를 더 이상 가져오지 않는다.
+    const { bankName, bankCode } = await getPrimaryBankInfo(eventId);
+    pushLog(`계좌 확인(은행): ${bankName}`);
 
+    // save to DB & get scrapeAccountId
     const scrapeAccountId = await upsertConnectedAccountSafe(eventId, certMeta, bankCode, bankName);
-    await runScrapeWithQueryApiAndReflect(scrapeAccountId, bankCode, accountNo);
+
+    // ✅ 수정: accountNo 없이 실행
+    await runScrapeWithQueryApiAndReflect(scrapeAccountId, bankCode);
   }
 
+  /**
+   * B) scrape only:
+   * - assumes account exists in DB and verified_at is set
+   */
   async function runScrapeOnly() {
     setState("scraping");
     pushLog("스크래핑 계정 조회");
@@ -416,18 +415,17 @@ export default function CooconScrapePage() {
     if (error) throw new Error(`스크래핑 계정 조회 실패: ${error.message}`);
     if (!acc?.id) throw new Error("스크래핑 계정이 없습니다. (먼저 인증이 필요합니다)");
 
-    const { bankCode, accountNo, bankName } = await getPrimaryBankInfo(eventId);
-    pushLog(`계좌 확인: ${bankName} / ${maskAccountNo(accountNo)}`);
+    // ✅ 수정: accountNo를 더 이상 가져오지 않는다.
+    const { bankName, bankCode } = await getPrimaryBankInfo(eventId);
+    pushLog(`계좌 확인(은행): ${bankName}`);
 
-    await runScrapeWithQueryApiAndReflect(acc.id, bankCode, accountNo);
+    await runScrapeWithQueryApiAndReflect(acc.id, bankCode);
   }
 
-  async function upsertConnectedAccountSafe(
-    evId: string,
-    certMeta: any,
-    bankCode: string,
-    bankName: string
-  ): Promise<string> {
+  /**
+   * Safe upsert for event_scrape_accounts (handles unknown schema fields)
+   */
+  async function upsertConnectedAccountSafe(evId: string, certMeta: any, bankCode: string, bankName: string): Promise<string> {
     const { data: userRes } = await supabase.auth.getUser();
     const userId = userRes?.user?.id || null;
     const userEmail = userRes?.user?.email || null;
@@ -472,18 +470,14 @@ export default function CooconScrapePage() {
       return supabase.from("event_scrape_accounts").insert(payload).select("id").maybeSingle();
     };
 
+    // 1) full attempt
     let r = await tryWrite(payloadFull);
 
     if (r.error) {
       const msg = r.error.message || "";
       pushLog(`DB write(full) 실패: ${msg}`);
 
-      if (
-        msg.includes("Could not find the") ||
-        msg.includes("column") ||
-        msg.includes("schema cache") ||
-        msg.includes("does not exist")
-      ) {
+      if (msg.includes("Could not find the") || msg.includes("column") || msg.includes("schema cache") || msg.includes("does not exist")) {
         pushLog("DB 스키마에 맞게 최소 payload로 재시도");
         r = await tryWrite(payloadMin);
       }
@@ -496,9 +490,16 @@ export default function CooconScrapePage() {
     return r.data.id as string;
   }
 
-  async function runScrapeWithQueryApiAndReflect(scrapeAccountId: string, bankCode: string, accountNo: string) {
+  /**
+   * Core: run query API -> send output to Edge Function to reflect DB
+   * ✅ 수정: accountNo 파라미터 제거
+   */
+  async function runScrapeWithQueryApiAndReflect(scrapeAccountId: string, bankCode: string) {
     setState("scraping");
 
+    if (!startDate || !endDate) {
+      throw new Error("startDate/endDate가 비어있습니다. (ResultPage에서 날짜를 넘겨야 함)");
+    }
     if (!isYmd(startDate) || !isYmd(endDate)) {
       throw new Error("startDate/endDate 형식 오류 (YYYY-MM-DD)");
     }
@@ -507,9 +508,8 @@ export default function CooconScrapePage() {
     if (!nx) throw new Error("CooconiSASNX가 없습니다.");
 
     pushLog(`조회 API 실행: ${apiId} (${startDate} ~ ${endDate})`);
-    pushLog(`조회 파라미터: bankCode=${bankCode}, accountNo=${maskAccountNo(accountNo)}`);
+    pushLog(`조회 파라미터: bankCode=${bankCode}`);
 
-    // ✅ 계약서/샘플마다 키가 다를 수 있어서, 일단 호환성 높이기 위해 alias로 중복 전달
     const params: any = {
       startDate,
       endDate,
@@ -518,10 +518,8 @@ export default function CooconScrapePage() {
       bank_code: bankCode,
       BANK_CODE: bankCode,
 
-      accountNo,
-      account_no: accountNo,
-      acctNo: accountNo,
-      ACCT_NO: accountNo,
+      // ✅ accountNo는 여기서 절대 전달하지 않는다.
+      // ✅ 인증서/엔진 세션 + bankCode로만 조회하도록 계약 스펙에 맞추는 방향
     };
 
     let output: any;
@@ -530,15 +528,12 @@ export default function CooconScrapePage() {
     } catch (e: any) {
       pushLog(`조회 API 실패: ${e?.message || String(e)}`);
       logCooconDebug(nx, pushLog);
-
-      // 여기 메시지가 지금 너 화면에 뜨는 30초/정의되지않음 상황과 거의 동일
       throw new Error(
         `조회 API 호출 실패: ${e?.message || String(e)}\n(30초 응답지연이면: apiId/필수 파라미터/키명 불일치 가능성이 큼)`
       );
     }
 
     pushLog("조회 결과 수신 (Output received)");
-
     pushLog(`Edge Function 호출: coocon-scrape-transactions (${startDate} ~ ${endDate})`);
 
     const { data: session } = await supabase.auth.getSession();
