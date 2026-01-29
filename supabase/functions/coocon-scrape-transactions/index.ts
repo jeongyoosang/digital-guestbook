@@ -325,19 +325,34 @@ Deno.serve(async (req) => {
       return json({ error: "Invalid date format (YYYY-MM-DD)" }, 400);
     }
 
-    // 2) 이 유저가 event 멤버인지 확인 (+ side 있으면 가져오기)
-    const { data: memberRow, error: memErr } = await userClient
-      .from("event_members")
-      .select("id, side")
-      .eq("event_id", body.eventId)
-      .eq("user_id", userId)
-      .maybeSingle();
+    // 2) 이 유저가 event 멤버인지 확인 (user_id 우선, email fallback)
+    let ownerMemberId: string | null = null;
 
-    if (memErr) return json({ error: "Member check failed", detail: memErr.message }, 500);
-    if (!memberRow?.id) return json({ error: "Forbidden (not event member)" }, 403);
+    if (userId) {
+      const { data: memberRow, error: memErr } = await userClient
+        .from("event_members")
+        .select("id")
+        .eq("event_id", body.eventId)
+        .eq("user_id", userId)
+        .maybeSingle();
 
-    const ownerMemberId = memberRow.id as string;
-    const ownerSide = (memberRow as any)?.side ?? null;
+      if (memErr) return json({ error: "Member check failed", detail: memErr.message }, 500);
+      if (memberRow?.id) ownerMemberId = memberRow.id as string;
+    }
+
+    if (!ownerMemberId && userData.user.email) {
+      const { data: memberRow, error: memErr } = await userClient
+        .from("event_members")
+        .select("id")
+        .eq("event_id", body.eventId)
+        .eq("email", userData.user.email)
+        .maybeSingle();
+
+      if (memErr) return json({ error: "Member check failed", detail: memErr.message }, 500);
+      if (memberRow?.id) ownerMemberId = memberRow.id as string;
+    }
+
+    if (!ownerMemberId) return json({ error: "Forbidden", message: "not event member" }, 403);
 
     // ✅ 2.5) 리포트 확정이면 스크래핑 차단
     const { data: ev, error: evErr } = await userClient
@@ -353,7 +368,6 @@ Deno.serve(async (req) => {
         {
           error: "Report finalized",
           message: "확정된 현장 참석자 리포트는 갱신할 수 없습니다.",
-          report_finalized_at: ev.report_finalized_at ?? null,
         },
         409
       );
@@ -367,9 +381,9 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (accErr) return json({ error: "Account read failed", detail: accErr.message }, 500);
-    if (!myAccount) return json({ error: "Forbidden (not your scrape account)" }, 403);
+    if (!myAccount) return json({ error: "Forbidden", message: "not your scrape account" }, 403);
     if (myAccount.event_id !== body.eventId) {
-      return json({ error: "Forbidden (scrape account not for this event)" }, 403);
+      return json({ error: "Forbidden", message: "scrape account not for this event" }, 403);
     }
 
     // ✅ 4) 프론트에서 받은 cooconOutput으로 fetched 생성
@@ -510,7 +524,6 @@ Deno.serve(async (req) => {
       ledgerRows.push({
         event_id: body.eventId,
         owner_member_id: ownerMemberId,
-        side: ownerSide,
 
         guest_name: counterparty || null,
         relationship: null,
@@ -586,8 +599,6 @@ Deno.serve(async (req) => {
       insertedTx,
       reflectedLedgerNew,
       reflectedLedgerTotal,
-      note:
-        "프론트에서 cooconOutput을 전달받아 normalizeFromCooconOutput로 파싱 후 반영합니다. Output 구조에 따라 파서 보정이 필요할 수 있습니다.",
     });
   } catch (e: any) {
     return json({ error: "Unhandled", detail: String(e?.message ?? e) }, 500);

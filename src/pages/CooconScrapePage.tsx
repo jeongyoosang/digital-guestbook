@@ -31,22 +31,22 @@ type ScrapeState =
   | "error";
 
 const COOCON_BANK_CODE_MAP: Record<string, string> = {
-  "국민은행": "kbstar",
-  "신한은행": "shinhan",
-  "우리은행": "wooribank",
-  "하나은행": "hanabank",
-  "NH농협은행": "nonghyup",
-  "IBK기업은행": "ibk",
-  "SC제일은행": "standardchartered",
-  "한국씨티은행": "citibank",
-  "카카오뱅크": "kakaobank",
-  "수협은행": "suhyupbank",
-  "대구은행": "dgb",
-  "부산은행": "busanbank",
-  "경남은행": "knbank",
-  "광주은행": "kjbank",
-  "전북은행": "jbbank",
-  "제주은행": "jejubank",
+  국민은행: "kbstar",
+  신한은행: "shinhan",
+  우리은행: "wooribank",
+  하나은행: "hanabank",
+  NH농협은행: "nonghyup",
+  IBK기업은행: "ibk",
+  SC제일은행: "standardchartered",
+  한국씨티은행: "citibank",
+  카카오뱅크: "kakaobank",
+  수협은행: "suhyupbank",
+  대구은행: "dgb",
+  부산은행: "busanbank",
+  경남은행: "knbank",
+  광주은행: "kjbank",
+  전북은행: "jbbank",
+  제주은행: "jejubank",
 };
 
 function loadScript(src: string) {
@@ -141,11 +141,70 @@ async function callCooconApi(nx: any, apiId: string, params: any) {
   throw new Error("쿠콘 조회 API 호출 메서드를 찾지 못했습니다. (nx.execute/call/run 또는 window.fn 헬퍼 없음)");
 }
 
-async function getPrimaryBankInfo(eventId: string): Promise<{ bankName: string; bankCode: string }> {
+function logCooconDebug(nx: any, pushLog: (s: string) => void) {
+  const nxKeys = Object.keys(nx ?? {}).slice(0, 30);
+  pushLog(`nx keys(<=30): ${nxKeys.join(", ") || "-"}`);
+  pushLog(`nx.execute: ${typeof nx?.execute}, nx.call: ${typeof nx?.call}, nx.run: ${typeof nx?.run}`);
+
+  const fn = window.fn;
+  pushLog(`window.fn: ${typeof fn}`);
+  if (fn && typeof fn === "object") {
+    const fnKeys = Object.keys(fn).slice(0, 30);
+    pushLog(`window.fn keys(<=30): ${fnKeys.join(", ") || "-"}`);
+  }
+}
+
+async function getMyMemberId(eventId: string): Promise<string> {
+  const { data: userRes, error: userErr } = await supabase.auth.getUser();
+  if (userErr) throw userErr;
+
+  const userId = userRes?.user?.id;
+  const email = userRes?.user?.email;
+  if (!userId && !email) throw new Error("로그인이 필요합니다.");
+
+  let memberId: string | null = null;
+
+  if (userId) {
+    const { data, error } = await supabase
+      .from("event_members")
+      .select("id")
+      .eq("event_id", eventId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) throw new Error(`멤버 조회 실패: ${error.message}`);
+    if (data?.id) memberId = data.id;
+  }
+
+  if (!memberId && email) {
+    const { data, error } = await supabase
+      .from("event_members")
+      .select("id")
+      .eq("event_id", eventId)
+      .eq("email", email)
+      .maybeSingle();
+
+    if (error) throw new Error(`멤버 조회 실패: ${error.message}`);
+    if (data?.id) memberId = data.id;
+  }
+
+  if (!memberId) {
+    throw new Error("이벤트 멤버를 찾지 못했습니다. 초대 여부를 확인해주세요.");
+  }
+
+  return memberId;
+}
+
+async function getPrimaryBankInfo(
+  eventId: string
+): Promise<{ bankName: string; bankCode: string }> {
+  const myMemberId = await getMyMemberId(eventId);
+
   const { data, error } = await supabase
     .from("event_accounts")
     .select("bank_name, is_active, sort_order")
     .eq("event_id", eventId)
+    .eq("owner_member_id", myMemberId)
     .order("is_active", { ascending: false })
     .order("sort_order", { ascending: true })
     .limit(1)
@@ -157,7 +216,7 @@ async function getPrimaryBankInfo(eventId: string): Promise<{ bankName: string; 
 
   const bankName = (data?.bank_name || "").trim();
   if (!bankName) {
-    throw new Error("대표 계좌의 은행 정보가 없습니다. 상세설정에서 은행을 선택해주세요.");
+    throw new Error("내 계좌의 은행 정보가 없습니다. 상세설정에서 은행을 선택해주세요.");
   }
   if (bankName === "기타(직접 입력)") {
     throw new Error(
@@ -165,7 +224,7 @@ async function getPrimaryBankInfo(eventId: string): Promise<{ bankName: string; 
     );
   }
   if (bankName === "토스뱅크") {
-    throw new Error("토스뱅크는 현재 자동 조회를 지원하지 않습니다.");
+    throw new Error("토스뱅크는 현재 자동 조회를 지원하지 않습니다. 다른 은행을 선택해주세요.");
   }
 
   const bankCode = COOCON_BANK_CODE_MAP[bankName];
@@ -417,20 +476,33 @@ export default function CooconScrapePage() {
       verified_at: new Date().toISOString(),
     };
 
-    // helper
-    const tryUpsert = async (payload: any) => {
-      return supabase
+    // helper: select -> update/insert
+    const tryWrite = async (payload: any) => {
+      const { data: existing, error: readErr } = await supabase
         .from("event_scrape_accounts")
-        .upsert(payload, { onConflict: "event_id" })
         .select("id")
+        .eq("event_id", evId)
         .maybeSingle();
+
+      if (readErr) return { data: null, error: readErr };
+
+      if (existing?.id) {
+        return supabase
+          .from("event_scrape_accounts")
+          .update(payload)
+          .eq("id", existing.id)
+          .select("id")
+          .maybeSingle();
+      }
+
+      return supabase.from("event_scrape_accounts").insert(payload).select("id").maybeSingle();
     };
 
     // 1) full 시도
-    let r = await tryUpsert(payloadFull);
+    let r = await tryWrite(payloadFull);
     if (r.error) {
       const msg = r.error.message || "";
-      pushLog(`DB upsert(full) 실패: ${msg}`);
+      pushLog(`DB write(full) 실패: ${msg}`);
 
       // 컬럼 없음/스키마 캐시 이슈면 최소로 재시도
       if (
@@ -440,7 +512,7 @@ export default function CooconScrapePage() {
         msg.includes("does not exist")
       ) {
         pushLog("DB 스키마에 맞게 최소 payload로 재시도");
-        r = await tryUpsert(payloadMin);
+        r = await tryWrite(payloadMin);
       }
     }
 
@@ -481,6 +553,7 @@ export default function CooconScrapePage() {
       output = await callCooconApi(nx, apiId, params);
     } catch (e: any) {
       pushLog(`조회 API 실패: ${e?.message || String(e)}`);
+      logCooconDebug(nx, pushLog);
       throw new Error(`조회 API 호출 실패(메서드/스펙 확인 필요): ${e?.message || String(e)}`);
     }
 
