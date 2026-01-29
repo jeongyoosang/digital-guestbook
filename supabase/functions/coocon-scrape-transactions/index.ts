@@ -376,7 +376,7 @@ Deno.serve(async (req) => {
     // 3) scrapeAccount 권한 + event_id 확인 (+ bank_name/account_masked 가져오기)
     const { data: myAccount, error: accErr } = await userClient
       .from("event_scrape_accounts")
-      .select("id, event_id, bank_code, bank_name, account_masked")
+      .select("id, event_id, owner_user_id, bank_code, bank_name, account_masked")
       .eq("id", body.scrapeAccountId)
       .maybeSingle();
 
@@ -384,6 +384,9 @@ Deno.serve(async (req) => {
     if (!myAccount) return json({ error: "Forbidden", message: "not your scrape account" }, 403);
     if (myAccount.event_id !== body.eventId) {
       return json({ error: "Forbidden", message: "scrape account not for this event" }, 403);
+    }
+    if (myAccount.owner_user_id !== userId) {
+      return json({ error: "Forbidden", message: "scrape account not owned by user" }, 403);
     }
 
     // ✅ 4) 프론트에서 받은 cooconOutput으로 fetched 생성
