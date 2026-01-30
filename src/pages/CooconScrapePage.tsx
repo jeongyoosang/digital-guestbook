@@ -13,11 +13,7 @@ declare global {
     $?: any;
     fn?: any;
     __CERT_OPENED__?: boolean;
-
-    // (샘플/버전에 따라 존재)
-    CooconSAS?: any;
-    CooconiSAS?: any;
-    Coocon?: any;
+    __COOCON_CERT_META__?: any;
   }
 }
 
@@ -32,27 +28,47 @@ type ScrapeState =
   | "error";
 
 /**
- * IMPORTANT:
- * - Keys must match event_accounts.bank_name values
- * - UTF-8 Korean strings (do not change)
+ * ✅ bank_name -> module code map
+ * - event_accounts.bank_name 값(한글) 기준으로 매핑
+ * - 너가 가진 은행정보 엑셀 기준으로 주요 은행 포함
  */
 const COOCON_BANK_CODE_MAP: Record<string, string> = {
-  국민은행: "kbstar",
-  신한은행: "shinhan",
-  우리은행: "wooribank",
-  하나은행: "hanabank",
-  NH농협은행: "nonghyup",
-  IBK기업은행: "ibk",
-  SC제일은행: "standardchartered",
-  한국씨티은행: "citibank",
-  카카오뱅크: "kakaobank",
-  수협은행: "suhyupbank",
-  대구은행: "dgb",
-  부산은행: "busanbank",
-  경남은행: "knbank",
-  광주은행: "kjbank",
-  전북은행: "jbbank",
-  제주은행: "jejubank",
+  // 시중은행
+  "국민은행": "kbstar",
+  "KB국민은행": "kbstar",
+  "신한은행": "shinhan",
+  "우리은행": "wooribank",
+  "하나은행": "hanabank",
+  "NH농협은행": "nonghyup",
+  "농협은행": "nonghyup",
+  "IBK기업은행": "ibk",
+  "기업은행": "ibk",
+  "SC제일은행": "standardchartered",
+  "한국씨티은행": "citibank",
+  "씨티은행": "citibank",
+  "산업은행": "kdb",
+  "KDB산업은행": "kdb",
+
+  // 지방/특수
+  "수협은행": "suhyupbank",
+  "대구은행": "dgb", // (iM뱅크 포함)
+  "부산은행": "busanbank",
+  "경남은행": "knbank",
+  "광주은행": "kjbank",
+  "전북은행": "jbbank",
+  "제주은행": "jejubank",
+
+  // 인터넷/기타
+  "카카오뱅크": "kakaobank",
+  "케이뱅크": "kbank",
+  "K뱅크": "kbank",
+
+  // 협동/우체국/새마을/신협
+  "우체국": "epost",
+  "우체국예금": "epost",
+  "새마을금고": "kfcc",
+  "새마을": "kfcc",
+  "신협": "cu",
 };
 
 /* ---------------- util ---------------- */
@@ -105,22 +121,27 @@ function normalizeErr(err: any) {
 }
 
 /**
- * ✅ 인증서 레이어 템플릿 주입 (FIXED)
- * - 실제 파일: /coocon/css/은행_거래내역조회.html
+ * ✅ certLayer 템플릿 주입 (중요)
+ * - 여기서 “인증서 선택 UI”가 뜨는 기반이 깔림
+ *
+ * 파일 위치는 프로젝트 public 아래에 있어야 함:
+ *  - /public/coocon/process_manager.html   (또는 쿠콘 샘플이 제공한 인증서 매니저 템플릿)
+ *
+ * ⚠️ 너가 지금 /coocon/css/은행_거래내역조회.html 을 열면 “은행조회 폼”이 뜨는데,
+ *    그 화면은 인증서 리스트가 빈 케이스가 많아서, 우리는 "cert manager"를 먼저 띄우는 방식으로 간다.
  */
 async function ensureCertLayerTemplate(base: string) {
   const layer = document.getElementById("certLayer");
   if (!layer) throw new Error("certLayer DOM이 없습니다.");
 
-  // 이미 로드됐으면 스킵
   if (layer.childElementCount > 0) return;
 
-  const url = `${base}/css/은행_거래내역조회.html`;
+  // ✅ 여기 경로가 중요. (너 프로젝트에 실제 있는 cert manager 템플릿으로 맞춰야 함)
+  // 쿠콘 샘플 기본은 process_manager.html 쪽이 “인증서 매니저”가 붙어있는 경우가 많음
+  const url = `${base}/process_manager.html`;
 
   const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) {
-    throw new Error(`certLayer 템플릿 로드 실패: ${url} (${res.status})`);
-  }
+  if (!res.ok) throw new Error(`certLayer 템플릿 로드 실패: ${url} (${res.status})`);
 
   const html = await res.text();
   layer.innerHTML = html;
@@ -134,196 +155,6 @@ async function ensureCertLayerTemplate(base: string) {
   el.style.zIndex = "9999";
 }
 
-/**
- * ✅ (핵심) 인증서 리스트를 SDK에 요청하고, 화면의 select에 강제로 주입
- * - 버전별로 getCertList 함수명이 다를 수 있어 여러 후보를 시도
- * - select id/name이 다를 수 있어 여러 후보 셀렉터에 주입
- */
-async function forceLoadAndBindCertList(pushLog: (s: string) => void) {
-  const $ = window.$;
-  if (!$) throw new Error("window.$(jQuery) 가 없습니다.");
-
-  // 1) select 후보 찾기
-  const selectCandidates = [
-    "#certSelect",
-    "#cert_list",
-    "#certList",
-    "select[name='cert']",
-    "select[name='certList']",
-    "select[name='cert_list']",
-    "select[id*='cert']",
-    "select[name*='cert']",
-  ];
-
-  const pickSelect = () => {
-    for (const sel of selectCandidates) {
-      const el = $(sel);
-      if (el && el.length > 0) return el;
-    }
-    return null;
-  };
-
-  // 2) SDK 객체 후보
-  const sdkCandidates: any[] = [
-    window.CooconSAS,
-    window.CooconiSAS,
-    window.Coocon,
-    window.fn,
-    window.CooconiSASNX,
-  ].filter(Boolean);
-
-  const callGetCertList = async (): Promise<any> => {
-    // 여러 함수명 후보 (현장마다 다름)
-    const methodNames = [
-      "getCertList",
-      "GetCertList",
-      "getCertInfoList",
-      "getCertInfo",
-      "certList",
-      "GetCert",
-    ];
-
-    for (const sdk of sdkCandidates) {
-      for (const m of methodNames) {
-        const fn = sdk?.[m];
-        if (typeof fn === "function") {
-          pushLog(`인증서 목록 API 시도: ${sdk === window.fn ? "window.fn" : "sdk"}.${m}()`);
-
-          // callback 스타일
-          const out = await new Promise<any>((resolve, reject) => {
-            let done = false;
-            const timer = setTimeout(() => {
-              if (done) return;
-              done = true;
-              reject(new Error(`certList timeout: ${m}`));
-            }, 15000);
-
-            try {
-              const ret = fn.call(sdk, (r: any) => {
-                if (done) return;
-                done = true;
-                clearTimeout(timer);
-                resolve(r);
-              });
-
-              // promise 반환 타입도 방어
-              if (ret && typeof ret.then === "function") {
-                ret
-                  .then((r: any) => {
-                    if (done) return;
-                    done = true;
-                    clearTimeout(timer);
-                    resolve(r);
-                  })
-                  .catch((e: any) => {
-                    if (done) return;
-                    done = true;
-                    clearTimeout(timer);
-                    reject(e);
-                  });
-              }
-            } catch (e) {
-              if (done) return;
-              done = true;
-              clearTimeout(timer);
-              reject(e);
-            }
-          });
-
-          return out;
-        }
-      }
-    }
-
-    throw new Error("인증서 목록 API(getCertList 계열)를 찾지 못했습니다.");
-  };
-
-  // 3) 결과 파싱: 형태가 제각각이라 최대한 안전하게
-  const normalizeCertArray = (raw: any): any[] => {
-    if (!raw) return [];
-    // 흔한 구조들:
-    // raw.Result.CertList
-    // raw.Output.Result.CertList
-    // raw.CertList
-    // raw.list
-    const candidates = [
-      raw?.Result?.CertList,
-      raw?.Output?.Result?.CertList,
-      raw?.Output?.CertList,
-      raw?.CertList,
-      raw?.certList,
-      raw?.list,
-      raw?.data,
-    ];
-
-    for (const c of candidates) {
-      if (Array.isArray(c)) return c;
-    }
-
-    // 어떤 경우는 object map으로 오기도 함
-    if (raw?.Result && Array.isArray(raw.Result)) return raw.Result;
-    return [];
-  };
-
-  // 4) select에 option 주입
-  const bindToSelect = (certs: any[]) => {
-    const $select = pickSelect();
-    if (!$select) throw new Error("인증서 select 요소를 찾지 못했습니다.(certSelect/cert_list 등)");
-
-    $select.empty();
-    $select.append(`<option value="">인증서를 선택하세요.</option>`);
-
-    for (const c of certs) {
-      // 필드명이 다를 수 있어 후보로 추출
-      const user = c?.User || c?.user || c?.CN || c?.subject || c?.name || "인증서";
-      const exp = c?.ExpiryDate || c?.expire || c?.expireDate || c?.ValidTo || c?.validTo || "";
-      const issuer = c?.Issuer || c?.issuer || c?.CA || c?.ca || "";
-      const id = c?.RDN || c?.rdn || c?.ID || c?.id || c?.key || "";
-
-      const label = `${user}${exp ? ` / ${exp}` : ""}${issuer ? ` / ${issuer}` : ""}`.trim();
-      const value = id || label;
-
-      $select.append(
-        `<option value="${String(value).replace(/"/g, "&quot;")}" data-json="${String(
-          JSON.stringify(c)
-        ).replace(/"/g, "&quot;")}">${label}</option>`
-      );
-    }
-
-    // 화면 갱신 유도
-    try {
-      $select.trigger("change");
-    } catch {
-      // ignore
-    }
-  };
-
-  // 실제 실행
-  pushLog("인증서 목록 로딩 시작(getCertList)");
-  const raw = await callGetCertList().catch((e) => {
-    throw normalizeErr(e);
-  });
-
-  const certs = normalizeCertArray(raw);
-  pushLog(`인증서 목록 응답 수신: ${certs.length}개`);
-
-  if (!certs.length) {
-    // 드롭다운이 비어있으면, 최소한 원본을 로그로 남기자
-    pushLog(`인증서 목록이 0개입니다. raw=${safeJson(raw)}`);
-  }
-
-  bindToSelect(certs);
-  pushLog("인증서 드롭다운 바인딩 완료");
-};
-
-function safeJson(v: any) {
-  try {
-    return JSON.stringify(v);
-  } catch {
-    return String(v);
-  }
-}
-
 /* ---------------- Coocon call wrapper (SAFE) ---------------- */
 
 type CallCooconApiOptions = {
@@ -332,7 +163,8 @@ type CallCooconApiOptions = {
 };
 
 async function callCooconApi(nx: any, apiId: string, params: any, opts: CallCooconApiOptions = {}) {
-  const timeoutMs = opts.timeoutMs ?? 20000;
+  // ✅ 조회는 사용자 입력/로딩 때문에 오래 걸릴 수 있어서 넉넉히
+  const timeoutMs = opts.timeoutMs ?? 180000;
   const label = opts.debugLabel ?? `coocon:${apiId}`;
 
   if (!nx) throw new Error(`[${label}] Coocon SDK not ready`);
@@ -446,10 +278,7 @@ async function getMyMemberId(eventId: string): Promise<string> {
   else if (email) q = q.eq("email", email);
 
   const { data, error } = await q.maybeSingle();
-  if (error || !data?.id) {
-    throw new Error("이벤트 멤버를 찾지 못했습니다.");
-  }
-
+  if (error || !data?.id) throw new Error("이벤트 멤버를 찾지 못했습니다.");
   return data.id;
 }
 
@@ -469,10 +298,7 @@ async function getScrapeAccountInfo(eventId: string) {
     .maybeSingle();
 
   if (error) throw error;
-  if (!data?.id) throw new Error("스크래핑 계좌가 없습니다. 먼저 인증이 필요합니다.");
-  if (!data.account_number) throw new Error("스크래핑 계좌에 account_number가 없습니다.");
-
-  return data;
+  return data ?? null;
 }
 
 /* ---------------- Page ---------------- */
@@ -482,7 +308,7 @@ export default function CooconScrapePage() {
   const [sp] = useSearchParams();
 
   const eventId = sp.get("eventId") || "";
-  const mode = sp.get("mode") || "connect_then_scrape";
+  const modeRaw = sp.get("mode") || "connect_then_scrape";
   const startDate = sp.get("startDate") || "";
   const endDate = sp.get("endDate") || "";
   const returnToRaw = sp.get("returnTo") || "";
@@ -527,7 +353,7 @@ export default function CooconScrapePage() {
         await loadScript(`${base}/isasscaping.js`);
 
         const nx = window.CooconiSASNX;
-        if (!nx) throw new Error("NXiSAS 로딩 실패");
+        if (!nx) throw new Error("NXiSAS 로딩 실패(window.CooconiSASNX 없음)");
 
         setState("initializing");
         pushLog("nx.init 시작");
@@ -540,8 +366,16 @@ export default function CooconScrapePage() {
         });
         pushLog("nx.init 완료");
 
-        if (!isYmd(startDate) || !isYmd(endDate)) {
-          throw new Error("startDate/endDate 형식 오류");
+        if (!isYmd(startDate) || !isYmd(endDate)) throw new Error("startDate/endDate 형식 오류(YYYY-MM-DD)");
+
+        // ✅ scrape_only로 들어와도 "인증이 없으면" connect_then_scrape 강제
+        let mode: "connect_then_scrape" | "scrape_only" =
+          modeRaw === "scrape_only" ? "scrape_only" : "connect_then_scrape";
+
+        const existing = await getScrapeAccountInfo(eventId);
+        if (!existing) {
+          pushLog("스크래핑 계좌(DB)가 없어서 connect_then_scrape로 전환");
+          mode = "connect_then_scrape";
         }
 
         pushLog(`mode=${mode}, apiId=${apiId}, range=${startDate}~${endDate}`);
@@ -565,51 +399,83 @@ export default function CooconScrapePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
+  /**
+   * ✅ connect_then_scrape:
+   * 1) 인증서 선택 UI 띄움(makeCertManager)
+   * 2) event_accounts에서 대표 계좌 가져옴
+   * 3) event_scrape_accounts upsert
+   * 4) TX_LIST 호출 → output을 Edge Function으로 전달
+   */
   async function runConnectThenScrape() {
     setState("cert_select");
     pushLog("인증서 선택 단계 진입");
 
     if (!window.$) throw new Error("쿠콘 jQuery 로딩 실패(window.$ 없음)");
 
-    // ✅ 1) 템플릿 주입
     pushLog("certLayer 템플릿 로딩 시도");
     await ensureCertLayerTemplate(base);
     pushLog("certLayer 템플릿 준비 완료");
 
-    // ✅ 2) 레이어 표시
+    // 레이어 강제 show
     try {
       window.$("#certLayer").show();
     } catch {
       // ignore
     }
 
-    // DOM 반영 대기
-    await new Promise((r) => setTimeout(r, 80));
+    // DOM 반영 한 틱
+    await new Promise((r) => setTimeout(r, 50));
 
-    // ✅ 3) (핵심) 인증서 목록을 강제로 로드해서 드롭다운에 꽂기
-    //    -> 지금 네 증상(드롭다운 비어있음) 100% 여기가 원인
-    await forceLoadAndBindCertList(pushLog);
+    // ✅ makeCertManager가 호출되면 인증서 UI가 떠야 정상
+    const certMeta = await new Promise<any>((resolve, reject) => {
+      try {
+        const el = window.$("#certLayer");
+        if (!el || el.length === 0) {
+          reject(new Error("certLayer DOM이 없습니다.(템플릿 주입 실패)"));
+          return;
+        }
 
-    // ✅ 4) 여기부터는 “사용자가 실제로 인증서 선택/비번 입력/조회”를 수행해야 한다.
-    // 샘플 HTML마다 완료 콜백 방식이 달라서, 일단 “선택 완료 대기”는
-    // 템플릿 내부 버튼(조회/확인 등)이 눌린 뒤 window.__CERT_OPENED__를 활용하거나,
-    // 추후 특정 hidden input 값/콜백을 확인해 이어붙이면 된다.
-    //
-    // 지금은 우선 “인증서가 드롭다운에 뜨는 것”이 목표였고,
-    // 뜨면 다음 단계에서 ‘조회’ 버튼 클릭 시 tx 조회 호출로 이어지게 붙이자.
-    pushLog("✅ 인증서 드롭다운 로드 완료(이제 팝업에서 인증서 선택 가능)");
+        // makeCertManager 콜백이 호출되면 resolve
+        if (typeof el.makeCertManager !== "function") {
+          reject(
+            new Error(
+              "makeCertManager 함수가 없습니다. (process_manager.html 템플릿이 인증서 매니저 포함 버전인지 확인 필요)"
+            )
+          );
+          return;
+        }
 
-    // 임시: 여기서 바로 스크래핑으로 넘어가지 않고, 사용자가 팝업에서 ‘조회’ 버튼을 누르는 흐름을 유지
-    // (너가 지금 쓰는 HTML이 조회 UI까지 포함하고 있어서, 여기서 강제 API 호출하면 timeout 확률이 높음)
+        el.makeCertManager((data: any) => resolve(data));
+        window.__CERT_OPENED__ = true;
+      } catch (e: any) {
+        reject(new Error(`인증서 팝업 실패: ${String(e?.message ?? e)}`));
+      }
+    });
+
+    window.__COOCON_CERT_META__ = certMeta;
+    pushLog("인증서 선택 완료");
+
+    const { bankName, bankCode, accountNo } = await getPrimaryFromEventAccounts();
+    pushLog(`계좌: ${bankName} / ${maskAccountNo(accountNo)}`);
+
+    const scrapeAccountId = await upsertScrapeAccount(bankCode, bankName, accountNo, certMeta);
+    pushLog(`event_scrape_accounts upsert OK: ${scrapeAccountId}`);
+
+    await runScrape(scrapeAccountId, bankCode, accountNo);
   }
 
   async function runScrapeOnly() {
     setState("scraping");
     const acc = await getScrapeAccountInfo(eventId);
-    pushLog(`계좌: ${acc.bank_name} / ${maskAccountNo(acc.account_number)}`);
+    if (!acc?.id) {
+      // safety
+      pushLog("scrape_only인데 스크래핑 계좌가 없어 connect_then_scrape로 전환");
+      await runConnectThenScrape();
+      return;
+    }
+    if (!acc.account_number) throw new Error("스크래핑 계좌에 account_number가 없습니다.");
 
-    // scrape_only는 “이미 인증/계좌연결이 완료되어 있고, 바로 TX_LIST를 호출하는 모드”
-    // (현재는 TX_LIST timeout이 있어, 인증서/기관 선택 UI에서 조회를 먼저 성공시키는 게 우선)
+    pushLog(`계좌: ${acc.bank_name} / ${maskAccountNo(acc.account_number)}`);
     await runScrape(acc.id, acc.bank_code, acc.account_number);
   }
 
@@ -628,11 +494,11 @@ export default function CooconScrapePage() {
 
     if (error || !data) throw new Error("상세설정 계좌가 없습니다.");
 
-    const bankName = data.bank_name;
-    const accountNo = data.account_number;
+    const bankName = (data.bank_name || "").trim();
+    const accountNo = (data.account_number || "").trim();
 
     const bankCode = COOCON_BANK_CODE_MAP[bankName];
-    if (!bankCode) throw new Error(`은행 미지원: ${bankName}`);
+    if (!bankCode) throw new Error(`은행 미지원(매핑 필요): ${bankName}`);
 
     return { bankName, bankCode, accountNo };
   }
@@ -654,9 +520,7 @@ export default function CooconScrapePage() {
 
     const { data, error } = await supabase
       .from("event_scrape_accounts")
-      .upsert(payload, {
-        onConflict: "event_id,owner_user_id,provider,bank_code",
-      })
+      .upsert(payload, { onConflict: "event_id,owner_user_id,provider,bank_code" })
       .select("id")
       .maybeSingle();
 
@@ -664,7 +528,6 @@ export default function CooconScrapePage() {
       console.error("event_scrape_accounts upsert error", error);
       throw new Error("스크래핑 계좌 저장 실패");
     }
-
     if (!data?.id) throw new Error("스크래핑 계좌 저장 실패");
     return data.id;
   }
@@ -683,7 +546,7 @@ export default function CooconScrapePage() {
     pushLog("거래내역 조회 API 호출 시작");
     let output: any;
     try {
-      output = await callCooconApi(nx, apiId, params, { timeoutMs: 25000, debugLabel: `tx:${apiId}` });
+      output = await callCooconApi(nx, apiId, params, { timeoutMs: 180000, debugLabel: `tx:${apiId}` });
     } catch (e: any) {
       const msg = e?.message ?? String(e);
       pushLog(`거래내역 조회 API 실패: ${msg}`);
@@ -727,15 +590,19 @@ export default function CooconScrapePage() {
 
   return (
     <div style={{ padding: 16, maxWidth: 900, margin: "0 auto" }}>
-      {/* ✅✅ certLayer는 반드시 존재해야 함 + 템플릿은 runtime에 주입 */}
+      {/* ✅ certLayer는 반드시 존재해야 함 */}
       <div id="certLayer" />
 
       <h1>쿠콘 계좌 인증 / 스크래핑</h1>
       <div>state: {state}</div>
 
+      <div style={{ marginTop: 8, fontSize: 12, color: "#475569" }}>
+        ※ 인증 창이 안 뜨면 브라우저 “팝업 차단 해제”가 필요합니다.
+      </div>
+
       {errorMsg && <div style={{ marginTop: 12, color: "red", whiteSpace: "pre-wrap" }}>{errorMsg}</div>}
 
-      <pre style={{ marginTop: 12, fontSize: 12 }}>{log.join("\n")}</pre>
+      <pre style={{ marginTop: 12, fontSize: 12, whiteSpace: "pre-wrap" }}>{log.join("\n")}</pre>
     </div>
   );
 }
