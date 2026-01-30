@@ -99,6 +99,59 @@ function normalizeErr(err: any) {
   }
 }
 
+/**
+ * ✅ 인증서 레이어 템플릿 주입
+ * - div만 있으면 makeCertManager가 UI를 못 그리는 경우가 많음
+ * - public/coocon/process_manager.html 을 fetch해서 certLayer에 넣는다
+ */
+async function ensureCertLayerTemplate(base: string) {
+  const layer = document.getElementById("certLayer");
+  if (!layer) throw new Error("certLayer DOM이 없습니다.");
+
+  // 이미 템플릿이 있으면 스킵
+  if (layer.childElementCount > 0) return;
+
+  // 쿠콘 샘플에서 흔히 쓰는 파일명 후보
+  const candidates = [
+    `${base}/process_manager.html`,
+    `${base}/process_manager.htm`,
+    `${base}/process_manager_layer.html`,
+  ];
+
+  let lastErr: any = null;
+
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) {
+        lastErr = new Error(`template fetch failed: ${url} (${res.status})`);
+        continue;
+      }
+      const html = await res.text();
+
+      // 주입
+      layer.innerHTML = html;
+
+      // 레이어는 쿠콘이 show/hide를 건드릴 수 있어도,
+      // 최소한 화면에 렌더될 수 있도록 기본값은 block로 둠
+      (layer as HTMLDivElement).style.display = "block";
+      (layer as HTMLDivElement).style.position = "fixed";
+      (layer as HTMLDivElement).style.inset = "0";
+      (layer as HTMLDivElement).style.zIndex = "9999";
+
+      return;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+
+  // 템플릿 파일이 없으면 여기서 명확히 에러
+  throw new Error(
+    `certLayer 템플릿을 불러오지 못했습니다. (public/coocon/process_manager.html 필요)\n` +
+      `lastError=${String(lastErr?.message ?? lastErr)}`
+  );
+}
+
 /* ---------------- Coocon call wrapper (SAFE) ---------------- */
 
 type CallCooconApiOptions = {
@@ -135,7 +188,6 @@ async function callCooconApi(nx: any, apiId: string, params: any, opts: CallCooc
       settleOnce(reject, normalizeErr(e));
     };
 
-    // ✅ 콜백 키를 여러 개 달아두면 SDK가 어떤 키를 쓰든 ok/fail로 귀결됨
     const paramsWithCallbacks = {
       ...(params ?? {}),
       callback: (r: any) => ok(r),
@@ -158,7 +210,6 @@ async function callCooconApi(nx: any, apiId: string, params: any, opts: CallCooc
     const tryExecute = () => {
       if (typeof nx?.execute !== "function") return false;
       try {
-        // (apiId, params, cb)
         const ret = nx.execute(apiId, paramsWithCallbacks, (r: any) => ok(r));
         if (tryPromiseReturn(ret)) return true;
         return true;
@@ -189,14 +240,13 @@ async function callCooconApi(nx: any, apiId: string, params: any, opts: CallCooc
             if (tryPromiseReturn(ret)) return true;
             return true;
           } catch {
-            // 다음 함수 후보
+            // next
           }
         }
       }
       return false;
     };
 
-    // ✅ 실행 순서: execute → call → window.fn.*
     try {
       if (tryExecute()) return;
       if (tryCall()) return;
@@ -231,10 +281,6 @@ async function getMyMemberId(eventId: string): Promise<string> {
   return data.id;
 }
 
-/**
- * ✅ 단일 진실 소스
- * event_scrape_accounts 에서 bank + account_number 조회
- */
 async function getScrapeAccountInfo(eventId: string) {
   const { data: user } = await supabase.auth.getUser();
   if (!user?.user) throw new Error("로그인이 필요합니다.");
@@ -270,7 +316,6 @@ export default function CooconScrapePage() {
   const returnToRaw = sp.get("returnTo") || "";
   const apiId = sp.get("apiId") || "TX_LIST";
 
-  // ✅ ResultPage에서 returnTo를 encodeURIComponent로 한번 감싸서 보내므로 여기서 decode 1번
   const returnTo = useMemo(() => {
     if (!returnToRaw) return "";
     try {
@@ -288,7 +333,6 @@ export default function CooconScrapePage() {
 
   const pushLog = (s: string) => {
     setLog((prev) => [...prev, `${new Date().toLocaleTimeString()}  ${s}`]);
-    // eslint-disable-next-line no-console
     console.log("[COOCON]", s);
   };
 
@@ -353,23 +397,36 @@ export default function CooconScrapePage() {
     setState("cert_select");
     pushLog("인증서 선택 단계 진입");
 
-    // jQuery/레이어 존재 체크
     if (!window.$) throw new Error("쿠콘 jQuery 로딩 실패(window.$ 없음)");
+
+    // ✅ 핵심: 템플릿 HTML을 certLayer에 주입
+    pushLog("certLayer 템플릿 로딩 시도");
+    await ensureCertLayerTemplate(base);
+    pushLog("certLayer 템플릿 준비 완료");
+
+    // ✅ 레이어 보이게 (쿠콘이 내부에서 show를 안 해주는 케이스 방어)
+    try {
+      window.$("#certLayer").show();
+    } catch {
+      // ignore
+    }
+
+    // DOM 반영 한 틱 기다리기
+    await new Promise((r) => setTimeout(r, 50));
 
     const certMeta = await new Promise<any>((resolve, reject) => {
       try {
-        // 일부 환경에서 레이어가 없으면 실패하므로 방어
         const el = window.$("#certLayer");
         if (!el || el.length === 0) {
-          reject(new Error("certLayer DOM이 없습니다. (쿠콘 HTML/레이어 확인 필요)"));
+          reject(new Error("certLayer DOM이 없습니다. (템플릿 주입 실패)"));
           return;
         }
 
         // makeCertManager 콜백이 호출되면 resolve
         el.makeCertManager((data: any) => resolve(data));
         window.__CERT_OPENED__ = true;
-      } catch {
-        reject(new Error("인증서 팝업 실패"));
+      } catch (e) {
+        reject(new Error(`인증서 팝업 실패: ${String((e as any)?.message ?? e)}`));
       }
     });
 
@@ -381,7 +438,6 @@ export default function CooconScrapePage() {
     const scrapeAccountId = await upsertScrapeAccount(bankCode, bankName, accountNo, certMeta);
     pushLog(`event_scrape_accounts upsert OK: ${scrapeAccountId}`);
 
-    // ✅ 여기서부터는 scrape_only와 동일 경로로 강제
     await runScrape(scrapeAccountId, bankCode, accountNo);
   }
 
@@ -434,7 +490,7 @@ export default function CooconScrapePage() {
     const { data, error } = await supabase
       .from("event_scrape_accounts")
       .upsert(payload, {
-        onConflict: "event_id,owner_user_id,provider,bank_code", // ✅ DB와 100% 일치
+        onConflict: "event_id,owner_user_id,provider,bank_code",
       })
       .select("id")
       .maybeSingle();
@@ -445,7 +501,6 @@ export default function CooconScrapePage() {
     }
 
     if (!data?.id) throw new Error("스크래핑 계좌 저장 실패");
-
     return data.id;
   }
 
@@ -507,16 +562,8 @@ export default function CooconScrapePage() {
 
   return (
     <div style={{ padding: 16, maxWidth: 900, margin: "0 auto" }}>
-      {/* ✅✅✅ Coocon 인증서 UI 필수 DOM (여기가 포인트) */}
-      <div
-        id="certLayer"
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 9999,
-          display: "none", // 쿠콘이 필요 시 내부에서 show 처리
-        }}
-      />
+      {/* ✅✅ certLayer는 반드시 존재해야 함 + 템플릿은 runtime에 주입 */}
+      <div id="certLayer" />
 
       <h1>쿠콘 계좌 인증 / 스크래핑</h1>
       <div>state: {state}</div>
