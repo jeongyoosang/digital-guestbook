@@ -1,14 +1,14 @@
-// src/pages/CooconScrapePage.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 
 /* ================= globals ================= */
+
 declare global {
   interface Window {
     CooconiSASNX?: any;
     $?: any;
-    __CERT_OPENED__?: boolean;
+    __COOCON_CERT_DONE__?: (certMeta: any) => void; // ✅ 조회 버튼(doScrape) 눌렀을 때 resolve
   }
 }
 
@@ -40,6 +40,8 @@ const COOCON_BANK_CODE_MAP: Record<string, string> = {
   전북은행: "jbbank",
   제주은행: "jejubank",
 };
+
+/* ================= utils ================= */
 
 function loadScript(src: string) {
   return new Promise<void>((resolve, reject) => {
@@ -74,112 +76,59 @@ function maskAccountNo(v: string) {
   return t.length <= 4 ? "***" : "*".repeat(t.length - 4) + t.slice(-4);
 }
 
-function normalizeErr(err: any) {
-  if (!err) return new Error("Unknown Coocon error");
-  if (err instanceof Error) return err;
-  if (typeof err === "string") return new Error(err);
-  try {
-    return new Error(typeof err === "object" ? JSON.stringify(err) : String(err));
-  } catch {
-    return new Error(String(err));
-  }
+function ymdToYmd8(ymd: string) {
+  return ymd.replace(/-/g, "");
 }
 
-/* ================= cert layer template =================
-   - 중요: fetch해서 innerHTML로 넣어도 <script>는 실행 안 됨
-   - 따라서 이 HTML은 "레이어 UI 틀"로만 사용
-   - 템플릿 안의 조회 링크(doScrape)는 클릭 막아서 에러 방지
-*/
+/* ================= cert layer (IMPORTANT FIX) ================= */
+/**
+ * ✅ 핵심:
+ * - 은행_거래내역조회.html은 "전체 문서"라서 그대로 innerHTML로 넣으면 UI 깨짐
+ * - 그리고 innerHTML에 포함된 <script>는 실행 안 됨
+ * => 해결: HTML을 파싱해서 body만 certLayer에 넣고,
+ *    스크립트는 이미 상위에서 로딩된 isasscaping.js를 사용한다.
+ */
 async function ensureCertLayerTemplate(base: string) {
   const layer = document.getElementById("certLayer");
   if (!layer) throw new Error("certLayer DOM 없음");
 
+  // 이미 넣었으면 재주입 X
   if (layer.childElementCount > 0) return;
 
   const res = await fetch(`${base}/css/은행_거래내역조회.html`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`certLayer html 로드 실패: ${res.status}`);
+  if (!res.ok) throw new Error("certLayer html 로드 실패");
 
-  const raw = await res.text();
+  const html = await res.text();
+  const doc = new DOMParser().parseFromString(html, "text/html");
 
-  // body만 뽑아서 주입 (전체 html/head/script 다 필요 없음)
-  const m = raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  const bodyHtml = m ? m[1] : raw;
-
-  layer.innerHTML = bodyHtml;
+  // ✅ body만 주입 (문서 구조/헤더/푸터 등 포함됨)
+  layer.innerHTML = doc.body?.innerHTML || html;
 
   Object.assign(layer.style, {
-    display: "none",
+    display: "block",
     position: "fixed",
     inset: "0",
     background: "#fff",
     zIndex: "9999",
     overflow: "auto",
-  } as CSSStyleDeclaration);
-
-  // 템플릿 내부의 "조회" 링크가 doScrape를 호출하는데,
-  // innerHTML 주입 방식에서는 doScrape가 정의되지 않으므로 클릭을 막는다.
-  // (우리는 makeCertManager 콜백만 씀)
-  layer.querySelectorAll('a[href^="javascript:"]').forEach((a) => {
-    a.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      alert("이 화면의 '조회' 버튼은 샘플용입니다. 상단 흐름에서 인증 후 자동으로 진행됩니다.");
-    });
   });
 }
 
-/* ================= Coocon API wrapper ================= */
+function hideCertLayer() {
+  const layer = document.getElementById("certLayer");
+  if (!layer) return;
+  layer.style.display = "none";
+}
 
-async function callCooconApi(nx: any, apiId: string, params: any, timeoutMs = 25000) {
-  if (!nx) throw new Error("NX not ready");
-  let settled = false;
+/* ================= nx execute wrapper ================= */
 
-  return await new Promise<any>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      reject(new Error(`[${apiId}] timeout after ${timeoutMs}ms`));
-    }, timeoutMs);
-
-    const ok = (r: any) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(r);
-    };
-
-    const fail = (e: any) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      reject(normalizeErr(e));
-    };
-
-    const payload = {
-      ...(params ?? {}),
-      callback: (r: any) => ok(r),
-      onSuccess: (r: any) => ok(r),
-      success: (r: any) => ok(r),
-      onComplete: (r: any) => ok(r),
-      onError: (e: any) => fail(e),
-      error: (e: any) => fail(e),
-      fail: (e: any) => fail(e),
-    };
-
+async function nxExecute(nx: any, inputList: any[]) {
+  return new Promise<any>((resolve, reject) => {
     try {
-      if (typeof nx.execute === "function") {
-        const ret = nx.execute(apiId, payload, (r: any) => ok(r));
-        if (ret && typeof ret.then === "function") ret.then(ok).catch(fail);
-        return;
-      }
-      if (typeof nx.call === "function") {
-        const ret = nx.call(apiId, payload, (r: any) => ok(r));
-        if (ret && typeof ret.then === "function") ret.then(ok).catch(fail);
-        return;
-      }
-      fail(new Error("NX execute/call not found"));
+      // 보통 샘플은 (inputList, 0, callback) 형태
+      nx.execute(inputList, 0, (r: any) => resolve(r));
     } catch (e) {
-      fail(e);
+      reject(e);
     }
   });
 }
@@ -217,19 +166,6 @@ async function getScrapeAccount(eventId: string) {
   return row ?? null;
 }
 
-function extractSignParam(meta: any): string | null {
-  // makeCertManager 반환 형태가 환경별로 달라서 최대한 넓게 대응
-  return (
-    meta?.SignParam ??
-    meta?.signParam ??
-    meta?.Output?.Result?.req?.SignParam ??
-    meta?.Output?.Result?.SignParam ??
-    meta?.Result?.req?.SignParam ??
-    meta?.Result?.SignParam ??
-    null
-  );
-}
-
 /* ================= page ================= */
 
 export default function CooconScrapePage() {
@@ -237,11 +173,12 @@ export default function CooconScrapePage() {
   const [sp] = useSearchParams();
 
   const eventId = sp.get("eventId") || "";
-  const mode = sp.get("mode") || "connect_then_scrape";
   const startDate = sp.get("startDate") || "";
   const endDate = sp.get("endDate") || "";
   const returnToRaw = sp.get("returnTo") || "";
-  const apiId = sp.get("apiId") || "TX_LIST";
+
+  // ✅ Step4: 무조건 connect_then_scrape로 강제 (요청대로)
+  const mode = "connect_then_scrape";
 
   const returnTo = useMemo(() => {
     if (!returnToRaw) return "";
@@ -285,7 +222,7 @@ export default function CooconScrapePage() {
         await loadScript(`${base}/isasscaping.js`);
 
         const nx = window.CooconiSASNX;
-        if (!nx) throw new Error("NX 로딩 실패 (window.CooconiSASNX 없음)");
+        if (!nx) throw new Error("NX 로딩 실패(window.CooconiSASNX 없음)");
 
         setState("initializing");
         pushLog("nx.init 시작");
@@ -302,31 +239,22 @@ export default function CooconScrapePage() {
           throw new Error("날짜 형식 오류 (YYYY-MM-DD)");
         }
 
-        pushLog(`mode=${mode}, apiId=${apiId}, range=${startDate}~${endDate}`);
+        pushLog(`mode=${mode}, range=${startDate}~${endDate}`);
 
-        // scrape_only인데 계좌/인증정보 없으면 connect_then_scrape로 강제
-        const existing = await getScrapeAccount(eventId);
-
-        if (mode === "scrape_only" && !existing) {
-          pushLog("scrape_only인데 인증/계좌정보(DB)가 없어서 connect_then_scrape로 전환");
-        }
-
-        if (mode !== "scrape_only" || !existing) {
-          await runConnectThenScrape(nx);
-        } else {
-          await runScrapeWithExisting(nx, existing);
-        }
+        // ✅ 항상 connect_then_scrape
+        await runConnectThenScrape(nx);
 
         setState("done");
-        pushLog("완료. 리포트로 이동");
+        pushLog("완료 → 리포트 이동");
         nav(returnTo || `/app/event/${eventId}/report`);
       } catch (e: any) {
-        const msg = e?.message ?? String(e);
+        const msg = e?.message || String(e);
         setErrorMsg(msg);
         setState("error");
         pushLog(`ERROR: ${msg}`);
       }
     })();
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [retryRef.current]);
 
@@ -339,44 +267,81 @@ export default function CooconScrapePage() {
 
   async function runConnectThenScrape(nx: any) {
     setState("cert_select");
-    pushLog("인증서 선택 단계");
+    pushLog("인증서/로그인 UI 준비");
 
     await ensureCertLayerTemplate(base);
 
-    // 템플릿은 보여줄 필요 없음(사용자 클릭 방지). makeCertManager는 DOM만 있으면 됨.
-    // 다만 일부 환경에서 레이어가 display:none이면 안 열리는 케이스가 있어, 콜백 받을 때까지만 표시.
-    const layer = document.getElementById("certLayer") as HTMLDivElement | null;
-    if (layer) layer.style.display = "block";
-
-    if (!window.$) throw new Error("쿠콘 jQuery 로딩 실패(window.$ 없음)");
-
+    // ✅ 조회 버튼(doScrape)을 "인증 완료" 트리거로 가로채기
     const certMeta = await new Promise<any>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("인증서 응답 타임아웃(15s)")), 15000);
-      try {
-        window.$("#certLayer").makeCertManager((d: any) => {
-          clearTimeout(timer);
-          resolve(d);
-        });
-        window.__CERT_OPENED__ = true;
-      } catch (e) {
+      const timer = setTimeout(() => reject(new Error("인증서 입력 응답 타임아웃(60s)")), 60000);
+
+      // 전역 콜백: doScrape에서 호출하도록 만든다
+      window.__COOCON_CERT_DONE__ = (meta: any) => {
         clearTimeout(timer);
-        reject(new Error(`인증서 팝업 실패: ${String((e as any)?.message ?? e)}`));
+        resolve(meta);
+      };
+
+      // ✅ 여기서 핵심: 템플릿 안의 a href="javascript:doScrape()" 때문에
+      // doScrape가 전역에 있어야 함. 우리가 전역 doScrape를 주입한다.
+      (window as any).doScrape = () => {
+        try {
+          const $ = window.$;
+          if (!$) throw new Error("jQuery(window.$) 없음");
+
+          const certDataAttr = $("#cert_list option:selected").attr("data") || "";
+          let certData: any = null;
+          try {
+            certData = certDataAttr ? JSON.parse(certDataAttr) : null;
+          } catch {
+            certData = null;
+          }
+
+          const certPwd = String($("#cert_pwd").val() || "").trim();
+
+          if (!certData) {
+            alert("인증서를 선택하세요.");
+            return;
+          }
+          if (!certPwd) {
+            alert("인증서 비밀번호를 입력하세요.");
+            return;
+          }
+
+          // jumin_no는 현재 템플릿에 input이 없을 수 있어서 optional 처리
+          const jumin = String($("#jumin_no").val() || "").trim();
+
+          // 은행/계좌/기간은 실제론 상세설정 기반으로 우리가 nx.execute에 넣는다.
+          const meta = { certData, certPwd, jumin };
+
+          hideCertLayer();
+          window.__COOCON_CERT_DONE__?.(meta);
+        } catch (e: any) {
+          alert(e?.message || String(e));
+        }
+      };
+
+      // 화면 표시 보장
+      try {
+        (document.getElementById("certLayer") as HTMLDivElement).style.display = "block";
+      } catch {
+        // ignore
       }
     });
 
-    const signParam = extractSignParam(certMeta);
-    pushLog(`인증서 선택 완료 (SignParam=${signParam ? "OK" : "EMPTY"})`);
+    pushLog("인증서 입력 완료 → 계좌/은행 조회");
 
-    if (layer) layer.style.display = "none";
+    const { bankName, bankCode, accountNo } = await getPrimaryFromEventAccounts();
+    pushLog(`계좌: ${bankName} / ${maskAccountNo(accountNo)}`);
 
-    if (!signParam) {
-      throw new Error(
-        "인증은 됐는데 SignParam을 찾지 못했습니다. (makeCertManager 반환 구조 확인 필요)"
-      );
-    }
+    const scrapeAccountId = await upsertScrapeAccount(bankCode, bankName, accountNo, certMeta);
+    pushLog(`event_scrape_accounts upsert OK: ${scrapeAccountId}`);
 
-    // 상세설정 계좌 1개 가져오기
+    await runLoginAndScrape(nx, scrapeAccountId, bankCode, accountNo, certMeta);
+  }
+
+  async function getPrimaryFromEventAccounts() {
     const memberId = await getMyMemberId(eventId);
+
     const { data, error } = await supabase
       .from("event_accounts")
       .select("bank_name, account_number")
@@ -387,83 +352,95 @@ export default function CooconScrapePage() {
       .limit(1)
       .maybeSingle();
 
-    if (error || !data) throw new Error("계좌 설정 없음(event_accounts)");
+    if (error || !data) throw new Error("상세설정 계좌가 없습니다.");
 
-    const bankCode = COOCON_BANK_CODE_MAP[data.bank_name];
-    if (!bankCode) throw new Error(`미지원 은행: ${data.bank_name}`);
+    const bankName = data.bank_name;
+    const accountNo = data.account_number;
+    const bankCode = COOCON_BANK_CODE_MAP[bankName];
 
+    if (!bankCode) throw new Error(`은행 미지원: ${bankName}`);
+    return { bankName, bankCode, accountNo };
+  }
+
+  async function upsertScrapeAccount(bankCode: string, bankName: string, accountNo: string, certMeta: any) {
     const { data: user } = await supabase.auth.getUser();
     if (!user?.user) throw new Error("로그인이 필요합니다.");
 
-    // 인증정보 저장
-    const { data: acc, error: upErr } = await supabase
+    const payload = {
+      event_id: eventId,
+      owner_user_id: user.user.id,
+      provider: "coocon",
+      bank_code: bankCode,
+      bank_name: bankName,
+      account_number: accountNo,
+      verified_at: new Date().toISOString(),
+      cert_meta_json: certMeta ?? null,
+    };
+
+    const { data, error } = await supabase
       .from("event_scrape_accounts")
-      .upsert(
-        {
-          event_id: eventId,
-          owner_user_id: user.user.id,
-          provider: "coocon",
-          bank_code: bankCode,
-          bank_name: data.bank_name,
-          account_number: data.account_number,
-          verified_at: new Date().toISOString(),
-          cert_meta_json: { ...certMeta, __extractedSignParam: signParam },
-        },
-        { onConflict: "event_id,owner_user_id,provider,bank_code" }
-      )
+      .upsert(payload, { onConflict: "event_id,owner_user_id,provider,bank_code" })
       .select("id")
       .maybeSingle();
 
-    if (upErr || !acc?.id) throw new Error("스크래핑 계좌 저장 실패(event_scrape_accounts)");
-
-    pushLog(`계좌 저장 OK: ${data.bank_name} / ${maskAccountNo(data.account_number)}`);
-
-    await runScrape(nx, acc.id, bankCode, data.account_number, signParam);
-  }
-
-  async function runScrapeWithExisting(nx: any, existing: any) {
-    const signParam =
-      extractSignParam(existing?.cert_meta_json) ??
-      existing?.cert_meta_json?.__extractedSignParam ??
-      null;
-
-    if (!signParam) {
-      throw new Error("저장된 인증정보(SignParam)가 없습니다. mode=connect_then_scrape로 다시 인증하세요.");
+    if (error) {
+      console.error("event_scrape_accounts upsert error", error);
+      throw new Error("스크래핑 계좌 저장 실패");
     }
-
-    pushLog(`기존 계좌 사용: ${existing.bank_name} / ${maskAccountNo(existing.account_number)}`);
-    await runScrape(nx, existing.id, existing.bank_code, existing.account_number, signParam);
+    if (!data?.id) throw new Error("스크래핑 계좌 저장 실패");
+    return data.id;
   }
 
-  async function runScrape(
-    nx: any,
-    scrapeAccountId: string,
-    bankCode: string,
-    accountNo: string,
-    signParam: string
-  ) {
+  /**
+   * ✅ Step4 핵심: nx.execute로 "로그인" + "계좌거래내역조회"를 한 번에 수행
+   * - 이전 timeout 원인: 로그인 세션 없이 TX_LIST만 호출
+   */
+  async function runLoginAndScrape(nx: any, scrapeAccountId: string, bankCode: string, accountNo: string, certMeta: any) {
     setState("scraping");
-    pushLog(`거래내역 조회 호출 시작: ${bankCode} / ${maskAccountNo(accountNo)}`);
+    pushLog(`스크래핑 시작 ${bankCode} / ${maskAccountNo(accountNo)}`);
 
-    // ✅ 여기서 SignParam을 반드시 포함 (없으면 timeout 나는 케이스가 많음)
-    const params = {
-      bankCode,
-      accountNo,
-      startDate,
-      endDate,
-      SignParam: signParam,
-      signParam: signParam,
-    };
+    // certMeta 구조: { certData, certPwd, jumin }
+    const certData = certMeta?.certData;
+    const certPwd = certMeta?.certPwd;
 
-    let output: any;
-    try {
-      output = await callCooconApi(nx, apiId, params, 25000);
-    } catch (e: any) {
-      pushLog(`거래내역 조회 실패: ${e?.message ?? String(e)}`);
-      throw e;
+    if (!certData || !certPwd) {
+      throw new Error("certMeta 누락(인증서/비밀번호)");
     }
 
-    pushLog("거래내역 응답 수신 -> Edge Function 전달");
+    // Coocon 샘플에서 RDN을 인증서 이름으로 쓰던 흐름을 최대한 맞춤
+    const certName = certData?.RDN || certData?.User || certData?.CN || "";
+
+    const inputList = [
+      {
+        Module: bankCode,
+        Class: "개인뱅킹",
+        Job: "로그인",
+        Input: {
+          로그인방식: "CERT",
+          사용자아이디: "",
+          사용자비밀번호: "",
+          인증서: {
+            이름: certName,
+            만료일자: certData?.ExpiryDate || "",
+            비밀번호: certPwd,
+          },
+        },
+      },
+      {
+        Module: bankCode,
+        Class: "개인뱅킹",
+        Job: "계좌거래내역조회",
+        Input: {
+          계좌번호: accountNo,
+          조회시작일: ymdToYmd8(startDate),
+          조회종료일: ymdToYmd8(endDate),
+        },
+      },
+    ];
+
+    pushLog("nx.execute(login + tx) 호출");
+    const output = await nxExecute(nx, inputList);
+    pushLog("nx.execute 응답 수신 → Edge Function 전달");
 
     const { data: session } = await supabase.auth.getSession();
     const token = session.session?.access_token;
@@ -490,13 +467,14 @@ export default function CooconScrapePage() {
     }
 
     const j = await res.json().catch(() => ({}));
-    pushLog(`Edge OK: fetched=${j.fetched ?? "?"}`);
+    pushLog(`Edge OK: fetched=${j.fetched ?? "?"}, insertedTx=${j.insertedTx ?? "?"}, reflectedLedgerNew=${j.reflectedLedgerNew ?? "?"}`);
+
     pushLog("스크래핑 완료");
   }
 
   return (
     <div style={{ padding: 16, maxWidth: 900, margin: "0 auto" }}>
-      {/* makeCertManager가 붙을 DOM */}
+      {/* certLayer는 반드시 존재해야 함 */}
       <div id="certLayer" />
 
       <h1>쿠콘 계좌 인증 / 스크래핑</h1>
@@ -506,20 +484,9 @@ export default function CooconScrapePage() {
         <div style={{ marginTop: 12, color: "red", whiteSpace: "pre-wrap" }}>
           {errorMsg}
           <div style={{ marginTop: 8 }}>
-            <button
-              onClick={retry}
-              style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", cursor: "pointer" }}
-            >
-              재시도(인증서 다시 열기)
+            <button onClick={retry} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
+              다시 시도
             </button>
-          </div>
-          <div style={{ marginTop: 10, color: "#333" }}>
-            체크:
-            <ul style={{ marginTop: 6 }}>
-              <li>팝업 차단 해제</li>
-              <li>로컬 보안모듈/프로그램(쿠콘/웹케시) 설치 여부</li>
-              <li>mode=scrape_only인데 SignParam 저장이 없으면 connect_then_scrape로 먼저 인증</li>
-            </ul>
           </div>
         </div>
       )}
