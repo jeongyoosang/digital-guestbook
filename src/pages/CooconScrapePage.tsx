@@ -138,10 +138,7 @@ async function getMyMemberId(eventId: string): Promise<string> {
   const userId = user.user.id;
   const email = user.user.email;
 
-  let q = supabase
-    .from("event_members")
-    .select("id")
-    .eq("event_id", eventId);
+  let q = supabase.from("event_members").select("id").eq("event_id", eventId);
 
   if (userId) q = q.eq("user_id", userId);
   else if (email) q = q.eq("email", email);
@@ -302,14 +299,16 @@ export default function CooconScrapePage() {
     return { bankName, bankCode, accountNo };
   }
 
-  async function upsertScrapeAccount(
-    bankCode: string,
-    bankName: string,
-    accountNo: string,
-    certMeta: any
-  ) {
+  async function upsertScrapeAccount(bankCode: string, bankName: string, accountNo: string, certMeta: any) {
     const { data: user } = await supabase.auth.getUser();
     if (!user?.user) throw new Error("로그인이 필요합니다.");
+
+    // ✅ 필수값 검증 (인덱스 onConflict 키와 정합성)
+    if (!eventId) throw new Error("eventId가 없습니다.");
+    if (!user.user.id) throw new Error("user.id가 없습니다.");
+    if (!bankCode) throw new Error("bankCode가 없습니다.");
+    if (!bankName) throw new Error("bankName이 없습니다.");
+    if (!accountNo) throw new Error("accountNo가 없습니다.");
 
     const payload = {
       event_id: eventId,
@@ -322,13 +321,19 @@ export default function CooconScrapePage() {
       cert_meta_json: certMeta ?? null,
     };
 
+    // ✅ FIX: onConflict must match unique index
+    // event_scrape_accounts_on_conflict_uidx (event_id, owner_user_id, provider, bank_code)
     const { data, error } = await supabase
       .from("event_scrape_accounts")
-      .upsert(payload, { onConflict: "event_id,owner_user_id" })
+      .upsert(payload, { onConflict: "event_id,owner_user_id,provider,bank_code" })
       .select("id")
       .maybeSingle();
 
-    if (error || !data?.id) throw new Error("스크래핑 계좌 저장 실패");
+    if (error) {
+      console.error("event_scrape_accounts upsert error:", error);
+      throw new Error(`스크래핑 계좌 저장 실패: ${error.message}`);
+    }
+    if (!data?.id) throw new Error("스크래핑 계좌 저장 실패");
     return data.id;
   }
 
@@ -350,23 +355,20 @@ export default function CooconScrapePage() {
     const token = session.session?.access_token;
     if (!token) throw new Error("로그인이 필요합니다.");
 
-    const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          eventId,
-          scrapeAccountId,
-          startDate,
-          endDate,
-          cooconOutput: output,
-        }),
-      }
-    );
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        eventId,
+        scrapeAccountId,
+        startDate,
+        endDate,
+        cooconOutput: output,
+      }),
+    });
 
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
