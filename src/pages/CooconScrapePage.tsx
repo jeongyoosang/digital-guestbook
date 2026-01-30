@@ -1,168 +1,212 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "@/lib/supabase";
 
 /**
- * CooconScrapePage (iframe 방식)
+ * ✅ 원칙
+ * - public/coocon/* (쿠콘 제공 파일 트리) 절대 안 건드림
+ * - React에서 script/css 로딩/ nx.init/ makeCertManager 호출 ❌ (전부 쿠콘 html이 담당)
+ * - React는 iframe으로 public/coocon/은행_거래내역조회.html만 띄움 ✅
  *
- * - 은행_거래내역조회.html 은 절대 수정하지 않음
- * - iframe 으로 로드
- * - 쿠콘 결과는 window.postMessage 로 수신
+ * ✅ 여기서 하는 것
+ * - eventId/returnTo/startDate/endDate 파라미터 검증
+ * - 화면 상태/로그 출력
+ * - 필요 시 캐시 무력화용 bust 파라미터 추가
+ * - “나가기(리포트로)” 버튼
+ * - “다시 시도(iframe reload)” 버튼
+ *
+ * ⚠️ 스크래핑 결과를 DB에 넣는 postMessage 연동은 ‘iframe 화면이 정상 동작’ 확인 후 Step2로 붙인다.
  */
 
-type State = "idle" | "loading" | "scraping" | "done" | "error";
+type PageState = "idle" | "loading" | "ready" | "error";
+
+function isYmd(s: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+function safeDecode(s: string) {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
 
 export default function CooconScrapePage() {
   const nav = useNavigate();
   const [sp] = useSearchParams();
 
-  const eventId = sp.get("eventId")!;
-  const startDate = sp.get("startDate")!;
-  const endDate = sp.get("endDate")!;
-  const returnTo = sp.get("returnTo") || `/app/event/${eventId}/report`;
+  // ---------- query params ----------
+  const eventId = sp.get("eventId") || "";
+  const returnToRaw = sp.get("returnTo") || "";
+  const returnTo = useMemo(() => safeDecode(returnToRaw), [returnToRaw]);
 
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  // start/end는 “쿠콘 화면에서 입력할 수도” 있어서 필수로 강제하지 않음
+  // 다만 파라미터로 들어오면 형식 검증만 하고 로그만 찍어줌
+  const startDate = sp.get("startDate") || "";
+  const endDate = sp.get("endDate") || "";
 
-  const [state, setState] = useState<State>("idle");
-  const [log, setLog] = useState<string[]>([]);
+  // 모드값은 지금 단계에서 iframe 동작 확인용으로만 사용 (기능 분기 X)
+  const mode = sp.get("mode") || "";
+
+  // ---------- state ----------
+  const [state, setState] = useState<PageState>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
 
-  const pushLog = (msg: string) => {
-    const line = `${new Date().toLocaleTimeString()} ${msg}`;
-    setLog((p) => [...p, line]);
-    console.log("[COOCON]", msg);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const reloadKeyRef = useRef(0);
+
+  const pushLog = (m: string) => {
+    const line = `${new Date().toLocaleTimeString()} ${m}`;
+    setLogs((p) => [...p, line]);
+    // eslint-disable-next-line no-console
+    console.log("[COOCON]", m);
   };
 
-  /* ===============================
-   * postMessage 수신
-   * =============================== */
+  // ---------- computed ----------
+  const iframeSrc = useMemo(() => {
+    // ✅ public 기준 정경로
+    // 캐시 문제(304로 css/js가 꼬이는 느낌) 방지용으로 bust 붙임
+    const bust = Date.now() + "_" + reloadKeyRef.current;
+    return `/coocon/은행_거래내역조회.html?bust=${bust}`;
+  }, [reloadKeyRef.current]);
+
+  // ---------- lifecycle ----------
   useEffect(() => {
-    function onMessage(e: MessageEvent) {
-      if (!e.data) return;
+    try {
+      setState("loading");
+      setErrorMsg(null);
+      setLogs([]);
 
-      // 쿠콘 HTML에서 보내는 payload 가정
-      // { type: "COOCON_RESULT", payload: {...} }
-      if (e.data.type !== "COOCON_RESULT") return;
-
-      pushLog("쿠콘 결과 수신");
-      setState("scraping");
-
-      handleScrapeResult(e.data.payload).catch((err) => {
-        console.error(err);
-        setErrorMsg(err.message || String(err));
+      if (!eventId) {
         setState("error");
-      });
-    }
-
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
-
-  /* ===============================
-   * iframe 로드 시작
-   * =============================== */
-  useEffect(() => {
-    if (!eventId || !startDate || !endDate) {
-      setErrorMsg("필수 파라미터 누락");
-      setState("error");
-      return;
-    }
-
-    setState("loading");
-    pushLog("쿠콘 iframe 로딩");
-
-    // iframe src 세팅
-    const qs = new URLSearchParams({
-      eventId,
-      startDate,
-      endDate,
-    });
-
-    if (iframeRef.current) {
-      iframeRef.current.src = `/coocon/은행_거래내역조회.html?${qs.toString()}`;
-    }
-  }, [eventId, startDate, endDate]);
-
-  /* ===============================
-   * Edge Function 호출
-   * =============================== */
-  async function handleScrapeResult(cooconOutput: any) {
-    pushLog("Edge Function 호출");
-
-    const { data: session } = await supabase.auth.getSession();
-    const token = session.session?.access_token;
-    if (!token) throw new Error("로그인 필요");
-
-    const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          eventId,
-          startDate,
-          endDate,
-          cooconOutput,
-        }),
+        setErrorMsg("eventId 없음 (URL 파라미터 확인 필요)");
+        return;
       }
-    );
 
-    if (!res.ok) {
-      const t = await res.text();
-      throw new Error(`Edge Function 실패: ${t}`);
+      pushLog("쿠콘 iframe 모드로 실행 (쿠콘 제공 HTML이 인증/스크래핑 전담)");
+      pushLog(`eventId=${eventId}`);
+      if (mode) pushLog(`mode=${mode}`);
+
+      if (startDate || endDate) {
+        pushLog(`range param: ${startDate || "(none)"} ~ ${endDate || "(none)"}`);
+        if ((startDate && !isYmd(startDate)) || (endDate && !isYmd(endDate))) {
+          pushLog("⚠️ startDate/endDate 형식이 YYYY-MM-DD가 아님 (쿠콘 화면에서 직접 입력 권장)");
+        }
+      } else {
+        pushLog("range param 없음 (쿠콘 화면에서 시작일/종료일 직접 입력)");
+      }
+
+      if (returnTo) pushLog(`returnTo=${returnTo}`);
+
+      setState("ready");
+    } catch (e: any) {
+      setState("error");
+      setErrorMsg(e?.message || String(e));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId, returnToRaw, startDate, endDate, mode, reloadKeyRef.current]);
 
-    pushLog("스크래핑 저장 완료");
-    setState("done");
+  // ---------- actions ----------
+  const goBack = () => {
+    // returnTo가 없으면 기본 리포트로
+    const fallback = eventId ? `/app/event/${eventId}/report` : "/app";
+    nav(returnTo || fallback);
+  };
 
-    nav(returnTo);
-  }
+  const retryReloadIframe = () => {
+    pushLog("다시 시도: iframe reload");
+    setErrorMsg(null);
+    setState("ready");
 
-  /* ===============================
-   * UI
-   * =============================== */
+    // bust 파라미터를 바꾸기 위해 key 증가
+    reloadKeyRef.current += 1;
+
+    // 실제 reload도 한 번 더
+    try {
+      iframeRef.current?.contentWindow?.location.reload();
+    } catch {
+      // cross-origin일 수 있으니 무시
+    }
+  };
+
+  // ---------- render ----------
   return (
-    <div style={{ padding: 16 }}>
-      <h1>쿠콘 계좌 인증 / 스크래핑</h1>
-      <div style={{ marginBottom: 8 }}>state: {state}</div>
+    <div style={{ width: "100%", minHeight: "100vh", background: "#fff" }}>
+      <div style={{ padding: 16, borderBottom: "1px solid #eee" }}>
+        <div style={{ fontWeight: 800, fontSize: 18 }}>쿠콘 계좌 인증 / 스크래핑</div>
+        <div style={{ marginTop: 6, fontSize: 13, color: "#666" }}>state: {state}</div>
 
-      {errorMsg && (
-        <div style={{ color: "red", marginBottom: 12 }}>
-          {errorMsg}
-          <div>
-            <button onClick={() => window.location.reload()}>
-              다시 시도
-            </button>
-          </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+          <button
+            onClick={goBack}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              background: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            리포트로 돌아가기
+          </button>
+
+          <button
+            onClick={retryReloadIframe}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #111",
+              background: "#111",
+              color: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            다시 시도(iframe 새로고침)
+          </button>
         </div>
-      )}
 
-      {/* 쿠콘 전용 iframe */}
-      <iframe
-        ref={iframeRef}
-        title="coocon-scrape"
-        style={{
-          width: "100%",
-          height: "80vh",
-          border: "none",
-          background: "#fff",
-        }}
-      />
+        {errorMsg && (
+          <div style={{ marginTop: 12, color: "crimson", fontSize: 13, whiteSpace: "pre-wrap" }}>
+            {errorMsg}
+          </div>
+        )}
 
-      <pre
-        style={{
-          marginTop: 12,
-          fontSize: 12,
-          whiteSpace: "pre-wrap",
-          background: "#f8f8f8",
-          padding: 8,
-        }}
-      >
-        {log.join("\n")}
-      </pre>
+        <div style={{ marginTop: 10, fontSize: 12, color: "#999" }}>
+          체크:
+          <div>• 팝업 차단 해제</div>
+          <div>• 로컬 보안모듈/프로그램(쿠콘/웹케시) 설치 여부</div>
+          <div>• 이 페이지는 쿠콘 제공 HTML을 그대로 띄우며 React는 관여하지 않습니다.</div>
+        </div>
+      </div>
+
+      {/* iframe area */}
+      <div style={{ width: "100%", height: "calc(100vh - 220px)" }}>
+        {state === "ready" ? (
+          <iframe
+            ref={iframeRef}
+            title="coocon-scrape"
+            src={iframeSrc}
+            style={{ width: "100%", height: "100%", border: "none", background: "#fff" }}
+            onLoad={() => pushLog("iframe loaded")}
+            onError={() => {
+              setState("error");
+              setErrorMsg("iframe 로딩 실패 (경로/public 파일 확인 필요)");
+              pushLog("ERROR: iframe onError");
+            }}
+          />
+        ) : (
+          <div style={{ padding: 16 }}>
+            {state === "loading" ? "로딩중..." : "오류 상태"}
+          </div>
+        )}
+      </div>
+
+      {/* logs */}
+      <div style={{ padding: 16, borderTop: "1px solid #eee" }}>
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>로그</div>
+        <pre style={{ margin: 0, fontSize: 12, whiteSpace: "pre-wrap" }}>{logs.join("\n")}</pre>
+      </div>
     </div>
   );
 }
