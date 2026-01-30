@@ -1,5 +1,5 @@
 // src/pages/CooconScrapePage.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 
@@ -88,45 +88,126 @@ function maskAccountNo(acct: string) {
   return `${"*".repeat(t.length - 4)}${t.slice(-4)}`;
 }
 
-/* ---------------- Coocon call wrapper ---------------- */
-
-async function callCooconApi(nx: any, apiId: string, params: any) {
-  if (typeof nx?.execute === "function") {
-    return await new Promise<any>((resolve, reject) => {
-      try {
-        nx.execute(apiId, params, (res: any) => resolve(res));
-      } catch (e) {
-        reject(e);
-      }
-    });
+function normalizeErr(err: any) {
+  if (!err) return new Error("Unknown Coocon error");
+  if (err instanceof Error) return err;
+  if (typeof err === "string") return new Error(err);
+  try {
+    return new Error(typeof err === "object" ? JSON.stringify(err) : String(err));
+  } catch {
+    return new Error(String(err));
   }
+}
 
-  if (typeof nx?.call === "function") {
-    return await new Promise<any>((resolve, reject) => {
-      try {
-        nx.call(apiId, params, (res: any) => resolve(res));
-      } catch (e) {
-        reject(e);
+/* ---------------- Coocon call wrapper (SAFE) ---------------- */
+
+type CallCooconApiOptions = {
+  timeoutMs?: number;
+  debugLabel?: string;
+};
+
+async function callCooconApi(nx: any, apiId: string, params: any, opts: CallCooconApiOptions = {}) {
+  const timeoutMs = opts.timeoutMs ?? 20000;
+  const label = opts.debugLabel ?? `coocon:${apiId}`;
+
+  if (!nx) throw new Error(`[${label}] Coocon SDK not ready`);
+
+  let settled = false;
+  const settleOnce = (fn: (v: any) => void, v: any) => {
+    if (settled) return;
+    settled = true;
+    fn(v);
+  };
+
+  return await new Promise<any>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      settleOnce(reject, new Error(`[${label}] timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    const cleanup = () => clearTimeout(timer);
+
+    const ok = (res: any) => {
+      cleanup();
+      settleOnce(resolve, res);
+    };
+    const fail = (e: any) => {
+      cleanup();
+      settleOnce(reject, normalizeErr(e));
+    };
+
+    // ✅ 콜백 키를 여러 개 달아두면 SDK가 어떤 키를 쓰든 ok/fail로 귀결됨
+    const paramsWithCallbacks = {
+      ...(params ?? {}),
+      callback: (r: any) => ok(r),
+      onSuccess: (r: any) => ok(r),
+      success: (r: any) => ok(r),
+      onComplete: (r: any) => ok(r),
+      onError: (e: any) => fail(e),
+      error: (e: any) => fail(e),
+      fail: (e: any) => fail(e),
+    };
+
+    const tryPromiseReturn = (ret: any) => {
+      if (ret && typeof ret.then === "function") {
+        ret.then(ok).catch(fail);
+        return true;
       }
-    });
-  }
+      return false;
+    };
 
-  const fn = window.fn;
-  if (fn && typeof fn === "object") {
-    for (const k of ["callCoocon", "getTxList", "requestTxList"]) {
-      if (typeof fn[k] === "function") {
-        return await new Promise<any>((resolve, reject) => {
+    const tryExecute = () => {
+      if (typeof nx?.execute !== "function") return false;
+      try {
+        // (apiId, params, cb)
+        const ret = nx.execute(apiId, paramsWithCallbacks, (r: any) => ok(r));
+        if (tryPromiseReturn(ret)) return true;
+        return true;
+      } catch (e) {
+        // 다음 fallback으로
+        return false;
+      }
+    };
+
+    const tryCall = () => {
+      if (typeof nx?.call !== "function") return false;
+      try {
+        const ret = nx.call(apiId, paramsWithCallbacks, (r: any) => ok(r));
+        if (tryPromiseReturn(ret)) return true;
+        return true;
+      } catch (e) {
+        return false;
+      }
+    };
+
+    const tryWindowFn = () => {
+      const fn = window.fn;
+      if (!fn || typeof fn !== "object") return false;
+
+      for (const k of ["callCoocon", "getTxList", "requestTxList"]) {
+        if (typeof fn[k] === "function") {
           try {
-            fn[k](apiId, params, (res: any) => resolve(res));
+            const ret = fn[k](apiId, paramsWithCallbacks, (r: any) => ok(r));
+            if (tryPromiseReturn(ret)) return true;
+            return true;
           } catch (e) {
-            reject(e);
+            // 다음 함수 후보
           }
-        });
+        }
       }
-    }
-  }
+      return false;
+    };
 
-  throw new Error("Coocon API method not found");
+    // ✅ 실행 순서: execute → call → window.fn.*
+    try {
+      if (tryExecute()) return;
+      if (tryCall()) return;
+      if (tryWindowFn()) return;
+
+      fail(new Error(`[${label}] Coocon API method not found (execute/call/window.fn.*)`));
+    } catch (e) {
+      fail(e);
+    }
+  });
 }
 
 /* ---------------- DB helpers ---------------- */
@@ -187,8 +268,18 @@ export default function CooconScrapePage() {
   const mode = sp.get("mode") || "connect_then_scrape";
   const startDate = sp.get("startDate") || "";
   const endDate = sp.get("endDate") || "";
-  const returnTo = sp.get("returnTo") || "";
+  const returnToRaw = sp.get("returnTo") || "";
   const apiId = sp.get("apiId") || "TX_LIST";
+
+  // ✅ ResultPage에서 returnTo를 encodeURIComponent로 한번 감싸서 보내므로 여기서 decode 1번
+  const returnTo = useMemo(() => {
+    if (!returnToRaw) return "";
+    try {
+      return decodeURIComponent(returnToRaw);
+    } catch {
+      return returnToRaw;
+    }
+  }, [returnToRaw]);
 
   const [state, setState] = useState<ScrapeState>("idle");
   const [log, setLog] = useState<string[]>([]);
@@ -198,6 +289,8 @@ export default function CooconScrapePage() {
 
   const pushLog = (s: string) => {
     setLog((prev) => [...prev, `${new Date().toLocaleTimeString()}  ${s}`]);
+    // eslint-disable-next-line no-console
+    console.log("[COOCON]", s);
   };
 
   useEffect(() => {
@@ -222,13 +315,21 @@ export default function CooconScrapePage() {
         if (!nx) throw new Error("NXiSAS 로딩 실패");
 
         setState("initializing");
+        pushLog("nx.init 시작");
         await new Promise<void>((resolve, reject) => {
-          nx.init((ok: boolean) => (ok ? resolve() : reject(new Error("nx.init 실패"))));
+          try {
+            nx.init((ok: boolean) => (ok ? resolve() : reject(new Error("nx.init 실패"))));
+          } catch (e) {
+            reject(e);
+          }
         });
+        pushLog("nx.init 완료");
 
         if (!isYmd(startDate) || !isYmd(endDate)) {
           throw new Error("startDate/endDate 형식 오류");
         }
+
+        pushLog(`mode=${mode}, apiId=${apiId}, range=${startDate}~${endDate}`);
 
         if (mode === "connect_then_scrape") {
           await runConnectThenScrape();
@@ -237,11 +338,13 @@ export default function CooconScrapePage() {
         }
 
         setState("done");
+        pushLog("완료. 리포트로 이동");
         nav(returnTo || `/app/event/${eventId}/report`);
       } catch (e: any) {
-        setErrorMsg(e.message);
+        const msg = e?.message ?? String(e);
+        setErrorMsg(msg);
         setState("error");
-        pushLog(`오류: ${e.message}`);
+        pushLog(`오류: ${msg}`);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -249,22 +352,37 @@ export default function CooconScrapePage() {
 
   async function runConnectThenScrape() {
     setState("cert_select");
-    pushLog("인증서 선택");
+    pushLog("인증서 선택 단계 진입");
 
-    const nx = window.CooconiSASNX;
+    // jQuery/레이어 존재 체크
+    if (!window.$) throw new Error("쿠콘 jQuery 로딩 실패(window.$ 없음)");
 
     const certMeta = await new Promise<any>((resolve, reject) => {
       try {
-        window.$("#certLayer").makeCertManager((data: any) => resolve(data));
+        // 일부 환경에서 레이어가 없으면 실패하므로 방어
+        const el = window.$("#certLayer");
+        if (!el || el.length === 0) {
+          reject(new Error("certLayer DOM이 없습니다. (쿠콘 HTML/레이어 확인 필요)"));
+          return;
+        }
+
+        // makeCertManager 콜백이 호출되면 resolve
+        el.makeCertManager((data: any) => resolve(data));
+        window.__CERT_OPENED__ = true;
       } catch {
         reject(new Error("인증서 팝업 실패"));
       }
     });
 
+    pushLog("인증서 선택 완료");
+
     const { bankName, bankCode, accountNo } = await getPrimaryFromEventAccounts();
     pushLog(`계좌: ${bankName} / ${maskAccountNo(accountNo)}`);
 
     const scrapeAccountId = await upsertScrapeAccount(bankCode, bankName, accountNo, certMeta);
+    pushLog(`event_scrape_accounts upsert OK: ${scrapeAccountId}`);
+
+    // ✅ 여기서부터는 scrape_only와 동일 경로로 강제
     await runScrape(scrapeAccountId, bankCode, accountNo);
   }
 
@@ -299,44 +417,38 @@ export default function CooconScrapePage() {
     return { bankName, bankCode, accountNo };
   }
 
-  async function upsertScrapeAccount(
-  bankCode: string,
-  bankName: string,
-  accountNo: string,
-  certMeta: any
-) {
-  const { data: user } = await supabase.auth.getUser();
-  if (!user?.user) throw new Error("로그인이 필요합니다.");
+  async function upsertScrapeAccount(bankCode: string, bankName: string, accountNo: string, certMeta: any) {
+    const { data: user } = await supabase.auth.getUser();
+    if (!user?.user) throw new Error("로그인이 필요합니다.");
 
-  const payload = {
-    event_id: eventId,
-    owner_user_id: user.user.id,
-    provider: "coocon",
-    bank_code: bankCode,
-    bank_name: bankName,
-    account_number: accountNo,
-    verified_at: new Date().toISOString(),
-    cert_meta_json: certMeta ?? null,
-  };
+    const payload = {
+      event_id: eventId,
+      owner_user_id: user.user.id,
+      provider: "coocon",
+      bank_code: bankCode,
+      bank_name: bankName,
+      account_number: accountNo,
+      verified_at: new Date().toISOString(),
+      cert_meta_json: certMeta ?? null,
+    };
 
-  const { data, error } = await supabase
-    .from("event_scrape_accounts")
-    .upsert(payload, {
-      onConflict: "event_id,owner_user_id,provider,bank_code", // ✅ DB와 100% 일치
-    })
-    .select("id")
-    .maybeSingle();
+    const { data, error } = await supabase
+      .from("event_scrape_accounts")
+      .upsert(payload, {
+        onConflict: "event_id,owner_user_id,provider,bank_code", // ✅ DB와 100% 일치
+      })
+      .select("id")
+      .maybeSingle();
 
-  if (error) {
-    console.error("event_scrape_accounts upsert error", error);
-    throw new Error("스크래핑 계좌 저장 실패");
+    if (error) {
+      console.error("event_scrape_accounts upsert error", error);
+      throw new Error("스크래핑 계좌 저장 실패");
+    }
+
+    if (!data?.id) throw new Error("스크래핑 계좌 저장 실패");
+
+    return data.id;
   }
-
-  if (!data?.id) throw new Error("스크래핑 계좌 저장 실패");
-
-  return data.id;
-}
-
 
   async function runScrape(scrapeAccountId: string, bankCode: string, accountNo: string) {
     setState("scraping");
@@ -349,32 +461,46 @@ export default function CooconScrapePage() {
       endDate,
     };
 
-    pushLog("거래내역 조회 API 호출");
-    const output = await callCooconApi(nx, apiId, params);
+    pushLog("거래내역 조회 API 호출 시작");
+    let output: any;
+    try {
+      output = await callCooconApi(nx, apiId, params, { timeoutMs: 25000, debugLabel: `tx:${apiId}` });
+    } catch (e: any) {
+      const msg = e?.message ?? String(e);
+      pushLog(`거래내역 조회 API 실패: ${msg}`);
+      throw e;
+    }
+    pushLog("거래내역 조회 API 응답 수신(다음: Edge Function)");
 
     const { data: session } = await supabase.auth.getSession();
     const token = session.session?.access_token;
     if (!token) throw new Error("로그인이 필요합니다.");
 
-    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        eventId,
-        scrapeAccountId,
-        startDate,
-        endDate,
-        cooconOutput: output,
-      }),
-    });
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          eventId,
+          scrapeAccountId,
+          startDate,
+          endDate,
+          cooconOutput: output,
+        }),
+      }
+    );
 
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      throw new Error(j.message || "Edge Function 실패");
+      throw new Error(j.message || j.error || "Edge Function 실패");
     }
+
+    const j = await res.json().catch(() => ({}));
+    pushLog(`Edge Function OK: fetched=${j.fetched ?? "?"}, insertedTx=${j.insertedTx ?? "?"}, reflectedLedgerNew=${j.reflectedLedgerNew ?? "?"}`);
 
     pushLog("스크래핑 및 리포트 반영 완료");
   }
@@ -385,9 +511,7 @@ export default function CooconScrapePage() {
       <div>state: {state}</div>
 
       {errorMsg && (
-        <div style={{ marginTop: 12, color: "red", whiteSpace: "pre-wrap" }}>
-          {errorMsg}
-        </div>
+        <div style={{ marginTop: 12, color: "red", whiteSpace: "pre-wrap" }}>{errorMsg}</div>
       )}
 
       <pre style={{ marginTop: 12, fontSize: 12 }}>{log.join("\n")}</pre>
