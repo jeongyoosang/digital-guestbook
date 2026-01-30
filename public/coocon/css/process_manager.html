@@ -5,19 +5,22 @@
 	<meta http-equiv="Expires" content="-1">
 	<meta http-equiv="Cache-Control" content="No-Cache" />
 	<meta http-equiv="Pragma" content="No-Cache" />
-	<script src="./js/jquery-1.9.1.min.js"></script>
-	<script src="./js/json3.min.js"></script>
-	<script src="./js/scraping.js"></script>
-	<link rel="stylesheet" href="./css/process_manager.css" />
+
+	<!-- ✅ public/coocon/* 기준으로 절대경로 고정 -->
+	<script src="/coocon/jquery-1.9.1.min.js"></script>
+	<script src="/coocon/json2.js"></script>
+	<script src="/coocon/web_socket.js"></script>
+	<script src="/coocon/isasscaping.js"></script>
+	<link rel="stylesheet" href="/coocon/css/process_manager.css" />
 
 	<style type="text/css">
 
 		/* header_wrap */
 		.header_wrap{display:block;height:21px;margin:0;padding:12px 0 12px 20px;border-bottom:1px solid #333;background-color:#fff;}
-		.header_wrap .tit_h1{display:block;height:21px;padding-left:29px;font-size:16px;color:#000;line-height:24px;*line-height:22px;background-image:url(./img/bg/bg_logo.png);background-repeat:no-repeat;background-position:0 0;}
+		.header_wrap .tit_h1{display:block;height:21px;padding-left:29px;font-size:16px;color:#000;line-height:24px;*line-height:22px;background-image:url(/coocon/img/bg/bg_logo.png);background-repeat:no-repeat;background-position:0 0;}
 		/* title_wrap */
 		.title_wrap{display:block;height:27px;}
-		.title_wrap h3.tit_h3{display:block;height:11px;margin:16px 0 0;padding-left:11px;font-size:12px;color:#000;line-height:14px;*line-height:12px;background-image:url(./img/bul/ico_bul01.png);background-repeat:no-repeat;background-position:0 3px;}
+		.title_wrap h3.tit_h3{display:block;height:11px;margin:16px 0 0;padding-left:11px;font-size:12px;color:#000;line-height:14px;*line-height:12px;background-image:url(/coocon/img/bul/ico_bul01.png);background-repeat:no-repeat;background-position:0 3px;}
 		/* container */
 		.content_wrap{position:relative;padding:23px 25px 81px 25px;min-width:1024px;/*min-height:650px;*/}
 
@@ -33,7 +36,6 @@
 		.tbl_lst td label > input[type=checkbox]{display:inline-block;vertical-align:-2px;*vertical-align:-1px;}
 		.tbl_lst td label > span{*display:inline-block;*vertical-align:-1px;}
 
-
 		/* footer */
 		.footer{width:100%;position:fixed;bottom:0;left:0;z-index:99999;}
 		/* copy right */
@@ -45,10 +47,11 @@
 		.ft_menu span:first-child{border-left:0;padding-left:0;}
 		.ft_menu span a{font-size:11px;color:#555;height:11px;margin-top:-1px;}
 
+		/* ✅ certLayer: CooconScrapePage에서 $('#certLayer').makeCertManager(...) 호출할 때 필요 */
+		#certLayer{position:relative; z-index:999999;}
 	</style>
 
 <script type="text/javascript">
-
 	$(document).ready(function () {
 		/*스크래핑 모듈 초기화 */
 		CooconSAS.init( function (b) {
@@ -60,10 +63,10 @@
 			/** 인증서 목록 그리기 **/
 			CooconSAS.getCertList( function (rtn){
 				$('#cert_list tr').not(':eq(0)').remove();
-				
+
 				var result = rtn['Result'];
 				var cert= result['CertList'];
-				
+
 				$.each(cert, function (i,v){
 					$("#cert_list").append('<option data=\''+ JSON.stringify(v) +'\' >'+v['ExpiryDate']+' '+v['User']+'</option> ');
 				});
@@ -133,7 +136,6 @@
 		param2['조회시작일'] = $("#start_dt").val();
 		param2['조회종료일'] = $("#end_dt").val();
 
-		
 		/* 납부확인서 Parameter*/
 		var input2 = {};
 		input2['Module']= gigwan;
@@ -144,15 +146,13 @@
 		requestData['InputList']= inputList;
 
 		CooconSAS.get(requestData , function(rtn){
-			
-			
 			if(rtn.ErrorCode != "00000000"){
 				alert( rtn.ErrorMessage );
 				return;
 			}
 			var result     = rtn['Result'];
 			var resultList = result['ResultList'];
-			
+
 			if( typeof resultList == "string" ){
 				resultList = decrypt(result);
 				if(resultList == null){
@@ -161,9 +161,9 @@
 				}
 			}
 			if( resultList!= null && typeof resultList != "string" ) {
-				
+
 				$("#acct_list").html("");
-				
+
 				for(var i=0; i<resultList.length; i++){
 					var d =resultList[i];
 					var output = d['Output'];
@@ -185,7 +185,7 @@
 							html += "<th><div>잔액</div></th>";
 							html += "<th><div>신규일자</div></th>";
 							html += "</tr>";
-							
+
 							for(var j= 0; j< rec.length; j++){
 								var list = rec[j];
 								html += "<tr>";
@@ -197,7 +197,7 @@
 								html += "<td><div>"+nvl( list["신규일자"] ,"" ) +"</div></td>";
 								html += "</tr>";
 							}
-	
+
 							html += "<table><br/>";
 							$("#acct_list").append(html);
 						}
@@ -222,22 +222,24 @@
 		    },
 		    error: function (jqXHR, textStatus, errorThrown)
 		    {
-		    	
+
 		    }
 		});
 		return rtn;
 	}
-	
+
 	function nvl(str , df ){
 		if(str == null || str == undefined ){
 			return df;
 		}
 		return str;
 	}
-
 </script>
 </head>
 <body>
+
+	<!-- ✅ CooconScrapePage에서 인증서 레이어 DOM 존재 체크용 -->
+	<div id="certLayer"></div>
 
 	<div class="wrap">
 
@@ -272,7 +274,7 @@
 						</tr>
 						<tr>
 							<th><div>인증서 명<span class="txt_r"> *</span></div></th>
-							<td><div><select id="cert_list" ><option value="" >인증서를 선택하세요.</option></select></td>
+							<td><div><select id="cert_list" ><option value="" >인증서를 선택하세요.</option></select></div></td>
 							<th><div>인증서 비밀번호<span class="txt_r"> *</span></div></th>
 							<td  colspan="2"><div><input type="password" id="cert_pwd"  placeholder="인증서 비밀번호" value="" /></div></td>
 						</tr>
@@ -307,7 +309,7 @@
 							<th><div>계좌번호</div></th>
 							<td><div><input type="text" id="acct_no"  value="" /></div></td>
 						</tr>
-						
+
 						<tr>
 							<th colspan="5"><div> 조회파라미터</div></th>
 						</tr>
@@ -317,7 +319,7 @@
 							<th><div>조회종료년월</div></th>
 							<td colspan="2"><div><input type="text" id="end_dt" maxlength="6" placeholder="조회종료년월(YYYYMM)" value="" /></div></td>
 						</tr>
-						
+
 					</tbody>
 				</table>
 
@@ -328,12 +330,10 @@
 
 			<br/><br/>
 
-
 			<div class="tit_box mgt20">
 				<h4 class="tit_h4">전계좌조회</h4>
 			</div>
 			<div class="tbl_lst" id="acct_list"></div>
-
 
 		<!-- //content wrap -->
 
