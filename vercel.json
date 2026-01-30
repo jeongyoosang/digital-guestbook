@@ -1,20 +1,6 @@
 {
-  "rewrites": [
-    {
-      "source": "/coocon/(.*\\.html)",
-      "destination": "/coocon/$1"
-    },
-    {
-      "source": "/coocon/(.*)",
-      "destination": "/coocon/$1"
-    },
-    {
-      "source": "/assets/(.*)",
-      "destination": "/assets/$1"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/"
-    }
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/" }
   ]
 }

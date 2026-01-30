@@ -1,212 +1,362 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8" />
+	<meta http-equiv="Expires" content="-1">
+	<meta http-equiv="Cache-Control" content="No-Cache" />
+	<meta http-equiv="Pragma" content="No-Cache" />
+	<script src="./js/jquery-1.9.1.min.js"></script>
+	<script src="./js/json2.js"></script>
+	<script src="./js/isasscaping.js"></script>
+	<link rel="stylesheet" href="./css/process_manager.css" />
 
-/**
- * ✅ 원칙
- * - public/coocon/* (쿠콘 제공 파일 트리) 절대 안 건드림
- * - React에서 script/css 로딩/ nx.init/ makeCertManager 호출 ❌ (전부 쿠콘 html이 담당)
- * - React는 iframe으로 public/coocon/은행_거래내역조회.html만 띄움 ✅
- *
- * ✅ 여기서 하는 것
- * - eventId/returnTo/startDate/endDate 파라미터 검증
- * - 화면 상태/로그 출력
- * - 필요 시 캐시 무력화용 bust 파라미터 추가
- * - “나가기(리포트로)” 버튼
- * - “다시 시도(iframe reload)” 버튼
- *
- * ⚠️ 스크래핑 결과를 DB에 넣는 postMessage 연동은 ‘iframe 화면이 정상 동작’ 확인 후 Step2로 붙인다.
- */
 
-type PageState = "idle" | "loading" | "ready" | "error";
+	<style type="text/css">
 
-function isYmd(s: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(s);
-}
+		/* header_wrap */
+		.header_wrap{display:block;height:21px;margin:0;padding:12px 0 12px 20px;border-bottom:1px solid #333;background-color:#fff;}
+		.header_wrap .tit_h1{display:block;height:21px;padding-left:29px;font-size:16px;color:#000;line-height:24px;*line-height:22px;background-image:url(./img/bg/bg_logo.png);background-repeat:no-repeat;background-position:0 0;}
+		/* title_wrap */
+		.title_wrap{display:block;height:27px;}
+		.title_wrap h3.tit_h3{display:block;height:11px;margin:16px 0 0;padding-left:11px;font-size:12px;color:#000;line-height:14px;*line-height:12px;background-image:url(./img/bul/ico_bul01.png);background-repeat:no-repeat;background-position:0 3px;}
+		/* container */
+		.content_wrap{position:relative;padding:23px 25px 81px 25px;min-width:1024px;/*min-height:650px;*/}
 
-function safeDecode(s: string) {
-  try {
-    return decodeURIComponent(s);
-  } catch {
-    return s;
-  }
-}
+		/* table wrap */
+		.tbl_wrap{clear:both;display:block;}
+		/* table(list) */
+		.tbl_lst {table-layout:fixed;margin:0;width:100%;border-top:1px solid #d2d2d2;border-right:1px solid #d2d2d2;}
+		.tbl_lst th{border-bottom:1px solid #d2d2d2;border-left:1px solid #d2d2d2;background-color:#f6f6f6;}
+		.tbl_lst th > div{padding:2px 0 0;*padding:1px 0;color:#333;font-weight:normal;line-height:29px;}
+		.tbl_lst td{vertical-align:top;border-bottom:1px solid #d2d2d2;border-left:1px solid #d2d2d2;}
+		.tbl_lst td > div{padding:2px 8px 0;*padding:1px 8px;color:#555;font-weight:normal;text-align:left;line-height:29px !important;}
+		.tbl_lst td label > input[type=radio],
+		.tbl_lst td label > input[type=checkbox]{display:inline-block;vertical-align:-2px;*vertical-align:-1px;}
+		.tbl_lst td label > span{*display:inline-block;*vertical-align:-1px;}
 
-export default function CooconScrapePage() {
-  const nav = useNavigate();
-  const [sp] = useSearchParams();
 
-  // ---------- query params ----------
-  const eventId = sp.get("eventId") || "";
-  const returnToRaw = sp.get("returnTo") || "";
-  const returnTo = useMemo(() => safeDecode(returnToRaw), [returnToRaw]);
+		/* footer */
+		.footer{width:100%;position:fixed;bottom:0;left:0;z-index:99999;}
+		/* copy right */
+		.copyright_wrap{width:100%;min-width:600px;height:22px;padding:8px 0 0 0;border-top:1px solid #ddd;background-color:#fff;position:relative;clear:both;}
+		.copyright_box{float:left;width:50%;color:#999;font-size:11px;text-align:left;}
+		.copyright_box p:first-child{font-size:11px;color:#999;padding-left:10px;}
+		.ft_menu{float:right;width:40%;padding-right:10px;text-align:right;}
+		.ft_menu span{padding:0 7px 0 10px;border-left:1px solid #ccc;display:inline-block;height:10px;}
+		.ft_menu span:first-child{border-left:0;padding-left:0;}
+		.ft_menu span a{font-size:11px;color:#555;height:11px;margin-top:-1px;}
 
-  // start/end는 “쿠콘 화면에서 입력할 수도” 있어서 필수로 강제하지 않음
-  // 다만 파라미터로 들어오면 형식 검증만 하고 로그만 찍어줌
-  const startDate = sp.get("startDate") || "";
-  const endDate = sp.get("endDate") || "";
+	</style>
 
-  // 모드값은 지금 단계에서 iframe 동작 확인용으로만 사용 (기능 분기 X)
-  const mode = sp.get("mode") || "";
+<script type="text/javascript">
 
-  // ---------- state ----------
-  const [state, setState] = useState<PageState>("idle");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [logs, setLogs] = useState<string[]>([]);
+	$(document).ready(function () {
+		/*스크래핑 모듈 초기화 */
+		CooconSAS.init( function (b) {
+			//실행가능여부
+			if(!b){
+				//설치페이지 이동
+				return;
+			}
+			/** 인증서 목록 그리기 **/
+			CooconSAS.getCertList( function (rtn){
+				$('#cert_list tr').not(':eq(0)').remove();
+				
+				var result = rtn['Result'];
+				var cert= result['CertList'];
+				
+				$.each(cert, function (i,v){
+					$("#cert_list").append('<option data=\''+ JSON.stringify(v) +'\' >'+v['ExpiryDate']+' '+v['User']+'</option> ');
+				});
+		  });
+		});
+	});
 
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const reloadKeyRef = useRef(0);
+	function search(){
 
-  const pushLog = (m: string) => {
-    const line = `${new Date().toLocaleTimeString()} ${m}`;
-    setLogs((p) => [...p, line]);
-    // eslint-disable-next-line no-console
-    console.log("[COOCON]", m);
-  };
+		var requestData ={};
+		var inputList=[];
 
-  // ---------- computed ----------
-  const iframeSrc = useMemo(() => {
-    // ✅ public 기준 정경로
-    // 캐시 문제(304로 css/js가 꼬이는 느낌) 방지용으로 bust 붙임
-    const bust = Date.now() + "_" + reloadKeyRef.current;
-    return `/coocon/은행_거래내역조회.html?bust=${bust}`;
-  }, [reloadKeyRef.current]);
+		var cert_data = $("#cert_list option:selected").attr("data");
 
-  // ---------- lifecycle ----------
-  useEffect(() => {
-    try {
-      setState("loading");
-      setErrorMsg(null);
-      setLogs([]);
+		var cert_nm = "";
+		if(cert_data != null && cert_data != ""){
+			var data =JSON.parse(cert_data);
+			cert_nm = data['RDN'];
+		}
 
-      if (!eventId) {
-        setState("error");
-        setErrorMsg("eventId 없음 (URL 파라미터 확인 필요)");
-        return;
-      }
+		/**
+		* 필수 입력값 체크
+		**/
+		if(cert_nm ==""){
+				alert('인증서를 선택하세요.');
+				return;
+		}
+		if($("#cert_pwd").val() ==""){
+				alert('인증서 비밀번호를 입력하세요.');
+				return;
+		}
+		if($("#jumin_no").val() ==""){
+				alert('주민번호를 입력하세요.');
+				return;
+		}
 
-      pushLog("쿠콘 iframe 모드로 실행 (쿠콘 제공 HTML이 인증/스크래핑 전담)");
-      pushLog(`eventId=${eventId}`);
-      if (mode) pushLog(`mode=${mode}`);
+		var gigwan = $("#gigwan option:selected").val();
+		if(gigwan ==""){
+				alert('금융기관을 선택하세요.');
+				return;
+		}
 
-      if (startDate || endDate) {
-        pushLog(`range param: ${startDate || "(none)"} ~ ${endDate || "(none)"}`);
-        if ((startDate && !isYmd(startDate)) || (endDate && !isYmd(endDate))) {
-          pushLog("⚠️ startDate/endDate 형식이 YYYY-MM-DD가 아님 (쿠콘 화면에서 직접 입력 권장)");
-        }
-      } else {
-        pushLog("range param 없음 (쿠콘 화면에서 시작일/종료일 직접 입력)");
-      }
+		/* 인증서 정보 */
+		var certParam = {};
+		certParam["이름"]      = cert_nm;
+		certParam["만료일자"]  = "";
+		certParam["비밀번호"]  = $("#cert_pwd").val();
 
-      if (returnTo) pushLog(`returnTo=${returnTo}`);
+		/* 로그인 Parameter 설정 */
+		var param = {};
+		param['로그인방식']    = "CERT";
+		param['사용자아이디']  = "";
+		param['사용자비밀번호']= "";
+		param['인증서']        = certParam;
 
-      setState("ready");
-    } catch (e: any) {
-      setState("error");
-      setErrorMsg(e?.message || String(e));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId, returnToRaw, startDate, endDate, mode, reloadKeyRef.current]);
+		/* 로그인 Job 설정  */
+		var input = {};
+		input['Module'] = gigwan;
+		input['Class']  = "개인뱅킹";
+		input['Job']    = "로그인";
+		input['Input']  = param;
+		inputList.push( input );
 
-  // ---------- actions ----------
-  const goBack = () => {
-    // returnTo가 없으면 기본 리포트로
-    const fallback = eventId ? `/app/event/${eventId}/report` : "/app";
-    nav(returnTo || fallback);
-  };
+		/* 납부확인서 조회 Parameter 설정 */
+		var param2 = {};
+		param2['계좌번호'] = $("#acct_no").val();
+		param2['조회시작일'] = $("#start_dt").val();
+		param2['조회종료일'] = $("#end_dt").val();
 
-  const retryReloadIframe = () => {
-    pushLog("다시 시도: iframe reload");
-    setErrorMsg(null);
-    setState("ready");
+		
+		/* 납부확인서 Parameter*/
+		var input2 = {};
+		input2['Module']= gigwan;
+		input2['Class'] = "개인뱅킹";
+		input2['Job']   = "계좌거래내역조회";
+		input2['Input'] = param2;
+		inputList.push(input2);
+		requestData['InputList']= inputList;
 
-    // bust 파라미터를 바꾸기 위해 key 증가
-    reloadKeyRef.current += 1;
+		CooconSAS.get(requestData , function(rtn){
+			
+			
+			if(rtn.ErrorCode != "00000000"){
+				alert( rtn.ErrorMessage );
+				return;
+			}
+			var result     = rtn['Result'];
+			var resultList = result['ResultList'];
+			
+			if( typeof resultList == "string" ){
+				resultList = decrypt(result);
+				if(resultList == null){
+					alert('복호화 오류 입니다.');
+					return;
+				}
+			}
+			if( resultList!= null && typeof resultList != "string" ) {
+				
+				$("#acct_list").html("");
+				
+				for(var i=0; i<resultList.length; i++){
+					var d =resultList[i];
+					var output = d['Output'];
+					if(output["ErrorCode"] != "00000000" ){
+						alert("에러코드: "+output["ErrorCode"]+"\n에러메시지: "+ output['ErrorMessage']);
+						return;
+					}else{
+						if(d['Job']=="로그인")continue;
+						var r = output['Result'];
+						var rec  = r["전계좌조회"];
+						if(rec != null ){
+							var html = "";
+							html += "<table>";
+							html += "<tr>";
+							html += "<th><div>예금명</div></th>";
+							html += "<th><div>계좌번호</div></th>";
+							html += "<th><div>통화코드</div></th>";
+							html += "<th><div>사업장명칭</div></th>";
+							html += "<th><div>잔액</div></th>";
+							html += "<th><div>신규일자</div></th>";
+							html += "</tr>";
+							
+							for(var j= 0; j< rec.length; j++){
+								var list = rec[j];
+								html += "<tr>";
+								html += "<td><div>"+nvl( list["예금명"] ,"" ) +"</div></td>";
+								html += "<td><div>"+nvl( list["계좌번호"] ,"" ) +"</div></td>";
+								html += "<td><div>"+nvl( list["통화코드"] ,"" ) +"</div></td>";
+								html += "<td><div>"+nvl( list["사업장명칭"] ,"" ) +"</div></td>";
+								html += "<td><div>"+nvl( list["잔액"] ,"" ) +"</div></td>";
+								html += "<td><div>"+nvl( list["신규일자"] ,"" ) +"</div></td>";
+								html += "</tr>";
+							}
+	
+							html += "<table><br/>";
+							$("#acct_list").append(html);
+						}
+					}
+				}
+			}
+		});
 
-    // 실제 reload도 한 번 더
-    try {
-      iframeRef.current?.contentWindow?.location.reload();
-    } catch {
-      // cross-origin일 수 있으니 무시
-    }
-  };
+	}
 
-  // ---------- render ----------
-  return (
-    <div style={{ width: "100%", minHeight: "100vh", background: "#fff" }}>
-      <div style={{ padding: 16, borderBottom: "1px solid #eee" }}>
-        <div style={{ fontWeight: 800, fontSize: 18 }}>쿠콘 계좌 인증 / 스크래핑</div>
-        <div style={{ marginTop: 6, fontSize: 13, color: "#666" }}>state: {state}</div>
+	function decrypt(encdata){
+		var param = "data="+ encodeURIComponent(  JSON.stringify(encdata) );
+		var rtn = null;
+		$.ajax({
+		    url : "/jsp/decode.jsp",
+		    type: "POST",
+		    data : param,
+		    async: false,
+		    success: function(data, textStatus, jqXHR)
+		    {
+		     	rtn = data;
+		    },
+		    error: function (jqXHR, textStatus, errorThrown)
+		    {
+		    	
+		    }
+		});
+		return rtn;
+	}
+	
+	function nvl(str , df ){
+		if(str == null || str == undefined ){
+			return df;
+		}
+		return str;
+	}
 
-        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-          <button
-            onClick={goBack}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              background: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            리포트로 돌아가기
-          </button>
+</script>
+</head>
+<body>
 
-          <button
-            onClick={retryReloadIframe}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "1px solid #111",
-              background: "#111",
-              color: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            다시 시도(iframe 새로고침)
-          </button>
-        </div>
+	<div class="wrap">
 
-        {errorMsg && (
-          <div style={{ marginTop: 12, color: "crimson", fontSize: 13, whiteSpace: "pre-wrap" }}>
-            {errorMsg}
-          </div>
-        )}
+		<!-- header_wrap -->
+		<div class="header_wrap">
+			<div class="f_left">
+				<h1 class="tit_h1">금융기관-계좌조회</h1>
+			</div>
+		</div>
+		<!-- //header_wrap -->
+		<!-- content wrap -->
+		<div class="content_wrap">
+			<!-- //table result -->
 
-        <div style={{ marginTop: 10, fontSize: 12, color: "#999" }}>
-          체크:
-          <div>• 팝업 차단 해제</div>
-          <div>• 로컬 보안모듈/프로그램(쿠콘/웹케시) 설치 여부</div>
-          <div>• 이 페이지는 쿠콘 제공 HTML을 그대로 띄우며 React는 관여하지 않습니다.</div>
-        </div>
-      </div>
+			<div class="tbl_lst">
+				<table summary="">
+					<caption></caption>
+					<colgroup>
+					<col style="width: 120px;">
+					<col/>
+					<col style="width: 120px;">
+					<col/>
+					<col style="width: 66px;">
+					</colgroup>
+					<tbody>
+						<tr>
+							<th colspan="5"><div>금융기관-계좌조회</div></th>
+						</tr>
 
-      {/* iframe area */}
-      <div style={{ width: "100%", height: "calc(100vh - 220px)" }}>
-        {state === "ready" ? (
-          <iframe
-            ref={iframeRef}
-            title="coocon-scrape"
-            src={iframeSrc}
-            style={{ width: "100%", height: "100%", border: "none", background: "#fff" }}
-            onLoad={() => pushLog("iframe loaded")}
-            onError={() => {
-              setState("error");
-              setErrorMsg("iframe 로딩 실패 (경로/public 파일 확인 필요)");
-              pushLog("ERROR: iframe onError");
-            }}
-          />
-        ) : (
-          <div style={{ padding: 16 }}>
-            {state === "loading" ? "로딩중..." : "오류 상태"}
-          </div>
-        )}
-      </div>
+						<tr>
+							<th colspan="5"><div>금융기관-로그인정보</div></th>
+						</tr>
+						<tr>
+							<th><div>인증서 명<span class="txt_r"> *</span></div></th>
+							<td><div><select id="cert_list" ><option value="" >인증서를 선택하세요.</option></select></td>
+							<th><div>인증서 비밀번호<span class="txt_r"> *</span></div></th>
+							<td  colspan="2"><div><input type="password" id="cert_pwd"  placeholder="인증서 비밀번호" value="" /></div></td>
+						</tr>
+						<tr>
+							<th><div>금융기관<span class="txt_r"> *</span></div></th>
+							<td colspan="4">
+								<div>
+									<select id="gigwan" >
+											<option value="" >금융기관을 선택하세요.</option>
+											<option value="kdb">산업은행</option>
+											<option value="ibk">기업은행</option>
+											<option value="kbstar">국민은행</option>
+											<option value="hanabank">KEB하나은행</option>
+											<option value="suhyupbank">수협중앙회</option>
+											<option value="nonghyup">농협은행</option>
+											<option value="jejubank">제주은행</option>
+											<option value="jbbank">전북은행</option>
+											<option value="knbank">경남은행</option>
+											<option value="shinhan">신한은행</option>
+											<option value="wooribank">우리은행</option>
+											<option value="standardchartered">SC은행</option>
+											<option value="citibank">한국씨티은행</option>
+											<option value="dgb">대구은행</option>
+											<option value="busanbank">부산은행</option>
+											<option value="kjbank">광주은행</option>
+											<option value="kfcc">새마을금고중앙회</option>
+											<option value="cu">신협중앙회</option>
+											<option value="epostbank">우체국</option>
+									</select>
+								</div>
+							</td>
+							<th><div>계좌번호</div></th>
+							<td><div><input type="text" id="acct_no"  value="" /></div></td>
+						</tr>
+						
+						<tr>
+							<th colspan="5"><div> 조회파라미터</div></th>
+						</tr>
+						<tr>
+							<th><div>조회시작년월</div></th>
+							<td><div><input type="text" id="start_dt"  maxlength="6" placeholder="조회시작년월(YYYYMM)" value="" /></div></td>
+							<th><div>조회종료년월</div></th>
+							<td colspan="2"><div><input type="text" id="end_dt" maxlength="6" placeholder="조회종료년월(YYYYMM)" value="" /></div></td>
+						</tr>
+						
+					</tbody>
+				</table>
 
-      {/* logs */}
-      <div style={{ padding: 16, borderTop: "1px solid #eee" }}>
-        <div style={{ fontWeight: 800, marginBottom: 8 }}>로그</div>
-        <pre style={{ margin: 0, fontSize: 12, whiteSpace: "pre-wrap" }}>{logs.join("\n")}</pre>
-      </div>
-    </div>
-  );
-}
+				<div class="tit_box tar">
+					<a class="btn_srch" href="javascript:search()" ><span>조회</span></a>
+				</div>
+			</div>
+
+			<br/><br/>
+
+
+			<div class="tit_box mgt20">
+				<h4 class="tit_h4">전계좌조회</h4>
+			</div>
+			<div class="tbl_lst" id="acct_list"></div>
+
+
+		<!-- //content wrap -->
+
+		<!-- footer -->
+		<div class="footer">
+			<!-- Copy right -->
+			<div class="copyright_wrap">
+				<div class="copyright_box">
+					<p>
+						Copyright(c) <strong>Webcash.</strong> All rights reserved.
+					</p>
+				</div>
+				<div class="ft_menu">
+					<span><a href="#none"><label>Customer Center</label></a></span>
+				</div>
+			</div>
+			<!-- //Copy right -->
+		</div>
+		<!-- //footer -->
+
+	</div>
+	<!-- //wrap -->
+
+</body>
+</html>
