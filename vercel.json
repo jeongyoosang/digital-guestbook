@@ -1,7 +1,20 @@
 {
   "rewrites": [
-    { "source": "/coocon/(.*)", "destination": "/coocon/$1" },
-    { "source": "/assets/(.*)", "destination": "/assets/$1" },
-    { "source": "/(.*)", "destination": "/" }
+    {
+      "source": "/coocon/(.*\\.html)",
+      "destination": "/coocon/$1"
+    },
+    {
+      "source": "/coocon/(.*)",
+      "destination": "/coocon/$1"
+    },
+    {
+      "source": "/assets/(.*)",
+      "destination": "/assets/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
   ]
 }
