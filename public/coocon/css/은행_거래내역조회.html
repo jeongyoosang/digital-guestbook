@@ -6,6 +6,7 @@
   <meta http-equiv="Cache-Control" content="No-Cache" />
   <meta http-equiv="Pragma" content="No-Cache" />
 
+  <!-- 필수 라이브러리 -->
   <script src="../jquery-1.9.1.min.js"></script>
   <script src="../json2.js"></script>
   <script src="../web_socket.js"></script>
@@ -15,212 +16,131 @@
 
   <style type="text/css">
     .header_wrap{display:block;height:21px;margin:0;padding:12px 0 12px 20px;border-bottom:1px solid #333;background-color:#fff;}
-    .header_wrap .tit_h1{display:block;height:21px;padding-left:29px;font-size:16px;color:#000;line-height:24px;*line-height:22px;background-image:url(./img/bg/bg_logo.png);background-repeat:no-repeat;background-position:0 0;}
-    .title_wrap{display:block;height:27px;}
-    .title_wrap h3.tit_h3{display:block;height:11px;margin:16px 0 0;padding-left:11px;font-size:12px;color:#000;line-height:14px;*line-height:12px;background-image:url(./img/bul/ico_bul01.png);background-repeat:no-repeat;background-position:0 3px;}
+    .header_wrap .tit_h1{display:block;height:21px;padding-left:29px;font-size:16px;color:#000;line-height:24px;background-image:url(./img/bg/bg_logo.png);background-repeat:no-repeat;background-position:0 0;}
     .content_wrap{position:relative;padding:23px 25px 81px 25px;min-width:1024px;}
-    .tbl_wrap{clear:both;display:block;}
-    .tbl_lst {table-layout:fixed;margin:0;width:100%;border-top:1px solid #d2d2d2;border-right:1px solid #d2d2d2;}
-    .tbl_lst th{border-bottom:1px solid #d2d2d2;border-left:1px solid #d2d2d2;background-color:#f6f6f6;}
-    .tbl_lst th > div{padding:2px 0 0;*padding:1px 0;color:#333;font-weight:normal;line-height:29px;}
-    .tbl_lst td{vertical-align:top;border-bottom:1px solid #d2d2d2;border-left:1px solid #d2d2d2;}
-    .tbl_lst td > div{padding:2px 8px 0;*padding:1px 8px;color:#555;font-weight:normal;text-align:left;line-height:29px !important;}
-    .footer{width:100%;position:fixed;bottom:0;left:0;z-index:99999;}
-    .copyright_wrap{width:100%;min-width:600px;height:22px;padding:8px 0 0 0;border-top:1px solid #ddd;background-color:#fff;position:relative;clear:both;}
-    .copyright_box{float:left;width:50%;color:#999;font-size:11px;text-align:left;}
-    .copyright_box p:first-child{font-size:11px;color:#999;padding-left:10px;}
-    .ft_menu{float:right;width:40%;padding-right:10px;text-align:right;}
-    .ft_menu span{padding:0 7px 0 10px;border-left:1px solid #ccc;display:inline-block;height:10px;}
-    .ft_menu span:first-child{border-left:0;padding-left:0;}
-    .ft_menu span a{font-size:11px;color:#555;height:11px;margin-top:-1px;}
+    .tbl_lst {width:100%;border-top:1px solid #d2d2d2;border-right:1px solid #d2d2d2;}
+    .tbl_lst th, .tbl_lst td{border-bottom:1px solid #d2d2d2;border-left:1px solid #d2d2d2;}
+    .tbl_lst th{background:#f6f6f6;}
+    .tbl_lst th > div{line-height:29px;}
+    .tbl_lst td > div{padding:2px 8px;line-height:29px;}
+    .footer{width:100%;position:fixed;bottom:0;left:0;}
   </style>
 
   <script type="text/javascript">
-    function getSAS() {
-      // ✅ CooconSAS가 없으면 nx로라도 붙는다
-      return window.CooconSAS || window.cooconSAS || window.nx || window.NX || null;
-    }
+    var nx = null;
 
-    function safeGetCertList(sas, cb) {
-      var fn = sas && (sas.getCertList || sas.getCertlist || sas.getCerts);
-      if (!fn) return cb(null);
-      try { fn.call(sas, cb); } catch (e) { cb(null); }
-    }
+    /** 초기화 */
+    $(document).ready(function () {
+      nx = window.CooconiSASNX;
+      if (!nx) {
+        alert("쿠콘 NX 모듈이 로드되지 않았습니다.");
+        return;
+      }
 
-    function safeInit(sas, cb) {
-      var fn = sas && sas.init;
-      if (!fn) return cb(true); // nx는 이미 init된 경우가 많아서 true로 진행
-      try { fn.call(sas, cb); } catch (e) { cb(false); }
-    }
-
-    function renderCertList(rtn) {
-      $('#cert_list').empty();
-      $("#cert_list").append('<option value="" >인증서를 선택하세요.</option>');
-
-      if (!rtn || !rtn.Result) return;
-
-      var cert = rtn.Result.CertList;
-      if (!cert || !cert.length) return;
-
-      $.each(cert, function (i, v) {
-        var user = v['User'] || '';
-        var exp = v['ExpiryDate'] || '';
-        var label = (exp ? (exp + ' ') : '') + user;
-        $("#cert_list").append(
-          '<option data=\'' + JSON.stringify(v) + '\'>' + label + '</option>'
-        );
-      });
-    }
-
-    function bootCertList() {
-      var start = Date.now();
-      var timer = setInterval(function () {
-        var sas = getSAS();
-        if (!sas) {
-          if (Date.now() - start > 3000) {
-            clearInterval(timer);
-            console.log("[COOCON][HTML] CooconSAS/nx not found (timeout)");
-          }
+      nx.init(function (ok) {
+        if (!ok) {
+          alert("쿠콘 모듈 초기화 실패");
           return;
         }
 
-        clearInterval(timer);
+        // 인증서 목록 조회
+        nx.getCertList(function (list) {
+          $("#cert_list").empty().append('<option value="">인증서를 선택하세요.</option>');
+          if (!list || !list.length) return;
 
-        safeInit(sas, function (ok) {
-          console.log("[COOCON][HTML] init =", ok);
-          if (!ok) return;
-
-          safeGetCertList(sas, function (rtn) {
-            console.log("[COOCON][HTML] getCertList rtn =", rtn);
-            renderCertList(rtn);
-          });
+          for (var i = 0; i < list.length; i++) {
+            var c = list[i];
+            $("#cert_list").append(
+              '<option data=\'' + JSON.stringify(c) + '\'>' +
+              (c.ExpiryDate || "") + " " + (c.User || "") +
+              '</option>'
+            );
+          }
         });
-      }, 200);
-    }
-
-    $(document).ready(function () {
-      bootCertList();
+      });
     });
 
-    function doScrape(){
+    /** 거래내역 조회 */
+    function doScrape() {
+      if (!nx) {
+        alert("쿠콘 모듈이 준비되지 않았습니다.");
+        return;
+      }
+
+      var certData = $("#cert_list option:selected").attr("data");
+      if (!certData) {
+        alert("인증서를 선택하세요.");
+        return;
+      }
+
+      var cert = JSON.parse(certData);
+      var certPwd = $("#cert_pwd").val();
+      if (!certPwd) {
+        alert("인증서 비밀번호를 입력하세요.");
+        return;
+      }
+
+      var gigwan = $("#gigwan").val();
+      if (!gigwan) {
+        alert("금융기관을 선택하세요.");
+        return;
+      }
+
+      var acctNo = $("#acct_no").val();
+      var startDt = $("#start_dt").val();
+      var endDt = $("#end_dt").val();
+
       var inputList = [];
-      var cert_data = $("#cert_list option:selected").attr("data");
 
-      var cert_nm = "";
-      if(cert_data){
-        try{
-          var data = JSON.parse(cert_data);
-          cert_nm = data['RDN'] || "";
-        }catch(e){}
-      }
-
-      if(cert_nm === ""){
-        alert('인증서를 선택하세요.');
-        return;
-      }
-      if($("#cert_pwd").val() === ""){
-        alert('인증서 비밀번호를 입력하세요.');
-        return;
-      }
-      if($("#jumin_no").val() === ""){
-        alert('주민번호를 입력하세요.');
-        return;
-      }
-
-      var gigwan = $("#gigwan option:selected").val();
-      if(gigwan === ""){
-        alert('금융기관을 선택하세요.');
-        return;
-      }
-
-      var sas = getSAS();
-      if(!sas){
-        alert("쿠콘 로컬 모듈(CooconSAS/nx)이 준비되지 않았습니다. 설치/실행 및 팝업 차단 해제 후 다시 시도해주세요.");
-        return;
-      }
-
-      var certParam = {};
-      certParam["이름"] = cert_nm;
-      certParam["만료일자"] = "";
-      certParam["비밀번호"] = $("#cert_pwd").val();
-
-      var param = {};
-      param['로그인방식'] = "CERT";
-      param['사용자아이디'] = "";
-      param['사용자비밀번호'] = "";
-      param['인증서'] = certParam;
-
-      var input = {};
-      input['Module'] = gigwan;
-      input['Class']  = "개인뱅킹";
-      input['Job']    = "로그인";
-      input['Input']  = param;
-      inputList.push(input);
-
-      var param2 = {};
-      param2['계좌번호'] = $("#acct_no").val();
-      param2['조회시작일'] = $("#start_dt").val();
-      param2['조회종료일'] = $("#end_dt").val();
-
-      var input2 = {};
-      input2['Module'] = gigwan;
-      input2['Class']  = "개인뱅킹";
-      input2['Job']    = "계좌거래내역조회";
-      input2['Input']  = param2;
-      inputList.push(input2);
-
-      var requestData = { InputList: inputList };
-
-      if(typeof sas.get !== "function"){
-        alert("현재 로딩된 쿠콘 객체에 get() 함수가 없습니다. isasscaping.js 버전/연동을 확인해야 합니다.");
-        return;
-      }
-
-      sas.get(requestData, function(rtn){
-        if(!rtn || rtn.ErrorCode !== "00000000"){
-          alert((rtn && rtn.ErrorMessage) ? rtn.ErrorMessage : "조회 실패(응답 없음)");
-          return;
-        }
-
-        var result = rtn['Result'];
-        var resultList = result['ResultList'];
-
-        if(resultList && typeof resultList === "string"){
-          alert("암호화 응답 처리(decrypt)가 필요한 형태입니다. 이 케이스면 서버 decode.jsp 라우팅을 맞춰야 합니다.");
-          return;
-        }
-
-        $("#acct_list").html("");
-
-        for(var i=0; i<resultList.length; i++){
-          var d = resultList[i];
-          var output = d['Output'];
-          if(output["ErrorCode"] !== "00000000"){
-            alert("에러코드: "+output["ErrorCode"]+"\n에러메시지: "+ output['ErrorMessage']);
-            return;
+      // 로그인
+      inputList.push({
+        Module: gigwan,
+        Class: "개인뱅킹",
+        Job: "로그인",
+        Input: {
+          로그인방식: "CERT",
+          인증서: {
+            이름: cert.RDN,
+            비밀번호: certPwd
           }
-          if(d['Job'] === "로그인") continue;
+        }
+      });
 
-          var r = output['Result'];
-          var rec = r["전계좌조회"];
-          if(rec){
-            var html = "";
-            html += "<table>";
-            html += "<tr><th><div>예금명</div></th><th><div>계좌번호</div></th><th><div>통화코드</div></th><th><div>사업장명칭</div></th><th><div>잔액</div></th><th><div>신규일자</div></th></tr>";
-            for(var j=0; j<rec.length; j++){
-              var list = rec[j];
-              html += "<tr>";
-              html += "<td><div>"+(list["예금명"]||"")+"</div></td>";
-              html += "<td><div>"+(list["계좌번호"]||"")+"</div></td>";
-              html += "<td><div>"+(list["통화코드"]||"")+"</div></td>";
-              html += "<td><div>"+(list["사업장명칭"]||"")+"</div></td>";
-              html += "<td><div>"+(list["잔액"]||"")+"</div></td>";
-              html += "<td><div>"+(list["신규일자"]||"")+"</div></td>";
-              html += "</tr>";
-            }
-            html += "</table><br/>";
-            $("#acct_list").append(html);
+      // 거래내역조회
+      inputList.push({
+        Module: gigwan,
+        Class: "개인뱅킹",
+        Job: "계좌거래내역조회",
+        Input: {
+          계좌번호: acctNo,
+          조회시작일: startDt,
+          조회종료일: endDt
+        }
+      });
+
+      nx.execute(inputList, 0, function (results) {
+        $("#acct_list").empty();
+
+        for (var i = 0; i < results.length; i++) {
+          var r = results[i];
+          if (r.Job === "로그인") continue;
+
+          var rec = r.Output && r.Output.Result && r.Output.Result["전계좌조회"];
+          if (!rec) continue;
+
+          var html = "<table><tr>" +
+            "<th>예금명</th><th>계좌번호</th><th>잔액</th>" +
+            "</tr>";
+
+          for (var j = 0; j < rec.length; j++) {
+            html += "<tr>" +
+              "<td>" + (rec[j]["예금명"] || "") + "</td>" +
+              "<td>" + (rec[j]["계좌번호"] || "") + "</td>" +
+              "<td>" + (rec[j]["잔액"] || "") + "</td>" +
+              "</tr>";
           }
+          html += "</table><br/>";
+          $("#acct_list").append(html);
         }
       });
     }
@@ -230,93 +150,47 @@
 <body>
   <div class="wrap">
     <div class="header_wrap">
-      <div class="f_left">
-        <h1 class="tit_h1">금융기관-계좌조회</h1>
-      </div>
+      <h1 class="tit_h1">금융기관-계좌조회</h1>
     </div>
 
     <div class="content_wrap">
       <div class="tbl_lst">
-        <table summary="">
-          <colgroup>
-            <col style="width: 120px;">
-            <col/>
-            <col style="width: 120px;">
-            <col/>
-            <col style="width: 66px;">
-          </colgroup>
+        <table>
           <tbody>
-            <tr><th colspan="5"><div>금융기관-계좌조회</div></th></tr>
-            <tr><th colspan="5"><div>금융기관-로그인정보</div></th></tr>
-
             <tr>
-              <th><div>인증서 명<span class="txt_r"> *</span></div></th>
-              <td><div><select id="cert_list"><option value="">인증서를 선택하세요.</option></select></div></td>
-              <th><div>인증서 비밀번호<span class="txt_r"> *</span></div></th>
-              <td colspan="2"><div><input type="password" id="cert_pwd" placeholder="인증서 비밀번호" value="" /></div></td>
+              <th>인증서</th>
+              <td><select id="cert_list"></select></td>
+              <th>비밀번호</th>
+              <td><input type="password" id="cert_pwd"></td>
             </tr>
-
             <tr>
-              <th><div>금융기관<span class="txt_r"> *</span></div></th>
-              <td colspan="2">
-                <div>
-                  <select id="gigwan">
-                    <option value="" >금융기관을 선택하세요.</option>
-                    <option value="kdb">산업은행</option>
-                    <option value="ibk">기업은행</option>
-                    <option value="kbstar">국민은행</option>
-                    <option value="hanabank">KEB하나은행</option>
-                    <option value="suhyupbank">수협중앙회</option>
-                    <option value="nonghyup">농협은행</option>
-                    <option value="jejubank">제주은행</option>
-                    <option value="jbbank">전북은행</option>
-                    <option value="knbank">경남은행</option>
-                    <option value="shinhan">신한은행</option>
-                    <option value="wooribank">우리은행</option>
-                    <option value="standardchartered">SC은행</option>
-                    <option value="citibank">한국씨티은행</option>
-                    <option value="dgb">대구은행</option>
-                    <option value="busanbank">부산은행</option>
-                    <option value="kjbank">광주은행</option>
-                    <option value="kfcc">새마을금고중앙회</option>
-                    <option value="cu">신협중앙회</option>
-                    <option value="epostbank">우체국</option>
-                  </select>
-                </div>
+              <th>금융기관</th>
+              <td>
+                <select id="gigwan">
+                  <option value="">선택</option>
+                  <option value="kbstar">국민은행</option>
+                  <option value="shinhan">신한은행</option>
+                  <option value="wooribank">우리은행</option>
+                </select>
               </td>
-              <th><div>계좌번호</div></th>
-              <td><div><input type="text" id="acct_no" value="" /></div></td>
+              <th>계좌번호</th>
+              <td><input type="text" id="acct_no"></td>
             </tr>
-
-            <tr><th colspan="5"><div>조회파라미터</div></th></tr>
             <tr>
-              <th><div>조회시작년월</div></th>
-              <td><div><input type="text" id="start_dt" maxlength="6" placeholder="조회시작년월(YYYYMM)" value="" /></div></td>
-              <th><div>조회종료년월</div></th>
-              <td colspan="2"><div><input type="text" id="end_dt" maxlength="6" placeholder="조회종료년월(YYYYMM)" value="" /></div></td>
+              <th>시작일</th>
+              <td><input id="start_dt"></td>
+              <th>종료일</th>
+              <td><input id="end_dt"></td>
             </tr>
           </tbody>
         </table>
 
-        <div class="tit_box tar">
-          <a class="btn_srch" href="javascript:doScrape()"><span>조회</span></a>
+        <div style="margin-top:10px">
+          <button onclick="doScrape()">조회</button>
         </div>
       </div>
 
-      <br/><br/>
-      <div class="tit_box mgt20"><h4 class="tit_h4">전계좌조회</h4></div>
-      <div class="tbl_lst" id="acct_list"></div>
-    </div>
-
-    <div class="footer">
-      <div class="copyright_wrap">
-        <div class="copyright_box">
-          <p>Copyright(c) <strong>Webcash.</strong> All rights reserved.</p>
-        </div>
-        <div class="ft_menu">
-          <span><a href="#none"><label>Customer Center</label></a></span>
-        </div>
-      </div>
+      <div id="acct_list" style="margin-top:20px"></div>
     </div>
   </div>
 </body>
