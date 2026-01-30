@@ -1,3 +1,4 @@
+// src/pages/CooconScrapePage.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -5,7 +6,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
  * ✅ 원칙
  * - public/coocon/* (쿠콘 제공 파일 트리) 절대 안 건드림
  * - React에서 script/css 로딩/ nx.init/ makeCertManager 호출 ❌ (전부 쿠콘 html이 담당)
- * - React는 iframe으로 public/coocon/은행_거래내역조회.html만 띄움 ✅
+ * - React는 iframe으로 public/coocon/css/은행_거래내역조회.html만 띄움 ✅
  *
  * ✅ 여기서 하는 것
  * - eventId/returnTo/startDate/endDate 파라미터 검증
@@ -40,21 +41,21 @@ export default function CooconScrapePage() {
   const returnToRaw = sp.get("returnTo") || "";
   const returnTo = useMemo(() => safeDecode(returnToRaw), [returnToRaw]);
 
-  // start/end는 “쿠콘 화면에서 입력할 수도” 있어서 필수로 강제하지 않음
-  // 다만 파라미터로 들어오면 형식 검증만 하고 로그만 찍어줌
+  // start/end는 “쿠콘 화면에서 입력할 수도” 있어서 필수 강제 X
+  // 파라미터로 들어오면 형식 검증만 하고 로그만 찍음
   const startDate = sp.get("startDate") || "";
   const endDate = sp.get("endDate") || "";
 
-  // 모드값은 지금 단계에서 iframe 동작 확인용으로만 사용 (기능 분기 X)
+  // 모드값은 지금 단계에서 iframe 동작 확인용 (기능 분기 X)
   const mode = sp.get("mode") || "";
 
   // ---------- state ----------
   const [state, setState] = useState<PageState>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const reloadKeyRef = useRef(0);
 
   const pushLog = (m: string) => {
     const line = `${new Date().toLocaleTimeString()} ${m}`;
@@ -65,11 +66,14 @@ export default function CooconScrapePage() {
 
   // ---------- computed ----------
   const iframeSrc = useMemo(() => {
-    // ✅ public 기준 정경로
-    // 캐시 문제(304로 css/js가 꼬이는 느낌) 방지용으로 bust 붙임
-    const bust = Date.now() + "_" + reloadKeyRef.current;
-    return `/coocon/은행_거래내역조회.html?bust=${bust}`;
-  }, [reloadKeyRef.current]);
+    // ✅ 쿠콘 제공 트리 기준: public/coocon/css/은행_거래내역조회.html
+    // 캐시 꼬임 방지용 bust
+    const bust = `${Date.now()}_${reloadKey}`;
+
+    // 필요하면 eventId/start/end/returnTo 등을 html에 넘길 수도 있지만,
+    // 지금 Step1 목표는 "iframe이 정상 뜨는지" 확인이므로 bust만 붙임.
+    return `/coocon/css/은행_거래내역조회.html?bust=${encodeURIComponent(bust)}`;
+  }, [reloadKey]);
 
   // ---------- lifecycle ----------
   useEffect(() => {
@@ -105,11 +109,10 @@ export default function CooconScrapePage() {
       setErrorMsg(e?.message || String(e));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId, returnToRaw, startDate, endDate, mode, reloadKeyRef.current]);
+  }, [eventId, returnToRaw, startDate, endDate, mode, reloadKey]);
 
   // ---------- actions ----------
   const goBack = () => {
-    // returnTo가 없으면 기본 리포트로
     const fallback = eventId ? `/app/event/${eventId}/report` : "/app";
     nav(returnTo || fallback);
   };
@@ -119,14 +122,14 @@ export default function CooconScrapePage() {
     setErrorMsg(null);
     setState("ready");
 
-    // bust 파라미터를 바꾸기 위해 key 증가
-    reloadKeyRef.current += 1;
+    // bust 갱신
+    setReloadKey((k) => k + 1);
 
-    // 실제 reload도 한 번 더
+    // 안전하게 reload도 한번
     try {
       iframeRef.current?.contentWindow?.location.reload();
     } catch {
-      // cross-origin일 수 있으니 무시
+      // same-origin이 아닐 가능성은 낮지만(정적파일), 실패해도 bust로 새로 로드됨
     }
   };
 
@@ -177,6 +180,7 @@ export default function CooconScrapePage() {
           <div>• 팝업 차단 해제</div>
           <div>• 로컬 보안모듈/프로그램(쿠콘/웹케시) 설치 여부</div>
           <div>• 이 페이지는 쿠콘 제공 HTML을 그대로 띄우며 React는 관여하지 않습니다.</div>
+          <div>• iframe 경로: /coocon/css/은행_거래내역조회.html</div>
         </div>
       </div>
 
@@ -191,14 +195,12 @@ export default function CooconScrapePage() {
             onLoad={() => pushLog("iframe loaded")}
             onError={() => {
               setState("error");
-              setErrorMsg("iframe 로딩 실패 (경로/public 파일 확인 필요)");
+              setErrorMsg("iframe 로딩 실패 (public/coocon/css/ 파일 경로 확인 필요)");
               pushLog("ERROR: iframe onError");
             }}
           />
         ) : (
-          <div style={{ padding: 16 }}>
-            {state === "loading" ? "로딩중..." : "오류 상태"}
-          </div>
+          <div style={{ padding: 16 }}>{state === "loading" ? "로딩중..." : "오류 상태"}</div>
         )}
       </div>
 
