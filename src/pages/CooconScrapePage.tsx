@@ -99,58 +99,37 @@ function normalizeErr(err: any) {
   }
 }
 
+
 /**
- * ✅ 인증서 레이어 템플릿 주입
- * - div만 있으면 makeCertManager가 UI를 못 그리는 경우가 많음
- * - public/coocon/process_manager.html 을 fetch해서 certLayer에 넣는다
+ * ✅ 인증서 레이어 템플릿 주입 (FIXED)
+ * - 실제 파일: /coocon/css/은행_거래내역조회.html
  */
 async function ensureCertLayerTemplate(base: string) {
   const layer = document.getElementById("certLayer");
   if (!layer) throw new Error("certLayer DOM이 없습니다.");
 
-  // 이미 템플릿이 있으면 스킵
+  // 이미 로드됐으면 스킵
   if (layer.childElementCount > 0) return;
 
-  // 쿠콘 샘플에서 흔히 쓰는 파일명 후보
-  const candidates = [
-    `${base}/process_manager.html`,
-    `${base}/process_manager.htm`,
-    `${base}/process_manager_layer.html`,
-  ];
+  const url = `${base}/css/은행_거래내역조회.html`; // 🔧 FIX
 
-  let lastErr: any = null;
-
-  for (const url of candidates) {
-    try {
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) {
-        lastErr = new Error(`template fetch failed: ${url} (${res.status})`);
-        continue;
-      }
-      const html = await res.text();
-
-      // 주입
-      layer.innerHTML = html;
-
-      // 레이어는 쿠콘이 show/hide를 건드릴 수 있어도,
-      // 최소한 화면에 렌더될 수 있도록 기본값은 block로 둠
-      (layer as HTMLDivElement).style.display = "block";
-      (layer as HTMLDivElement).style.position = "fixed";
-      (layer as HTMLDivElement).style.inset = "0";
-      (layer as HTMLDivElement).style.zIndex = "9999";
-
-      return;
-    } catch (e) {
-      lastErr = e;
-    }
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`certLayer 템플릿 로드 실패: ${url} (${res.status})`);
   }
 
-  // 템플릿 파일이 없으면 여기서 명확히 에러
-  throw new Error(
-    `certLayer 템플릿을 불러오지 못했습니다. (public/coocon/process_manager.html 필요)\n` +
-      `lastError=${String(lastErr?.message ?? lastErr)}`
-  );
+  const html = await res.text();
+  layer.innerHTML = html;
+
+  // 🔧 FIX: 강제 표시
+  const el = layer as HTMLDivElement;
+  el.style.display = "block";
+  el.style.position = "fixed";
+  el.style.inset = "0";
+  el.style.background = "#fff";
+  el.style.zIndex = "9999";
 }
+
 
 /* ---------------- Coocon call wrapper (SAFE) ---------------- */
 
