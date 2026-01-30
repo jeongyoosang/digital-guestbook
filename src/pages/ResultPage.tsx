@@ -392,80 +392,40 @@ export default function ResultPage() {
   }, [eventId, ownerMemberId]);
 
   /* ------------------ 은행 내역 갱신 (스크래핑) ------------------ */
-  const handleGenerateReport = async () => {
-    if (!eventId) return;
+const handleGenerateReport = async () => {
+  if (!eventId) return;
 
-    // 컷오프 잠금: 종료 이후엔 안내만(버튼은 눌리게)
-    if (!canRunScrape) {
-      setScrapeResult("예식 종료 이후에는 QR 축의금 자동 반영이 잠깁니다. (빠른추가/엑셀 입력은 계속 가능)");
-      return;
-    }
+  // 컷오프 잠금: 종료 이후엔 안내만(버튼은 눌리게)
+  if (!canRunScrape) {
+    setScrapeResult("예식 종료 이후에는 QR 축의금 자동 반영이 잠깁니다. (빠른추가/엑셀 입력은 계속 가능)");
+    return;
+  }
 
-    // 인증 전이면 쿠콘 인증 페이지로 유도(PC에서만 의미 있음)
-    if (!scrapeAccountId) {
-      const date = settings?.ceremony_date ?? "";
-      const startDate = date;
-      const endDate = date;
+  setScrapeResult(null);
 
-      const qs = new URLSearchParams({
-        eventId,
-        mode: "connect_then_scrape",
-        ...(startDate ? { startDate } : {}),
-        ...(endDate ? { endDate } : {}),
-      });
+  // 날짜 범위: 기본은 예식일 하루
+  const date = settings?.ceremony_date ?? "";
+  const startDate = date;
+  const endDate = date;
 
-      // ✅ App.tsx 라우트와 반드시 일치시켜야 함!
-      // 현재는 /coocon/scrape 로 통일
-      navigate(`/coocon/scrape?${qs.toString()}`);
-      return;
-    }
+  // ✅ returnTo: 스크래핑 끝나면 다시 리포트로 돌아오게 (CooconScrapePage에서 사용)
+  const returnTo = encodeURIComponent(`/app/event/${eventId}/report`);
 
-    // 인증되어 있으면: Edge Function으로 “반영/정규화” 스크래핑 실행
-    try {
-      setScraping(true);
-      setScrapeResult(null);
+  // ✅ scrapeAccountId 있으면 "scrape_only", 없으면 "connect_then_scrape"
+  const mode = scrapeAccountId ? "scrape_only" : "connect_then_scrape";
 
-      const { data: session } = await supabase.auth.getSession();
-      const token = session.session?.access_token;
-      if (!token) throw new Error("로그인이 필요합니다.");
+  const qs = new URLSearchParams({
+    eventId,
+    mode,
+    ...(startDate ? { startDate } : {}),
+    ...(endDate ? { endDate } : {}),
+    returnTo,
+  });
 
-      // 날짜 범위: 우선 예식일 하루
-      const date = settings?.ceremony_date ?? "2026-01-01";
-      const startDate = date;
-      const endDate = date;
+  // ✅ 여기로 보내야 NX 조회 -> cooconOutput -> Edge Function 흐름이 됨
+  navigate(`/coocon/scrape?${qs.toString()}`);
+};
 
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            eventId,
-            scrapeAccountId,
-            startDate,
-            endDate,
-          }),
-        }
-      );
-
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error ?? "조회 실패");
-
-      const inserted = json.inserted ?? 0;
-
-      // ✅ 안전: count 재조회
-      await refreshTxCount();
-
-      setScrapeResult(`QR 축의금 갱신 완료 (${inserted}건 반영)`);
-    } catch (e: any) {
-      setScrapeResult(e?.message ?? "갱신 중 오류가 발생했습니다.");
-    } finally {
-      setScraping(false);
-    }
-  };
 
   /* ------------------ 장부: 업데이트/추가 ------------------ */
   function patchLedger(id: string, nextRow: LedgerRow) {
