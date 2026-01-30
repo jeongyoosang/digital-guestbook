@@ -347,6 +347,13 @@ Deno.serve(async (req) => {
     const userEmail = userData.user.email ?? null;
 
     const body = (await req.json()) as Partial<Body>;
+
+    console.log(
+      "[DEBUG cooconOutput]",
+      body.cooconOutput ? "EXISTS" : "MISSING",
+      body.cooconOutput
+    );
+
     if (!body.eventId || !body.scrapeAccountId || !body.startDate || !body.endDate) {
       return json({ error: "Missing required fields" }, 400);
     }
