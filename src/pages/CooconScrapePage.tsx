@@ -299,43 +299,44 @@ export default function CooconScrapePage() {
     return { bankName, bankCode, accountNo };
   }
 
-  async function upsertScrapeAccount(bankCode: string, bankName: string, accountNo: string, certMeta: any) {
-    const { data: user } = await supabase.auth.getUser();
-    if (!user?.user) throw new Error("로그인이 필요합니다.");
+  async function upsertScrapeAccount(
+  bankCode: string,
+  bankName: string,
+  accountNo: string,
+  certMeta: any
+) {
+  const { data: user } = await supabase.auth.getUser();
+  if (!user?.user) throw new Error("로그인이 필요합니다.");
 
-    // ✅ 필수값 검증 (인덱스 onConflict 키와 정합성)
-    if (!eventId) throw new Error("eventId가 없습니다.");
-    if (!user.user.id) throw new Error("user.id가 없습니다.");
-    if (!bankCode) throw new Error("bankCode가 없습니다.");
-    if (!bankName) throw new Error("bankName이 없습니다.");
-    if (!accountNo) throw new Error("accountNo가 없습니다.");
+  const payload = {
+    event_id: eventId,
+    owner_user_id: user.user.id,
+    provider: "coocon",
+    bank_code: bankCode,
+    bank_name: bankName,
+    account_number: accountNo,
+    verified_at: new Date().toISOString(),
+    cert_meta_json: certMeta ?? null,
+  };
 
-    const payload = {
-      event_id: eventId,
-      owner_user_id: user.user.id,
-      provider: "coocon",
-      bank_code: bankCode,
-      bank_name: bankName,
-      account_number: accountNo,
-      verified_at: new Date().toISOString(),
-      cert_meta_json: certMeta ?? null,
-    };
+  const { data, error } = await supabase
+    .from("event_scrape_accounts")
+    .upsert(payload, {
+      onConflict: "event_id,owner_user_id,provider,bank_code", // ✅ DB와 100% 일치
+    })
+    .select("id")
+    .maybeSingle();
 
-    // ✅ FIX: onConflict must match unique index
-    // event_scrape_accounts_on_conflict_uidx (event_id, owner_user_id, provider, bank_code)
-    const { data, error } = await supabase
-      .from("event_scrape_accounts")
-      .upsert(payload, { onConflict: "event_id,owner_user_id,provider,bank_code" })
-      .select("id")
-      .maybeSingle();
-
-    if (error) {
-      console.error("event_scrape_accounts upsert error:", error);
-      throw new Error(`스크래핑 계좌 저장 실패: ${error.message}`);
-    }
-    if (!data?.id) throw new Error("스크래핑 계좌 저장 실패");
-    return data.id;
+  if (error) {
+    console.error("event_scrape_accounts upsert error", error);
+    throw new Error("스크래핑 계좌 저장 실패");
   }
+
+  if (!data?.id) throw new Error("스크래핑 계좌 저장 실패");
+
+  return data.id;
+}
+
 
   async function runScrape(scrapeAccountId: string, bankCode: string, accountNo: string) {
     setState("scraping");
