@@ -162,8 +162,7 @@ async function callCooconApi(nx: any, apiId: string, params: any, opts: CallCooc
         const ret = nx.execute(apiId, paramsWithCallbacks, (r: any) => ok(r));
         if (tryPromiseReturn(ret)) return true;
         return true;
-      } catch (e) {
-        // 다음 fallback으로
+      } catch {
         return false;
       }
     };
@@ -174,7 +173,7 @@ async function callCooconApi(nx: any, apiId: string, params: any, opts: CallCooc
         const ret = nx.call(apiId, paramsWithCallbacks, (r: any) => ok(r));
         if (tryPromiseReturn(ret)) return true;
         return true;
-      } catch (e) {
+      } catch {
         return false;
       }
     };
@@ -189,7 +188,7 @@ async function callCooconApi(nx: any, apiId: string, params: any, opts: CallCooc
             const ret = fn[k](apiId, paramsWithCallbacks, (r: any) => ok(r));
             if (tryPromiseReturn(ret)) return true;
             return true;
-          } catch (e) {
+          } catch {
             // 다음 함수 후보
           }
         }
@@ -476,23 +475,20 @@ export default function CooconScrapePage() {
     const token = session.session?.access_token;
     if (!token) throw new Error("로그인이 필요합니다.");
 
-    const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          eventId,
-          scrapeAccountId,
-          startDate,
-          endDate,
-          cooconOutput: output,
-        }),
-      }
-    );
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coocon-scrape-transactions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        eventId,
+        scrapeAccountId,
+        startDate,
+        endDate,
+        cooconOutput: output,
+      }),
+    });
 
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
@@ -500,19 +496,32 @@ export default function CooconScrapePage() {
     }
 
     const j = await res.json().catch(() => ({}));
-    pushLog(`Edge Function OK: fetched=${j.fetched ?? "?"}, insertedTx=${j.insertedTx ?? "?"}, reflectedLedgerNew=${j.reflectedLedgerNew ?? "?"}`);
+    pushLog(
+      `Edge Function OK: fetched=${j.fetched ?? "?"}, insertedTx=${j.insertedTx ?? "?"}, reflectedLedgerNew=${
+        j.reflectedLedgerNew ?? "?"
+      }`
+    );
 
     pushLog("스크래핑 및 리포트 반영 완료");
   }
 
   return (
     <div style={{ padding: 16, maxWidth: 900, margin: "0 auto" }}>
+      {/* ✅✅✅ Coocon 인증서 UI 필수 DOM (여기가 포인트) */}
+      <div
+        id="certLayer"
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 9999,
+          display: "none", // 쿠콘이 필요 시 내부에서 show 처리
+        }}
+      />
+
       <h1>쿠콘 계좌 인증 / 스크래핑</h1>
       <div>state: {state}</div>
 
-      {errorMsg && (
-        <div style={{ marginTop: 12, color: "red", whiteSpace: "pre-wrap" }}>{errorMsg}</div>
-      )}
+      {errorMsg && <div style={{ marginTop: 12, color: "red", whiteSpace: "pre-wrap" }}>{errorMsg}</div>}
 
       <pre style={{ marginTop: 12, fontSize: 12 }}>{log.join("\n")}</pre>
     </div>
