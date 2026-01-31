@@ -43,28 +43,23 @@ type Body = StartBody | FinishBody;
 /* ================= Main ================= */
 
 Deno.serve(async (req) => {
-// ✅ Preflight는 204 + CORS 헤더로 즉시 종료 (가장 안전)
-if (req.method === "OPTIONS") {
-  return new Response(null, {
-    status: 204,
-    headers: corsHeaders,
-  });
-}
+  // ✅ Preflight는 최상단에서 즉시 종료
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
-if (req.method !== "POST") {
-  return new Response(JSON.stringify({ error: "Method not allowed" }), {
-    status: 405,
-    headers: { "Content-Type": "application/json", ...corsHeaders },
-  });
-}
+  if (req.method !== "POST") {
+    return json({ error: "Method not allowed" }, 405);
+  }
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
   const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
   const authHeader = req.headers.get("Authorization") ?? "";
-  if (!authHeader.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
-
+  if (!authHeader.startsWith("Bearer ")) {
+    return json({ error: "Unauthorized" }, 401);
+  }
   // user client (RLS)
   const userClient = createClient(SUPABASE_URL, ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
