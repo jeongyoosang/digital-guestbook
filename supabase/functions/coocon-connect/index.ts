@@ -7,7 +7,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "authorization, x-client-info, apikey, content-type, accept",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Max-Age": "86400",
   Vary: "Origin",
@@ -45,8 +45,12 @@ type Body = StartBody | FinishBody;
 Deno.serve(async (req) => {
   // ✅ Preflight는 최상단에서 즉시 종료
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  return new Response(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
+}
+
 
   if (req.method !== "POST") {
     return json({ error: "Method not allowed" }, 405);
