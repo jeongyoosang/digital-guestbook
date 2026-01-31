@@ -28,46 +28,51 @@ export default function CooconScrapePage() {
      1️⃣ 쿠콘 연결 시작
      ========================= */
   const startConnect = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  try {
+    setLoading(true);
+    setError(null);
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    if (!eventId) {
+      setError("이벤트 ID가 없습니다.");
+      return;
+    }
 
-      if (!session) {
-        setError("로그인이 필요합니다.");
-        return;
-      }
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-      const res = await fetch("/functions/v1/coocon-connect", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
+    if (!session) {
+      setError("로그인이 필요합니다.");
+      return;
+    }
+
+    const { data, error } = await supabase.functions.invoke<StartResponse>(
+      "coocon-connect",
+      {
+        body: {
           action: "start",
           eventId,
-        }),
-      });
-
-      const json = (await res.json()) as StartResponse;
-
-      if (!json.ok || !json.scrapeAccountId) {
-        throw new Error("쿠콘 연결 시작 실패");
+        },
       }
+    );
 
-      setScrapeAccountId(json.scrapeAccountId);
+    if (error) throw error;
+
+    if (!data?.ok || !data.scrapeAccountId) {
+      throw new Error("쿠콘 연결 시작 실패");
+    }
+
+      setScrapeAccountId(data.scrapeAccountId);
+
 
       /* =========================
          2️⃣ 쿠콘 HTML 새 창 오픈
          ========================= */
       const url =
-        `/coocon/은행_거래내역조회.html` +
-        `?eventId=${eventId}` +
-        `&scrapeAccountId=${json.scrapeAccountId}`;
+      `/coocon/은행_거래내역조회.html` +
+      `?eventId=${eventId}` +
+      `&scrapeAccountId=${data.scrapeAccountId}`;
+
 
       popupRef.current = window.open(
         url,
@@ -104,22 +109,20 @@ export default function CooconScrapePage() {
 
         if (!session) return;
 
-        await fetch("/functions/v1/coocon-connect", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            action: "finish",
-            eventId,
-            scrapeAccountId,
-            bankCode,
-            bankName,
-            accountMasked,
-            mode: mode ?? "real",
-          }),
-        });
+        const { error } = await supabase.functions.invoke("coocon-connect", {
+        body: {
+          action: "finish",
+          eventId,
+          scrapeAccountId,
+          bankCode,
+          bankName,
+          accountMasked,
+          mode: mode ?? "real",
+        },
+      });
+
+      if (error) throw error;
+
 
         // 팝업 닫기
         popupRef.current?.close();
