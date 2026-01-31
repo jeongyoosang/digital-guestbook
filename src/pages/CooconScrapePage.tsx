@@ -1,28 +1,40 @@
-// src/pages/CooconScrapePage.tsx
-import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 type RouteParams = {
-  eventId: string;
+  eventId?: string;
 };
 
 type StartResponse = {
   ok: boolean;
   scrapeAccountId: string;
   status: string;
+  reused?: boolean;
+  bankCode?: string | null;
 };
 
 export default function CooconScrapePage() {
-  const { eventId } = useParams<RouteParams>();
+  const params = useParams<RouteParams>();
+  const location = useLocation();
   const navigate = useNavigate();
+
+  // ✅ /coocon/scrape/:eventId (params) 와 /coocon/scrape?eventId=... (query) 둘 다 지원
+  const eventId = useMemo(() => {
+    return (
+      params.eventId ??
+      new URLSearchParams(location.search).get("eventId") ??
+      undefined
+    );
+  }, [params.eventId, location.search]);
 
   const popupRef = useRef<Window | null>(null);
   const [loading, setLoading] = useState(false);
   const [scrapeAccountId, setScrapeAccountId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
 
   /* =========================
      1️⃣ 쿠콘 연결 시작

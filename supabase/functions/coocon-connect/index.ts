@@ -43,8 +43,16 @@ type Body = StartBody | FinishBody;
 /* ================= Main ================= */
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+// ✅ Preflight는 204 + CORS 헤더로 즉시 종료 (가장 안전)
+if (req.method === "OPTIONS") {
+  return new Response(null, { status: 204, headers: corsHeaders });
+}
+if (req.method !== "POST") {
+  return new Response(JSON.stringify({ error: "Method not allowed" }), {
+    status: 405,
+    headers: { "Content-Type": "application/json", ...corsHeaders },
+  });
+}
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
