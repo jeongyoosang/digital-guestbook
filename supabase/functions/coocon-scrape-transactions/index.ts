@@ -1,3 +1,4 @@
+// supabase/functions/coocon-scrape-transactions/index.ts
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -8,8 +9,8 @@ type Direction = "IN" | "OUT";
 type Body = {
   eventId: string;
   scrapeAccountId: string;
-  startDate: string;
-  endDate: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
   cooconOutput?: unknown;
 };
 
@@ -111,13 +112,21 @@ function normalizeFromCooconOutput(
     cooconOutput;
 
   const candidateLists: any[][] = [];
-
   const keys = ["ResultList", "List", "TX_LIST", "txList", "Data", "rows", "items"];
 
   if (Array.isArray(root)) candidateLists.push(root);
 
   for (const k of keys) {
     if (Array.isArray(root?.[k])) candidateLists.push(root[k]);
+  }
+
+  // ✅ root 아래 한 단계 더 흔한 패턴도 탐색
+  // (ex: root.Result.ResultList 형태)
+  if (root?.Result && typeof root.Result === "object") {
+    if (Array.isArray(root.Result)) candidateLists.push(root.Result);
+    for (const k of keys) {
+      if (Array.isArray(root.Result?.[k])) candidateLists.push(root.Result[k]);
+    }
   }
 
   const list = candidateLists.find((l) => Array.isArray(l) && l.length > 0);
@@ -146,17 +155,13 @@ function normalizeFromCooconOutput(
     out.push({
       event_id: eventId,
       scrape_account_id: scrapeAccountId,
-
       tx_date,
       tx_time,
-
       amount,
       direction,
-
       balance: r.balance ?? r.잔액 ?? null,
       memo: r.memo ?? r.적요 ?? null,
       counterparty: r.counterparty ?? r.상대방 ?? null,
-
       raw_json: r,
     });
   }
@@ -195,17 +200,28 @@ Deno.serve(async (req) => {
       body.cooconOutput
     );
 
-    /* 2️⃣ Insert (중복은 DB unique index로 방어) */
+    /* 2️⃣ Upsert (중복 방어: unique index 필요) */
     let insertedTx = 0;
 
     if (normalized.length > 0) {
+      // ✅ 가장 흔한 유니크키 조합 (필요 시 인덱스 정의에 맞춰 수정)
+      const onConflict =
+        "event_id,scrape_account_id,tx_date,tx_time,amount,direction";
+
       const { error, count } = await admin
         .from("event_scrape_transactions")
-        .insert(normalized, { count: "exact" });
+        .upsert(normalized, {
+          onConflict,
+          ignoreDuplicates: true,
+          count: "exact",
+        });
 
       if (error) {
-        console.error("[INSERT ERROR]", error);
-        throw new Error("transaction insert failed");
+        console.error("[UPSERT ERROR]", error);
+        // 디버깅을 위해 onConflict를 같이 노출
+        throw new Error(
+          `transaction upsert failed (onConflict=${onConflict}): ${error.message}`
+        );
       }
 
       insertedTx = count ?? normalized.length;
