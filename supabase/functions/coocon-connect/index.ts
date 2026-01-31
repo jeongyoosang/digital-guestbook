@@ -45,8 +45,12 @@ type Body = StartBody | FinishBody;
 Deno.serve(async (req) => {
 // ✅ Preflight는 204 + CORS 헤더로 즉시 종료 (가장 안전)
 if (req.method === "OPTIONS") {
-  return new Response(null, { status: 204, headers: corsHeaders });
+  return new Response(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
 }
+
 if (req.method !== "POST") {
   return new Response(JSON.stringify({ error: "Method not allowed" }), {
     status: 405,
