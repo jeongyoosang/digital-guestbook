@@ -45,10 +45,9 @@ type Body = StartBody | FinishBody;
 Deno.serve(async (req) => {
   // ✅ Preflight는 최상단에서 즉시 종료
   if (req.method === "OPTIONS") {
-  return new Response(null, {
-    status: 204,
-    headers: corsHeaders,
-  });
+  return new Response(null, { status: 204, headers: corsHeaders });
+}
+);
 }
 
 
