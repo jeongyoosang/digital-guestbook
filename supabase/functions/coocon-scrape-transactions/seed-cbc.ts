@@ -256,30 +256,136 @@ export function seedCbcDecrypt(ciphertext: Uint8Array, key: Uint8Array, iv: Uint
     return plaintext;
 }
 
-// ISASSeedCBC-compatible decrypt function
-// Key derivation: uses first 16 bytes of Uid as key, first 16 bytes of Action as IV
-export function isasDecrypt(base64Data: string, uid: string, action: string): string {
+// Helper to try parsing JSON
+function tryParseJson(str: string): any | null {
     try {
-        // Decode base64 ciphertext
-        const ciphertext = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-
-        // Derive key from Uid (first 16 bytes, padded with zeros if shorter)
-        const keyBytes = new Uint8Array(16);
-        const uidBytes = new TextEncoder().encode(uid);
-        keyBytes.set(uidBytes.slice(0, 16));
-
-        // Derive IV from Action (first 16 bytes, padded with zeros if shorter)
-        const ivBytes = new Uint8Array(16);
-        const actionBytes = new TextEncoder().encode(action);
-        ivBytes.set(actionBytes.slice(0, 16));
-
-        // Decrypt
-        const plaintext = seedCbcDecrypt(ciphertext, keyBytes, ivBytes);
-
-        // Convert to string
-        return new TextDecoder().decode(plaintext);
-    } catch (e) {
-        console.error("[SEED Decrypt Error]", e);
-        throw e;
+        return JSON.parse(str);
+    } catch {
+        return null;
     }
+}
+
+// Compute Hash using Web Crypto API
+async function computeHash(algo: "SHA-256" | "MD5", str: string): Promise<Uint8Array> {
+    const data = new TextEncoder().encode(str);
+    const hash = await crypto.subtle.digest(algo, data);
+    return new Uint8Array(hash);
+}
+
+// Hardcoded IV from ISASSeedCBC.class (0xFEDCBA9876543210 repeated)
+const COOCON_IV = new Uint8Array([
+    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
+    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10
+]);
+
+// Reverse-engineered KDF from ISASSeedCBC.class
+// Picks 16 chars from Uid and Action at specific indices
+function deriveCooconKey(uid: string, action: string): Uint8Array {
+    if (uid.length <= 12 || action.length <= 15) {
+        throw new Error("Uid/Action too short for Coocon KDF");
+    }
+
+    const chars = [
+        uid.charAt(10),
+        action.charAt(1),
+        uid.charAt(8),
+        action.charAt(8),
+        action.charAt(5),
+        action.charAt(4),
+        uid.charAt(5),
+        action.charAt(15),
+        uid.charAt(0),
+        uid.charAt(5), // Repeated
+        action.charAt(13),
+        uid.charAt(11),
+        uid.charAt(9),
+        action.charAt(6),
+        action.charAt(3),
+        uid.charAt(12)
+    ];
+
+    return new TextEncoder().encode(chars.join(""));
+}
+
+// Hardcoded Key from ISASSeedCBC.class (for decrypt(data) method)
+const STATIC_KEY_STR = "K26FJ5Y62R2UF4Y3";
+
+// ISASSeedCBC-compatible decrypt function (Async)
+// Tries multiple key derivation strategies
+export async function isasDecrypt(base64Data: string, uid: string, action: string): Promise<string> {
+    let lastError: any;
+    // Put Coocon strategy first as it's the reverse-engineered one
+    // Added "CooconSwap" strategy just in case Uid/Action are swapped
+    const strategies = ["Coocon", "CooconSwap", "Static", "Base64", "MD5", "SHA-256", "Raw"];
+
+    // Decode ciphertext once
+    const ciphertext = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+    for (let i = 0; i < strategies.length; i++) {
+        const strategy = strategies[i];
+        try {
+            let keyBytes: Uint8Array;
+            let ivBytes: Uint8Array;
+
+            if (strategy === "Coocon") {
+                try {
+                    keyBytes = deriveCooconKey(uid, action);
+                    ivBytes = COOCON_IV;
+                } catch (e: any) {
+                    lastError = new Error(`Coocon KDF failed: ${e.message}`);
+                    continue;
+                }
+            } else if (strategy === "CooconSwap") {
+                try {
+                    keyBytes = deriveCooconKey(action, uid); // Swap
+                    ivBytes = COOCON_IV;
+                } catch { continue; }
+            } else if (strategy === "Static") {
+                keyBytes = new TextEncoder().encode(STATIC_KEY_STR);
+                ivBytes = COOCON_IV;
+            } else if (strategy === "Base64") {
+                try {
+                    keyBytes = Uint8Array.from(atob(uid), c => c.charCodeAt(0)).slice(0, 16);
+                    ivBytes = Uint8Array.from(atob(action), c => c.charCodeAt(0)).slice(0, 16);
+                } catch { continue; }
+            } else if (strategy === "MD5") {
+                // Note: Deno deploy supports MD5
+                keyBytes = (await computeHash("MD5", uid)).slice(0, 16);
+                ivBytes = (await computeHash("MD5", action)).slice(0, 16);
+            } else if (strategy === "SHA-256") {
+                keyBytes = (await computeHash("SHA-256", uid)).slice(0, 16);
+                ivBytes = (await computeHash("SHA-256", action)).slice(0, 16);
+            } else { // Raw
+                keyBytes = new TextEncoder().encode(uid).slice(0, 16);
+                ivBytes = new TextEncoder().encode(action).slice(0, 16);
+            }
+
+            if (keyBytes.length < 16 || ivBytes.length < 16) continue;
+
+            // Log key for debugging (first 4 bytes hex)
+            const keyHex = Array.from(keyBytes.slice(0, 4)).map(b => b.toString(16).padStart(2, '0')).join('');
+            // console.log(`[isasDecrypt] Strategy ${strategy} Key Prefix: ${keyHex}`);
+
+            const plaintext = seedCbcDecrypt(ciphertext, keyBytes, ivBytes);
+            const decoded = new TextDecoder().decode(plaintext);
+
+            // Verify if it looks like JSON
+            // Valid Coocon result usually starts with { "ResultList": ... } or { "List": ... }
+            if (decoded.trim().startsWith("{") || decoded.trim().startsWith("[")) {
+                // Determine if valid JSON
+                if (tryParseJson(decoded)) {
+                    console.log(`[isasDecrypt] Success with strategy: ${strategy}`);
+                    return decoded;
+                }
+            }
+
+            // Keep errors for logging
+            lastError = new Error(`Strategy ${strategy} produced invalid JSON: ${decoded.substring(0, 50)}...`);
+        } catch (e: any) {
+            lastError = e;
+            // Continue to next strategy
+        }
+    }
+
+    throw lastError || new Error("All decryption strategies failed");
 }
