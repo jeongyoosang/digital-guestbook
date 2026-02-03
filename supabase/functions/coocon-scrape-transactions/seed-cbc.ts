@@ -162,10 +162,16 @@ const KC: number[] = [
 ];
 
 // Generate round keys from 16-byte key
-function seedRoundKeys(key: Uint8Array): number[][] {
+function seedRoundKeys(key: Uint8Array, littleEndianKey: boolean = false): number[][] {
     const K = new Array(4);
     for (let i = 0; i < 4; i++) {
-        K[i] = ((key[i * 4] << 24) | (key[i * 4 + 1] << 16) | (key[i * 4 + 2] << 8) | key[i * 4 + 3]) >>> 0;
+        if (littleEndianKey) {
+            // Little Endian Key Loading
+            K[i] = ((key[i * 4 + 3] << 24) | (key[i * 4 + 2] << 16) | (key[i * 4 + 1] << 8) | key[i * 4]) >>> 0;
+        } else {
+            // Big Endian Key Loading (Standard)
+            K[i] = ((key[i * 4] << 24) | (key[i * 4 + 1] << 16) | (key[i * 4 + 2] << 8) | key[i * 4 + 3]) >>> 0;
+        }
     }
 
     const roundKeys: number[][] = [];
@@ -200,6 +206,8 @@ function seedRoundKeys(key: Uint8Array): number[][] {
 
 // SEED block decryption (16 bytes)
 function seedDecryptBlock(block: Uint8Array, roundKeys: number[][]): Uint8Array {
+    // Data is always Big Endian in SEED usually, but allow checking?
+    // Assume Standard Data Loading (Big Endian)
     let L = ((block[0] << 24) | (block[1] << 16) | (block[2] << 8) | block[3]) >>> 0;
     let R = ((block[4] << 24) | (block[5] << 16) | (block[6] << 8) | block[7]) >>> 0;
     let L1 = ((block[8] << 24) | (block[9] << 16) | (block[10] << 8) | block[11]) >>> 0;
@@ -217,6 +225,7 @@ function seedDecryptBlock(block: Uint8Array, roundKeys: number[][]): Uint8Array 
     }
 
     const result = new Uint8Array(16);
+    // Write back Big Endian
     result[0] = L1 >>> 24; result[1] = (L1 >>> 16) & 0xff; result[2] = (L1 >>> 8) & 0xff; result[3] = L1 & 0xff;
     result[4] = R1 >>> 24; result[5] = (R1 >>> 16) & 0xff; result[6] = (R1 >>> 8) & 0xff; result[7] = R1 & 0xff;
     result[8] = L >>> 24; result[9] = (L >>> 16) & 0xff; result[10] = (L >>> 8) & 0xff; result[11] = L & 0xff;
@@ -226,12 +235,12 @@ function seedDecryptBlock(block: Uint8Array, roundKeys: number[][]): Uint8Array 
 }
 
 // SEED-CBC decryption
-export function seedCbcDecrypt(ciphertext: Uint8Array, key: Uint8Array, iv: Uint8Array): Uint8Array {
+export function seedCbcDecrypt(ciphertext: Uint8Array, key: Uint8Array, iv: Uint8Array, littleEndianKey: boolean = false): Uint8Array {
     if (ciphertext.length % 16 !== 0) {
         throw new Error("Ciphertext length must be a multiple of 16 bytes");
     }
 
-    const roundKeys = seedRoundKeys(key);
+    const roundKeys = seedRoundKeys(key, littleEndianKey);
     const plaintext = new Uint8Array(ciphertext.length);
     let previousBlock = iv;
 
@@ -250,7 +259,17 @@ export function seedCbcDecrypt(ciphertext: Uint8Array, key: Uint8Array, iv: Uint
     // Remove PKCS7 padding
     const padLen = plaintext[plaintext.length - 1];
     if (padLen > 0 && padLen <= 16) {
-        return plaintext.slice(0, plaintext.length - padLen);
+        // Validate padding bytes
+        let valid = true;
+        for (let k = 0; k < padLen; k++) {
+            if (plaintext[plaintext.length - 1 - k] !== padLen) {
+                valid = false;
+                break;
+            }
+        }
+        if (valid) {
+            return plaintext.slice(0, plaintext.length - padLen);
+        }
     }
 
     return plaintext;
@@ -315,41 +334,32 @@ const STATIC_KEY_STR = "K26FJ5Y62R2UF4Y3";
 export async function isasDecrypt(base64Data: string, uid: string, action: string): Promise<string> {
     let lastError: any;
     // Put Coocon strategy first as it's the reverse-engineered one
-    // Added "CooconSwap" strategy just in case Uid/Action are swapped
-    const strategies = ["Coocon", "CooconSwap", "Static", "Base64", "MD5", "SHA-256", "Raw"];
+    // Added "CooconLE" strategy (Little Endian Key)
+    const strategies = ["Coocon", "CooconLE", "CooconSwap", "Static", "Base64", "MD5", "SHA-256", "Raw"];
 
     // Decode ciphertext once
     const ciphertext = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
 
     for (let i = 0; i < strategies.length; i++) {
         const strategy = strategies[i];
-        try {
-            let keyBytes: Uint8Array;
-            let ivBytes: Uint8Array;
+        let keyBytes: Uint8Array;
+        let ivBytes: Uint8Array = COOCON_IV;
+        let littleEndianKey = false;
 
+        try {
             if (strategy === "Coocon") {
-                try {
-                    keyBytes = deriveCooconKey(uid, action);
-                    ivBytes = COOCON_IV;
-                } catch (e: any) {
-                    lastError = new Error(`Coocon KDF failed: ${e.message}`);
-                    continue;
-                }
+                keyBytes = deriveCooconKey(uid, action);
+            } else if (strategy === "CooconLE") {
+                keyBytes = deriveCooconKey(uid, action);
+                littleEndianKey = true;
             } else if (strategy === "CooconSwap") {
-                try {
-                    keyBytes = deriveCooconKey(action, uid); // Swap
-                    ivBytes = COOCON_IV;
-                } catch { continue; }
+                keyBytes = deriveCooconKey(action, uid);
             } else if (strategy === "Static") {
                 keyBytes = new TextEncoder().encode(STATIC_KEY_STR);
-                ivBytes = COOCON_IV;
             } else if (strategy === "Base64") {
-                try {
-                    keyBytes = Uint8Array.from(atob(uid), c => c.charCodeAt(0)).slice(0, 16);
-                    ivBytes = Uint8Array.from(atob(action), c => c.charCodeAt(0)).slice(0, 16);
-                } catch { continue; }
+                keyBytes = Uint8Array.from(atob(uid), c => c.charCodeAt(0)).slice(0, 16);
+                ivBytes = Uint8Array.from(atob(action), c => c.charCodeAt(0)).slice(0, 16);
             } else if (strategy === "MD5") {
-                // Note: Deno deploy supports MD5
                 keyBytes = (await computeHash("MD5", uid)).slice(0, 16);
                 ivBytes = (await computeHash("MD5", action)).slice(0, 16);
             } else if (strategy === "SHA-256") {
@@ -366,7 +376,7 @@ export async function isasDecrypt(base64Data: string, uid: string, action: strin
             const keyHex = Array.from(keyBytes.slice(0, 4)).map(b => b.toString(16).padStart(2, '0')).join('');
             // console.log(`[isasDecrypt] Strategy ${strategy} Key Prefix: ${keyHex}`);
 
-            const plaintext = seedCbcDecrypt(ciphertext, keyBytes, ivBytes);
+            const plaintext = seedCbcDecrypt(ciphertext, keyBytes, ivBytes, littleEndianKey);
             const decoded = new TextDecoder().decode(plaintext);
 
             // Verify if it looks like JSON
