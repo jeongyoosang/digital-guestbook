@@ -559,12 +559,19 @@
           bankCode: bankCodeValue,
           bankName: bankNameValue || null,
           accountMasked: accountMaskedValue,
+          accountNumber: (document.getElementById("accountNumber").value || "").replace(/-/g, "").trim(),
           mode: modeValue,
-          cooconOutput: lastScrapeOutput, // ✅ 스크래핑 결과 포함
+          cooconOutput: lastScrapeOutput, // ✅ 스크래핑 결과 포함 (암호화됨)
+          // 🔐 서버 측 복호화에 필요한 파라미터
+          decryptParams: {
+            uid: nx.OpenUid || null,
+            action: nx.OpenAction || null,
+          },
         };
 
         log("postMessage 전송 (결과 포함):");
-        log({ type: payload.type, fetched: !!lastScrapeOutput });
+        log({ type: payload.type, fetched: !!lastScrapeOutput, hasDecryptParams: !!(nx.OpenUid && nx.OpenAction) });
+
 
         var ok = safePostToOpener(payload);
         if (ok) {

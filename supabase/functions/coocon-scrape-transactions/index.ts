@@ -1,6 +1,7 @@
 // supabase/functions/coocon-scrape-transactions/index.ts
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { isasDecrypt } from "./seed-cbc.ts";
 
 /* ================= Types ================= */
 
@@ -12,7 +13,15 @@ type Body = {
   startDate: string; // YYYY-MM-DD
   endDate: string;   // YYYY-MM-DD
   cooconOutput?: unknown;
+  decryptParams?: {
+    uid?: string;
+    action?: string;
+  };
+  accountNumber?: string;
+  accountMasked?: string;
+  bankCode?: string;
 };
+
 
 type NormalizedTx = {
   event_id: string;
@@ -129,18 +138,60 @@ async function generateTxHash(
 async function normalizeFromCooconOutput(
   eventId: string,
   scrapeAccountId: string,
-  cooconOutput: any
+  cooconOutput: any,
+  decryptParams?: { uid?: string; action?: string }
 ): Promise<NormalizedTx[]> {
   if (!cooconOutput) return [];
 
+  console.log("[normalizeFromCooconOutput] Starting normalization...");
+  console.log("[normalizeFromCooconOutput] cooconOutput type:", typeof cooconOutput);
+
+  // Handle encrypted Result (when Result is a string, it needs decryption)
+  let processedOutput = cooconOutput;
+
+  // Check if we have encrypted data that needs decryption
+  if (cooconOutput?.Output?.Result && typeof cooconOutput.Output.Result === "string") {
+    console.log("[normalizeFromCooconOutput] Found encrypted Result string, attempting decryption...");
+
+    if (decryptParams?.uid && decryptParams?.action) {
+      try {
+        const decryptedStr = isasDecrypt(
+          cooconOutput.Output.Result,
+          decryptParams.uid,
+          decryptParams.action
+        );
+        console.log("[normalizeFromCooconOutput] Decryption successful, parsing JSON...");
+        console.log("[normalizeFromCooconOutput] Decrypted (first 500 chars):", decryptedStr.substring(0, 500));
+
+        const decryptedResult = JSON.parse(decryptedStr);
+        processedOutput = {
+          ...cooconOutput,
+          Output: {
+            ...cooconOutput.Output,
+            Result: decryptedResult,
+          },
+        };
+      } catch (e) {
+        console.error("[normalizeFromCooconOutput] Decryption failed:", e);
+        // Continue with original output in case decryption fails
+      }
+    } else {
+      console.warn("[normalizeFromCooconOutput] Encrypted data found but no decryptParams provided");
+    }
+  }
+
   const root =
-    cooconOutput?.Result ??
-    cooconOutput?.Output?.Result ??
-    cooconOutput?.Output ??
-    cooconOutput;
+    processedOutput?.Result ??
+    processedOutput?.Output?.Result ??
+    processedOutput?.Output ??
+    processedOutput;
+
+  console.log("[normalizeFromCooconOutput] root type:", typeof root);
+  console.log("[normalizeFromCooconOutput] root keys:", typeof root === "object" ? Object.keys(root || {}).join(", ") : "N/A");
 
   const candidateLists: any[][] = [];
-  const keys = ["ResultList", "List", "TX_LIST", "txList", "Data", "rows", "items"];
+  // 수시거래내역조회, 거래내역조회 키도 추가
+  const keys = ["ResultList", "List", "TX_LIST", "txList", "Data", "rows", "items", "수시거래내역조회", "거래내역조회"];
 
   if (Array.isArray(root)) candidateLists.push(root);
 
@@ -157,8 +208,11 @@ async function normalizeFromCooconOutput(
     }
   }
 
+  console.log("[normalizeFromCooconOutput] candidateLists count:", candidateLists.length);
   const list = candidateLists.find((l) => Array.isArray(l) && l.length > 0);
+  console.log("[normalizeFromCooconOutput] selected list length:", list?.length ?? 0);
   if (!list) return [];
+
 
   const out: NormalizedTx[] = [];
 
@@ -234,10 +288,18 @@ Deno.serve(async (req) => {
       auth: { persistSession: false },
     });
 
+    console.log("[coocon-scrape-transactions] Processing request:", {
+      eventId: body.eventId,
+      scrapeAccountId: body.scrapeAccountId,
+      hasDecryptParams: !!(body.decryptParams?.uid && body.decryptParams?.action),
+      hasCooconOutput: !!body.cooconOutput,
+    });
+
     const normalized = await normalizeFromCooconOutput(
       body.eventId,
       body.scrapeAccountId,
-      body.cooconOutput
+      body.cooconOutput,
+      body.decryptParams // Pass decryption parameters
     );
 
     /* 2️⃣ Upsert (중복 방어: unique index (scrape_account_id, tx_hash)) */

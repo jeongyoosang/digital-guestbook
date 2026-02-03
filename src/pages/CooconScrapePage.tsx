@@ -281,12 +281,17 @@ export default function CooconScrapePage() {
             await supabase.functions.invoke("coocon-scrape-transactions", {
               body: {
                 eventId,
-                scrapeAccountId: realScrapeAccountId, // ✅ Use the correct ID
+                scrapeAccountId: realScrapeAccountId,
                 startDate: formatDate(startDate),
                 endDate: formatDate(endDate),
-                cooconOutput: e.data.cooconOutput, // ✅ Pass the raw output from popup
+                cooconOutput: e.data.cooconOutput, // 암호화된 결과
+                decryptParams: e.data.decryptParams, // { uid, action } for SEED-CBC decryption
+                accountNumber: e.data.accountNumber, // 실제 계좌번호
+                accountMasked: e.data.accountMasked,
+                bankCode: e.data.bankCode,
               },
             });
+
 
           if (scrapeErr) {
             console.error("[CooconScrapePage] Transaction scraping failed:", scrapeErr);
