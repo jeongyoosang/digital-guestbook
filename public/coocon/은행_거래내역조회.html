@@ -588,7 +588,7 @@
         var ok = safePostToOpener(payload);
         if (ok) {
           try {
-            window.close();
+            // window.close(); // Keep open for debugging
           } catch (e) { }
         }
       });
