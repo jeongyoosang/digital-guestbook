@@ -303,9 +303,13 @@ export default function CooconScrapePage() {
 
           if (scrapeErr) {
             console.error("[CooconScrapePage] Transaction scraping failed:", scrapeErr);
-            // 에러가 나도 리포트 페이지로 이동은 함 (연결은 성공했으므로)
           } else {
             console.log("[CooconScrapePage] Transaction scraping success:", scrapeRes);
+            if (scrapeRes.debugLogs) {
+              console.log("=============== SERVER LOGS ===============");
+              console.log(scrapeRes.debugLogs.join("\n"));
+              console.log("===========================================");
+            }
           }
         } catch (e) {
           console.error("[CooconScrapePage] Exception calling scrape-transactions:", e);
