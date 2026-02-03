@@ -156,7 +156,7 @@ async function normalizeFromCooconOutput(
 
     if (decryptParams?.uid && decryptParams?.action) {
       try {
-        const decryptedStr = isasDecrypt(
+        const decryptedStr = await isasDecrypt(
           cooconOutput.Output.Result,
           decryptParams.uid,
           decryptParams.action

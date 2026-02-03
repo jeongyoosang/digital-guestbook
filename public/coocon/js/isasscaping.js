@@ -32,7 +32,7 @@ function iBASENXModule() {
 	this.Reqmsg = [];/* 요청데이터 */
 	this.ReqmsgCnt = [];/* 요청데이터 */
 	this.ResultList = [];
-	this.encMode = true;
+	this.encMode = false;
 	this.OpenUid = null;
 	this.OpenAction = null;
 	this.ThreadLength = 1;
