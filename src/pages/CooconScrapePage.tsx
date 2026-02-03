@@ -274,6 +274,45 @@ export default function CooconScrapePage() {
 
         const formatDate = (d: Date) => d.toISOString().split("T")[0];
 
+        // 🔄 Local Decryption Attempt (Workaround)
+        let cooconOutput = e.data.cooconOutput;
+        const decryptParams = e.data.decryptParams;
+
+        if (cooconOutput?.Output?.Result && typeof cooconOutput.Output.Result === "string" && decryptParams?.uid && decryptParams?.action) {
+          console.log("[CooconScrapePage] Attempting Local Java Decryption (localhost:3001)...");
+          try {
+            const res = await fetch("http://localhost:3001/decrypt", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                data: cooconOutput.Output.Result,
+                uid: decryptParams.uid,
+                action: decryptParams.action
+              })
+            });
+            if (res.ok) {
+              const json = await res.json();
+              console.log("[CooconScrapePage] Local Decryption Success! Injecting Plaintext.", json);
+              // Replace string with object to bypass server-side decryption
+              cooconOutput = {
+                ...cooconOutput,
+                Output: {
+                  ...cooconOutput.Output,
+                  Result: json
+                }
+              };
+            } else {
+              const errText = await res.text();
+              console.warn("[CooconScrapePage] Local Decryption Failed:", res.status, errText);
+              setError(`로컬 복호화 실패: ${errText}`);
+            }
+          } catch (localErr) {
+            console.warn("[CooconScrapePage] Local Decryption Server unreachable. Is 'node local-decrypt-server.js' running?", localErr);
+            // Don't fail hard, proceed to server (which might fail, but at least we tried)
+            // But usually we want to warn user.
+          }
+        }
+
         console.log(`[CooconScrapePage] Calling coocon-scrape-transactions for account: ${realScrapeAccountId}`);
 
         const body = {
@@ -281,8 +320,8 @@ export default function CooconScrapePage() {
           scrapeAccountId: realScrapeAccountId,
           startDate: formatDate(startDate),
           endDate: formatDate(endDate),
-          cooconOutput: e.data.cooconOutput,
-          decryptParams: e.data.decryptParams,
+          cooconOutput: cooconOutput, // Use modified output
+          decryptParams: decryptParams,
           accountNumber: e.data.accountNumber,
           accountMasked: e.data.accountMasked,
           bankCode: e.data.bankCode,
