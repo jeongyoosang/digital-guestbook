@@ -314,15 +314,89 @@
         warn("CooconiSASNX가 없습니다. /coocon/js/isasscaping.js 로드 실패");
       }
 
+      var lastScrapeOutput = null;
+
+      function executeScraping(certInfo, callback) {
+        log("4) 스크래핑 Job 구성 (수시거래내역조회)...");
+
+        // 날짜 범위: 최근 3개월 (React Side와 동일하게 맞춤)
+        var now = new Date();
+        var threeMonthsAgo = new Date();
+        threeMonthsAgo.setMonth(now.getMonth() - 3);
+
+        var formatDate = function (d) {
+          var yyyy = d.getFullYear();
+          var mm = String(d.getMonth() + 1).padStart(2, "0");
+          var dd = String(d.getDate()).padStart(2, "0");
+          return yyyy + mm + dd;
+        };
+
+        var bankNames = {
+          "004": "kbstar",
+          "088": "shinhan",
+          "020": "wooribank",
+          "081": "hanabank",
+          "011": "nonghyup",
+          "003": "ibk",
+          "023": "standardchartered",
+          "027": "citibank",
+          "090": "kakaobank",
+          "092": "tossbank",
+          "007": "suhyupbank",
+          "031": "dgb",
+          "032": "busanbank",
+          "039": "knbank",
+          "034": "kjbank",
+          "037": "jbbank",
+          "035": "jejubank",
+        };
+
+        var moduleName = bankNames[bankCode] || "wooribank";
+
+        var inputList = [
+          {
+            Module: moduleName,
+            Class: "개인뱅킹",
+            Job: "수시거래내역조회",
+            Input: {
+              계좌번호: accountMasked.replace(/-/g, ""), // 마스킹된 번호만 있으면 실제로는 실패할 수 있으나, 쿠콘 프로세스상 인증서 세션 내에서 resolved됨
+              조회시작일: formatDate(threeMonthsAgo),
+              조회종료일: formatDate(now),
+              인증서: {
+                이름: certInfo.User,
+                만료일자: certInfo.ExpiryDate,
+                비밀번호: certInfo.CertPwd,
+              },
+            },
+          },
+        ];
+
+        log("5) nx.execute 실행...");
+        nx.execute(inputList, 0, function (results, idx) {
+          log("✅ nx.execute 완료");
+          log(results);
+
+          if (results && results[0] && results[0].Output && results[0].Output.ErrorCode === "00000000") {
+            lastScrapeOutput = results[0]; // 전체 결과를 저장
+            log("💰 거래내역 가져오기 성공 (" + (results[0].Output.Result.거래내역조회 || []).length + "건)");
+          } else {
+            warn("거래내역 조회 실패: " + (results && results[0] ? results[0].Output.ErrorMessage : "알 수 없는 오류"));
+          }
+
+          if (typeof callback === "function") callback();
+        });
+      }
+
       function openCertPopupAndWait(done) {
         // cert manager 플러그인: $('#certLayer').makeCertManager(callback)
         $("#certLayer").makeCertManager(function (certInfo) {
           log("✅ 인증서 선택 완료");
-          log(certInfo);
+          log({ User: certInfo.User, ExpiryDate: certInfo.ExpiryDate }); // 암호는 로그 제외
 
-          // 여기서 certInfo를 기반으로 실제 scraping job을 실행하는 원본 흐름이 보통 붙음.
-          // 지금은 “연결 완료 신호”를 React로 전달하는 게 1차 목표.
-          if (typeof done === "function") done(certInfo);
+          // 인증서 선택이 완료되면 즉시 스크래핑 실행
+          executeScraping(certInfo, function () {
+            if (typeof done === "function") done(certInfo);
+          });
         });
       }
 
@@ -351,7 +425,7 @@
 
               log("3) 인증서 목록 UI 오픈 (makeCertManager)...");
               openCertPopupAndWait(function () {
-                // 인증서까지 선택 완료되면 Finish 버튼 활성화
+                // 인증서까지 선택 완료되고 스크래핑 시도 후 Finish 버튼 활성화
                 btnFinish.disabled = false;
                 btnInit.disabled = false;
                 log("✅ 다음: '연결 완료' 버튼을 눌러 React로 전달");
@@ -366,12 +440,12 @@
       });
 
       btnFinish.addEventListener("click", function () {
-        var bankCode = (document.getElementById("bankCode").value || "").trim();
-        var bankName = (document.getElementById("bankName").value || "").trim();
-        var accountMasked = (document.getElementById("accountMasked").value || "").trim();
-        var mode = document.getElementById("mode").value || "real";
+        var bankCodeValue = (document.getElementById("bankCode").value || "").trim();
+        var bankNameValue = (document.getElementById("bankName").value || "").trim();
+        var accountMaskedValue = (document.getElementById("accountMasked").value || "").trim();
+        var modeValue = document.getElementById("mode").value || "real";
 
-        if (!bankCode || !accountMasked) {
+        if (!bankCodeValue || !accountMaskedValue) {
           warn("bankCode / accountMasked 는 필수입니다.");
           return;
         }
@@ -380,14 +454,15 @@
           type: "COOCON_FINISH",
           eventId: eventId,
           scrapeAccountId: scrapeAccountId,
-          bankCode: bankCode,
-          bankName: bankName || null,
-          accountMasked: accountMasked,
-          mode: mode,
+          bankCode: bankCodeValue,
+          bankName: bankNameValue || null,
+          accountMasked: accountMaskedValue,
+          mode: modeValue,
+          cooconOutput: lastScrapeOutput, // ✅ 스크래핑 결과 포함
         };
 
-        log("postMessage 전송:");
-        log(payload);
+        log("postMessage 전송 (결과 포함):");
+        log({ type: payload.type, fetched: !!lastScrapeOutput });
 
         var ok = safePostToOpener(payload);
         if (ok) {

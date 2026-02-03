@@ -1,7 +1,7 @@
 ﻿/*
  * 최종 작성일  2018-12-07
  **/
-var CooconLicense = { "MstCompNo": "9999999999", "SubCompNo": "9999999999", "ProductNo": "00000014" };
+var CooconLicense = { "MstCompNo": "5218103425", "SubCompNo": "5218103425", "ProductNo": "00000014" };
 
 /* 스크래핑 모듈 생성 */
 var CooconiSASNX = new iBASENXModule();

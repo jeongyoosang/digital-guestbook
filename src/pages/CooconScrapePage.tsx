@@ -284,6 +284,7 @@ export default function CooconScrapePage() {
                 scrapeAccountId: realScrapeAccountId, // ✅ Use the correct ID
                 startDate: formatDate(startDate),
                 endDate: formatDate(endDate),
+                cooconOutput: e.data.cooconOutput, // ✅ Pass the raw output from popup
               },
             });
 
