@@ -423,16 +423,26 @@
       }
 
       function openCertPopupAndWait(done) {
+        log("3-a) openCertPopupAndWait 진입"); // Debug log
         // cert manager 플러그인: $('#certLayer').makeCertManager(callback)
         $("#certLayer").makeCertManager(function (certInfo) {
-          log("✅ 인증서 선택 완료");
-          log({ User: certInfo.User, ExpiryDate: certInfo.ExpiryDate }); // 암호는 로그 제외
+          log("✅ 인증서 선택 완료 (makeCertManager callback)");
+          log("certInfo 키: " + Object.keys(certInfo || {}).join(", "));
+
+          if (!certInfo) {
+            log("⚠️ certInfo가 비어있음!");
+            if (typeof done === "function") done(null);
+            return;
+          }
 
           // 인증서 선택이 완료되면 즉시 스크래핑 실행
+          log("3-b) executeScraping 호출 시작");
           executeScraping(certInfo, function () {
+            log("3-c) executeScraping 완료, done callback 호출");
             if (typeof done === "function") done(certInfo);
           });
         });
+        log("3-d) makeCertManager 호출 완료 (비동기 대기 중)"); // Debug log
       }
 
       btnInit.addEventListener("click", function () {
