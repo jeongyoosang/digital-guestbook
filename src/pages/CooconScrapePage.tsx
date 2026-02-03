@@ -276,20 +276,28 @@ export default function CooconScrapePage() {
 
         console.log(`[CooconScrapePage] Calling coocon-scrape-transactions for account: ${realScrapeAccountId}`);
 
+        const body = {
+          eventId,
+          scrapeAccountId: realScrapeAccountId,
+          startDate: formatDate(startDate),
+          endDate: formatDate(endDate),
+          cooconOutput: e.data.cooconOutput,
+          decryptParams: e.data.decryptParams,
+          accountNumber: e.data.accountNumber,
+          accountMasked: e.data.accountMasked,
+          bankCode: e.data.bankCode,
+        };
+
+        console.log("[CooconScrapePage] Invoking Edge Function with body:", {
+          ...body,
+          cooconOutput: body.cooconOutput ? "PRESENT (size=" + JSON.stringify(body.cooconOutput).length + ")" : "MISSING",
+          decryptParams: body.decryptParams,
+        });
+
         try {
           const { data: scrapeRes, error: scrapeErr } =
             await supabase.functions.invoke("coocon-scrape-transactions", {
-              body: {
-                eventId,
-                scrapeAccountId: realScrapeAccountId,
-                startDate: formatDate(startDate),
-                endDate: formatDate(endDate),
-                cooconOutput: e.data.cooconOutput, // 암호화된 결과
-                decryptParams: e.data.decryptParams, // { uid, action } for SEED-CBC decryption
-                accountNumber: e.data.accountNumber, // 실제 계좌번호
-                accountMasked: e.data.accountMasked,
-                bankCode: e.data.bankCode,
-              },
+              body,
             });
 
 

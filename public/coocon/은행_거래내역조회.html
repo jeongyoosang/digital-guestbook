@@ -552,6 +552,14 @@
           return;
         }
 
+        // 🔐 서버 측 복호화에 필요한 파라미터
+        var uid = nx.OpenUid || window.CooconiSASNX.OpenUid || null;
+        var action = nx.OpenAction || window.CooconiSASNX.OpenAction || null;
+
+        log("🔍 Decrypt Params 확인:");
+        log(" - UID: " + (uid ? uid.substring(0, 10) + "..." : "(null)"));
+        log(" - Action: " + (action ? action.substring(0, 10) + "..." : "(null)"));
+
         var payload = {
           type: "COOCON_FINISH",
           eventId: eventId,
@@ -561,16 +569,15 @@
           accountMasked: accountMaskedValue,
           accountNumber: (document.getElementById("accountNumber").value || "").replace(/-/g, "").trim(),
           mode: modeValue,
-          cooconOutput: lastScrapeOutput, // ✅ 스크래핑 결과 포함 (암호화됨)
-          // 🔐 서버 측 복호화에 필요한 파라미터
+          cooconOutput: lastScrapeOutput,
           decryptParams: {
-            uid: nx.OpenUid || null,
-            action: nx.OpenAction || null,
+            uid: uid,
+            action: action,
           },
         };
 
         log("postMessage 전송 (결과 포함):");
-        log({ type: payload.type, fetched: !!lastScrapeOutput, hasDecryptParams: !!(nx.OpenUid && nx.OpenAction) });
+        log({ type: payload.type, fetched: !!lastScrapeOutput, hasDecryptParams: !!(uid && action) });
 
 
         var ok = safePostToOpener(payload);
