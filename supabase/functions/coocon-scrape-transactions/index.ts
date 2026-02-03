@@ -28,6 +28,7 @@ type NormalizedTx = {
   memo: string | null;
   counterparty: string | null;
 
+  tx_hash: string; // ✅ Added field for unique constraints
   raw_json: unknown | null;
 };
 
@@ -96,13 +97,40 @@ function normalizeDirection(v: unknown): Direction {
   return "IN";
 }
 
+// ✅ Deterministic Hash Generation for Deduplication
+async function generateTxHash(
+  date: string,
+  time: string | null,
+  amount: number,
+  balance: number | null,
+  memo: string | null
+): Promise<string> {
+  // Combine fields into a unique string key
+  // e.g. "2024-01-01|12:00:00|10000|50000|WeddingGift"
+  const raw = [
+    date,
+    time ?? "00:00:00",
+    amount,
+    balance ?? "0",
+    (memo ?? "").trim(),
+  ].join("|");
+
+  const msgUint8 = new TextEncoder().encode(raw);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return hashHex;
+}
+
 /* ================= Normalize Coocon ================= */
 
-function normalizeFromCooconOutput(
+async function normalizeFromCooconOutput(
   eventId: string,
   scrapeAccountId: string,
   cooconOutput: any
-): NormalizedTx[] {
+): Promise<NormalizedTx[]> {
   if (!cooconOutput) return [];
 
   const root =
@@ -152,6 +180,18 @@ function normalizeFromCooconOutput(
       r.direction ?? r.입출금구분 ?? amountRaw
     );
 
+    const balance = r.balance ?? r.잔액 ?? null;
+    const memo = r.memo ?? r.적요 ?? null;
+
+    // ✅ Generate Hash
+    const tx_hash = await generateTxHash(
+      tx_date,
+      tx_time,
+      amount,
+      balance,
+      memo
+    );
+
     out.push({
       event_id: eventId,
       scrape_account_id: scrapeAccountId,
@@ -159,9 +199,10 @@ function normalizeFromCooconOutput(
       tx_time,
       amount,
       direction,
-      balance: r.balance ?? r.잔액 ?? null,
-      memo: r.memo ?? r.적요 ?? null,
+      balance,
+      memo,
       counterparty: r.counterparty ?? r.상대방 ?? null,
+      tx_hash,
       raw_json: r,
     });
   }
@@ -193,20 +234,18 @@ Deno.serve(async (req) => {
       auth: { persistSession: false },
     });
 
-    /* 1️⃣ Normalize */
-    const normalized = normalizeFromCooconOutput(
+    const normalized = await normalizeFromCooconOutput(
       body.eventId,
       body.scrapeAccountId,
       body.cooconOutput
     );
 
-    /* 2️⃣ Upsert (중복 방어: unique index 필요) */
+    /* 2️⃣ Upsert (중복 방어: unique index (scrape_account_id, tx_hash)) */
     let insertedTx = 0;
 
     if (normalized.length > 0) {
-      // ✅ 가장 흔한 유니크키 조합 (필요 시 인덱스 정의에 맞춰 수정)
-      const onConflict =
-        "event_id,scrape_account_id,tx_date,tx_time,amount,direction";
+      // ✅ Corrected onConflict target to match schema index `ux_est_onconflict`
+      const onConflict = "scrape_account_id, tx_hash";
 
       const { error, count } = await admin
         .from("event_scrape_transactions")

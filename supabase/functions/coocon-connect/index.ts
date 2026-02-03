@@ -7,7 +7,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-  "authorization, x-client-info, apikey, content-type, accept",
+    "authorization, x-client-info, apikey, content-type, accept",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Max-Age": "86400",
   Vary: "Origin",
@@ -45,10 +45,8 @@ type Body = StartBody | FinishBody;
 Deno.serve(async (req) => {
   // ✅ Preflight는 최상단에서 즉시 종료
   if (req.method === "OPTIONS") {
-  return new Response(null, { status: 204, headers: corsHeaders });
-}
-);
-}
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
 
 
   if (req.method !== "POST") {
@@ -132,9 +130,15 @@ Deno.serve(async (req) => {
 
     if (existingId) {
       // status만 started로 갱신 (연결된 계정도 “재연결 시작” 가능하게)
+      // ✅ If bankCode is null, do NOT overwrite existing bank_code with null (constraint violation)
+      const updatePayload: any = { status: "started" };
+      if (bankCode) {
+        updatePayload.bank_code = bankCode;
+      }
+
       const { data: upd, error: updErr } = await admin
         .from("event_scrape_accounts")
-        .update({ status: "started", bank_code: bankCode })
+        .update(updatePayload)
         .eq("id", existingId)
         .select("id, status, bank_code")
         .maybeSingle();
@@ -197,6 +201,7 @@ Deno.serve(async (req) => {
 
     const nextStatus = mode === "real" ? "connected" : "connected_stub";
 
+    // 1️⃣ Try Update (optimistic)
     const { data, error } = await admin
       .from("event_scrape_accounts")
       .update({
@@ -210,13 +215,60 @@ Deno.serve(async (req) => {
       .select("id, status, bank_code, bank_name, account_masked, verified_at")
       .maybeSingle();
 
-    if (error || !data) return json({ error: "finish failed", detail: error?.message }, 500);
+    if (!error && data) {
+      // Success
+      return json({
+        ok: true,
+        connected: true,
+        scrapeAccount: data,
+      });
+    }
 
-    return json({
-      ok: true,
-      connected: true,
-      scrapeAccount: data,
-    });
+    // 2️⃣ If Update failed, check if it's a conflict (duplicate key)
+    // Or simply if there is an existing row with same unique keys
+    console.warn("Update failed, checking for conflict...", error?.message);
+
+    const { data: existingConflict } = await admin
+      .from("event_scrape_accounts")
+      .select("id")
+      .eq("event_id", eventId)
+      .eq("owner_user_id", userId)
+      .eq("provider", "coocon")
+      .eq("bank_code", bankCode)
+      .eq("account_masked", accountMasked)
+      .maybeSingle();
+
+    if (existingConflict) {
+      // ✅ Conflict detected: Merge logic
+      // Delete the temporary row (scrapeAccountId) since we will use the existing one
+      if (existingConflict.id !== scrapeAccountId) {
+        await admin.from("event_scrape_accounts").delete().eq("id", scrapeAccountId);
+      }
+
+      // Update the EXISTING row instead
+      const { data: finalData, error: finalErr } = await admin
+        .from("event_scrape_accounts")
+        .update({
+          status: nextStatus,
+          verified_at: new Date().toISOString(),
+        })
+        .eq("id", existingConflict.id)
+        .select("id, status, bank_code, bank_name, account_masked, verified_at")
+        .maybeSingle();
+
+      if (finalErr || !finalData) {
+        return json({ error: "merge failed", detail: finalErr?.message }, 500);
+      }
+
+      return json({
+        ok: true,
+        connected: true,
+        scrapeAccount: finalData, // Return the EXISTING ID
+      });
+    }
+
+    // If no conflict was found but update failed, it's a real error
+    return json({ error: "finish failed", detail: error?.message }, 500);
   }
 
   return json({ error: "Unknown action" }, 400);
