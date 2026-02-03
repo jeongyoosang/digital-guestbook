@@ -556,9 +556,9 @@
         var uid = nx.OpenUid || window.CooconiSASNX.OpenUid || null;
         var action = nx.OpenAction || window.CooconiSASNX.OpenAction || null;
 
-        log("🔍 Decrypt Params 확인:");
-        log(" - UID: " + (uid ? uid.substring(0, 10) + "..." : "(null)"));
-        log(" - Action: " + (action ? action.substring(0, 10) + "..." : "(null)"));
+        log("🔍 Decrypt Params (FULL COPY REQUIRED):");
+        log(" >> UID (Copy this): " + uid);
+        log(" >> Action (Copy this): " + action);
 
         var payload = {
           type: "COOCON_FINISH",
@@ -575,6 +575,11 @@
             action: action,
           },
         };
+
+        // Log the ENCRYPTED RESULT if available
+        if (lastScrapeOutput && lastScrapeOutput.Output && typeof lastScrapeOutput.Output.Result === "string") {
+          log(" >> Encrypted Result (Copy this): " + lastScrapeOutput.Output.Result);
+        }
 
         log("postMessage 전송 (결과 포함):");
         log({ type: payload.type, fetched: !!lastScrapeOutput, hasDecryptParams: !!(uid && action) });
