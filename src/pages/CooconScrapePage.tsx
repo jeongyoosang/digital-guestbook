@@ -264,7 +264,7 @@ export default function CooconScrapePage() {
         // 팝업 닫기
         if (popupRef.current) {
           console.log("[CooconScrapePage] Closing popup");
-          popupRef.current.close();
+          // popupRef.current.close(); // Keep open for debugging
         }
 
         // ✅ 4️⃣ 거래내역 스크래핑 요청 (최근 3개월)
