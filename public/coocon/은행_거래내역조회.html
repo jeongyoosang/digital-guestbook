@@ -445,14 +445,35 @@
 
           if (txResult && txResult.Output && txResult.Output.ErrorCode === "00000000") {
             lastScrapeOutput = txResult;
-            var txList = txResult.Output.Result ? (txResult.Output.Result["거래내역조회"] || txResult.Output.Result["수시거래내역조회"] || []) : [];
+
+            // 🔍 Raw Result 구조 확인 (암호화 여부 판단)
+            log("--- Raw Result 구조 확인 ---");
+            log("typeof Result: " + typeof txResult.Output.Result);
+            if (typeof txResult.Output.Result === "string") {
+              log("Result (첫 100자): " + txResult.Output.Result.substring(0, 100) + "...");
+              log("⚠️ Result가 문자열입니다 - 서버 측 복호화가 필요할 수 있습니다!");
+            } else if (typeof txResult.Output.Result === "object") {
+              log("Result 키: " + Object.keys(txResult.Output.Result || {}).join(", "));
+              log("Result JSON: " + JSON.stringify(txResult.Output.Result).substring(0, 500));
+            }
+
+            var txList = [];
+            if (txResult.Output.Result && typeof txResult.Output.Result === "object") {
+              txList = txResult.Output.Result["거래내역조회"] || txResult.Output.Result["수시거래내역조회"] || [];
+            }
             log("💰 거래내역 가져오기 성공 (" + txList.length + "건)");
+
+            // 첫 거래 내역 샘플 로깅
+            if (txList.length > 0) {
+              log("첫 거래 샘플: " + JSON.stringify(txList[0]));
+            }
           } else {
             var errMsg = txResult && txResult.Output ? txResult.Output.ErrorMessage : "거래내역 결과 없음";
             log("⚠️ 거래내역 조회 문제: " + errMsg);
             // 에러가 나도 전체 결과를 저장해서 디버깅 가능하게
             lastScrapeOutput = results;
           }
+
 
           if (typeof callback === "function") callback();
         });
