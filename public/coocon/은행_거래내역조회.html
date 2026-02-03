@@ -354,12 +354,33 @@
         var moduleName = bankModules[bankCode] || "wooribank";
         log("모듈명: " + moduleName + " (bankCode=" + bankCode + ")");
 
-        // ✅ 인증서 객체 (공통으로 사용)
+        // ✅ certInfo 상세 로깅 (디버깅용)
+        log("인증서 정보:");
+        log("  - User: " + certInfo.User);
+        log("  - RDN: " + certInfo.RDN);
+        log("  - ExpiryDate: " + certInfo.ExpiryDate);
+        log("  - SerialNo: " + certInfo.SerialNo);
+        log("  - Type: " + certInfo.Type);
+        log("  - Drive: " + certInfo.Drive);
+
+        // ✅ 만료일자 형식 변환: "2024-12-31" → "20241231"
+        var expiryDateFormatted = (certInfo.ExpiryDate || "").replace(/-/g, "");
+
+        // ✅ 인증서 객체 - 개발자 가이드 293행 참조
+        // 이름: RDN (full DN 형식) - 예: "cn=홍길동()...,ou=...,o=...,c=kr"
+        // 만료일자: YYYYMMDD 형식 (하이픈 없음)
+        // 비밀번호: 인증서 비밀번호
+        // Drive: 인증서 저장소 드라이브 (Mac은 null)
         var certObj = {
-          이름: certInfo.User,
-          만료일자: certInfo.ExpiryDate,
+          이름: certInfo.RDN || certInfo.User,
+          만료일자: expiryDateFormatted,
           비밀번호: certInfo.CertPwd,
         };
+        // Drive 추가 (Mac의 경우 없을 수 있음)
+        if (certInfo.Drive) {
+          certObj["Drive"] = certInfo.Drive;
+        }
+        log("전송할 인증서 객체: " + JSON.stringify({ 이름: certObj.이름, 만료일자: certObj.만료일자, Drive: certObj.Drive || "(없음)", 비밀번호: "****" }));
 
         // ✅ Step 1: 로그인 + Step 2: 거래내역조회 순차 실행
         var inputList = [
