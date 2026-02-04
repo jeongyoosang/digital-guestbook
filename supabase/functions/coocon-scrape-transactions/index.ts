@@ -233,6 +233,8 @@ async function normalizeFromCooconOutput(
   // 3. Row Normalization Phase
   const out: NormalizedTx[] = [];
   let rowIdx = 0;
+  let skipLogged = 0;
+  const MAX_SKIP_LOGS = 15;
 
   for (const r of list) {
     try {
@@ -267,6 +269,19 @@ async function normalizeFromCooconOutput(
 
       // 필터: 입금 내역만
       if (direction !== "IN" || amount <= 0) {
+        if (skipLogged < MAX_SKIP_LOGS) {
+          log(`[SKIP] Row ${rowIdx} filtered (deposit-only). dir=${direction} amount=${amount} dep=${depositAmount} wd=${withdrawAmount}`, {
+            tx_date,
+            tx_time,
+            입금액: r.입금액,
+            출금액: r.출금액,
+            거래금액: r.거래금액,
+            입출금구분: r.입출금구분,
+            memo: r.memo ?? r.적요 ?? r.기재사항2 ?? null,
+            sender: r.sender ?? r.기재사항1 ?? null,
+          });
+          skipLogged++;
+        }
         continue;
       }
 
@@ -299,7 +314,7 @@ async function normalizeFromCooconOutput(
     }
   }
 
-  log(`[SUMMARY] Total input rows: ${list.length}, Normalized deposit rows: ${out.length}`);
+  log(`[SUMMARY] Total input rows: ${list.length}, Normalized deposit rows: ${out.length}, Skip logs emitted: ${skipLogged}`);
   return out;
 }
 
