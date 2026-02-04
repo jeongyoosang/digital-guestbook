@@ -190,7 +190,7 @@ export default function CooconScrapePage() {
          D️⃣ 쿠콘 HTML 팝업 오픈
          ========================= */
       const url =
-        `/coocon/은행_거래내역조회.html` +
+        `/coocon/bank_scrape.html` +
         `?eventId=${eventId}` +
         `&scrapeAccountId=${data.scrapeAccountId}` +
         `&bankCode=${encodeURIComponent(derivedBankCode)}` +
@@ -275,42 +275,51 @@ export default function CooconScrapePage() {
 
         const formatDate = (d: Date) => d.toISOString().split("T")[0];
 
-        // 🔄 Local Decryption Attempt (Workaround)
+        // 🔄 Client-Side Decryption (Browser Native)
         let cooconOutput = e.data.cooconOutput;
         const decryptParams = e.data.decryptParams;
 
         if (cooconOutput?.Output?.Result && typeof cooconOutput.Output.Result === "string" && decryptParams?.uid && decryptParams?.action) {
-          console.log("[CooconScrapePage] Attempting Local Java Decryption (localhost:3001)...");
+          console.log("[CooconScrapePage] Attempting Client-Side Decryption (TypeScript)...");
           try {
-            const res = await fetch("http://localhost:3001/decrypt", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                data: cooconOutput.Output.Result,
-                uid: decryptParams.uid,
-                action: decryptParams.action
-              })
-            });
-            if (res.ok) {
-              const json = await res.json();
-              console.log("[CooconScrapePage] Local Decryption Success! Injecting Plaintext.", json);
-              // Replace string with object to bypass server-side decryption
+            // Dynamic import to keep initial bundle small
+            const { isasDecrypt } = await import("../lib/seed-cbc");
+
+            const decryptedJsonStr = await isasDecrypt(
+              cooconOutput.Output.Result,
+              decryptParams.uid,
+              decryptParams.action
+            );
+
+            if (decryptedJsonStr) {
+              const decryptedObj = JSON.parse(decryptedJsonStr);
+              console.log("✅ [CooconScrapePage] 복호화 성공! 전체 데이터:", decryptedObj);
+
+              // 거래내역 리스트만 따로 출력 (은행마다 키 값이 다를 수 있음)
+              const txList = decryptedObj["거래내역조회"] || decryptedObj["수시거래내역조회"] || decryptedObj["List"] || decryptedObj["ResultList"];
+              if (txList) {
+                console.log(`📊 총 ${txList.length}건의 거래내역이 발견되었습니다.`);
+                console.table(txList); // 표 형태로 깔끔하게 출력
+              } else {
+                console.log("⚠️ 거래내역 리스트를 찾을 수 없습니다. (데이터 구조 확인 필요)");
+                console.log("전체 키:", Object.keys(decryptedObj));
+              }
+
+              // Replace encrypted string with decrypted object
               cooconOutput = {
                 ...cooconOutput,
                 Output: {
                   ...cooconOutput.Output,
-                  Result: json
+                  Result: decryptedObj
                 }
               };
             } else {
-              const errText = await res.text();
-              console.warn("[CooconScrapePage] Local Decryption Failed:", res.status, errText);
-              setError(`로컬 복호화 실패: ${errText}`);
+              console.error("[CooconScrapePage] Client-Side Decryption returned null");
+              setError("거래내역 복호화에 실패했습니다.");
             }
-          } catch (localErr) {
-            console.warn("[CooconScrapePage] Local Decryption Server unreachable. Is 'node local-decrypt-server.js' running?", localErr);
-            // Don't fail hard, proceed to server (which might fail, but at least we tried)
-            // But usually we want to warn user.
+          } catch (decErr) {
+            console.error("[CooconScrapePage] Client-Side Decryption Error:", decErr);
+            setError(`복호화 중 오류가 발생했습니다: ${String(decErr)}`);
           }
         }
 
