@@ -36,8 +36,9 @@ type NormalizedTx = {
   balance: number | null;
   memo: string | null;
   counterparty: string | null;
+  sender: string | null; // ✅ New field
 
-  tx_hash: string; // ✅ Added field for unique constraints
+  tx_hash: string;
   raw_json: unknown | null;
 };
 
@@ -96,8 +97,11 @@ function normalizeTimeHms(input: unknown): string | null {
 }
 
 function normalizeAmount(v: unknown): number {
-  const n = Number(String(v ?? "").replace(/[^\d.-]/g, ""));
-  return Math.abs(n);
+  if (v == null) return 0;
+  const s = String(v).replace(/[^\d.-]/g, "");
+  if (!s || s === "-") return 0;
+  const n = Number(s);
+  return isNaN(n) ? 0 : Math.abs(n);
 }
 
 function normalizeDirection(v: unknown): Direction {
@@ -112,15 +116,15 @@ async function generateTxHash(
   time: string | null,
   amount: number,
   balance: number | null,
+  sender: string | null,
   memo: string | null
 ): Promise<string> {
-  // Combine fields into a unique string key
-  // e.g. "2024-01-01|12:00:00|10000|50000|WeddingGift"
   const raw = [
     date,
     time ?? "00:00:00",
     amount,
     balance ?? "0",
+    (sender ?? "").trim(),
     (memo ?? "").trim(),
   ].join("|");
 
@@ -142,18 +146,17 @@ async function normalizeFromCooconOutput(
   decryptParams?: { uid?: string; action?: string },
   log: (msg: string, data?: any) => void = console.log
 ): Promise<NormalizedTx[]> {
-  if (!cooconOutput) return [];
+  if (!cooconOutput) {
+    log("[ERROR] cooconOutput is null or undefined");
+    return [];
+  }
 
   log("[normalizeFromCooconOutput] Starting normalization...");
-  log("[normalizeFromCooconOutput] cooconOutput type:", typeof cooconOutput);
 
-  // Handle encrypted Result (when Result is a string, it needs decryption)
   let processedOutput = cooconOutput;
 
-  // Check if we have encrypted data that needs decryption
+  // 1. Decryption Phase
   if (cooconOutput?.Output?.Result && typeof cooconOutput.Output.Result === "string") {
-    log("[normalizeFromCooconOutput] Found encrypted Result string, attempting decryption...");
-
     if (decryptParams?.uid && decryptParams?.action) {
       try {
         const decryptedStr = await isasDecrypt(
@@ -161,107 +164,142 @@ async function normalizeFromCooconOutput(
           decryptParams.uid,
           decryptParams.action
         );
-        log("[normalizeFromCooconOutput] Decryption successful, parsing JSON...");
-        log("[normalizeFromCooconOutput] Decrypted (first 500 chars):", decryptedStr.substring(0, 500));
 
-        const decryptedResult = JSON.parse(decryptedStr);
-        processedOutput = {
-          ...cooconOutput,
-          Output: {
-            ...cooconOutput.Output,
-            Result: decryptedResult,
-          },
-        };
+        try {
+          const decryptedResult = JSON.parse(decryptedStr);
+          processedOutput = {
+            ...cooconOutput,
+            Output: {
+              ...cooconOutput.Output,
+              Result: decryptedResult,
+            },
+          };
+          log("[INFO] Decryption and JSON parse successful");
+        } catch (jsonErr: any) {
+          log("[ERROR] Decrypted string is not valid JSON:", { error: jsonErr.message, preview: decryptedStr.substring(0, 100) });
+          throw jsonErr;
+        }
       } catch (e: any) {
-        log("[normalizeFromCooconOutput] Decryption failed:", e.message || String(e));
-        // Continue with original output in case decryption fails
+        log("[ERROR] Decryption failed:", e.message || String(e));
+        // Continue but output will likely be empty
       }
     } else {
-      log("[normalizeFromCooconOutput] Encrypted data found but no decryptParams provided");
+      log("[WARN] Encrypted Result found but decryptParams (uid/action) is missing");
     }
   }
 
+  // 2. Data Root Extraction
   const root =
     processedOutput?.Result ??
     processedOutput?.Output?.Result ??
     processedOutput?.Output ??
     processedOutput;
 
-  log("[normalizeFromCooconOutput] root type:", typeof root);
-  log("[normalizeFromCooconOutput] root keys:", typeof root === "object" ? Object.keys(root || {}).join(", ") : "N/A");
-
-  const candidateLists: any[][] = [];
-  // 수시거래내역조회, 거래내역조회 키도 추가
-  const keys = ["ResultList", "List", "TX_LIST", "txList", "Data", "rows", "items", "수시거래내역조회", "거래내역조회"];
-
-  if (Array.isArray(root)) candidateLists.push(root);
-
-  for (const k of keys) {
-    if (Array.isArray(root?.[k])) candidateLists.push(root[k]);
+  if (!root || typeof root !== "object") {
+    log("[ERROR] Could not find root object in processedOutput", { keys: Object.keys(processedOutput || {}) });
+    return [];
   }
 
-  // ✅ root 아래 한 단계 더 흔한 패턴도 탐색
-  // (ex: root.Result.ResultList 형태)
-  if (root?.Result && typeof root.Result === "object") {
-    if (Array.isArray(root.Result)) candidateLists.push(root.Result);
-    for (const k of keys) {
-      if (Array.isArray(root.Result?.[k])) candidateLists.push(root.Result[k]);
+  const candidateLists: any[][] = [];
+  const keys = ["ResultList", "List", "TX_LIST", "txList", "Data", "rows", "items", "수시거래내역조회", "거래내역조회"];
+
+  if (Array.isArray(root)) {
+    candidateLists.push(root);
+  }
+
+  for (const k of keys) {
+    if (Array.isArray(root?.[k])) {
+      log(`[INFO] Found transaction list in key: ${k}`);
+      candidateLists.push(root[k]);
     }
   }
 
-  log("[normalizeFromCooconOutput] candidateLists count:", candidateLists.length);
-  const list = candidateLists.find((l) => Array.isArray(l) && l.length > 0);
-  log("[normalizeFromCooconOutput] selected list length:", list?.length ?? 0);
-  if (!list) return [];
-
-
-  const out: NormalizedTx[] = [];
-
-  for (const r of list) {
-    const tx_date = normalizeDateYmd(
-      r.tx_date ?? r.TRN_DT ?? r.거래일자 ?? r.거래일
-    );
-    if (!tx_date) continue;
-
-    const tx_time = normalizeTimeHms(
-      r.tx_time ?? r.TRN_TM ?? r.거래시간 ?? null
-    );
-
-    const amountRaw = r.amount ?? r.TRN_AMT ?? r.거래금액;
-    const amount = normalizeAmount(amountRaw);
-    if (!amount) continue;
-
-    const direction = normalizeDirection(
-      r.direction ?? r.입출금구분 ?? amountRaw
-    );
-
-    const balance = r.balance ?? r.잔액 ?? null;
-    const memo = r.memo ?? r.적요 ?? null;
-
-    // ✅ Generate Hash
-    const tx_hash = await generateTxHash(
-      tx_date,
-      tx_time,
-      amount,
-      balance,
-      memo
-    );
-
-    out.push({
-      event_id: eventId,
-      scrape_account_id: scrapeAccountId,
-      tx_date,
-      tx_time,
-      amount,
-      direction,
-      balance,
-      memo,
-      counterparty: r.counterparty ?? r.상대방 ?? null,
-      tx_hash,
-      raw_json: r,
-    });
+  if (root?.Result && typeof root.Result === "object") {
+    if (Array.isArray(root.Result)) candidateLists.push(root.Result);
+    for (const k of keys) {
+      if (Array.isArray(root.Result?.[k])) {
+        log(`[INFO] Found transaction list in nested Result key: ${k}`);
+        candidateLists.push(root.Result[k]);
+      }
+    }
   }
 
+  const list = candidateLists.find((l) => Array.isArray(l) && l.length > 0);
+  if (!list) {
+    log("[ERROR] No transaction lists found. Root keys:", Object.keys(root));
+    return [];
+  }
+
+  // 3. Row Normalization Phase
+  const out: NormalizedTx[] = [];
+  let rowIdx = 0;
+
+  for (const r of list) {
+    try {
+      rowIdx++;
+      // 1) 거래일자
+      const tx_date = normalizeDateYmd(r.tx_date ?? r.TRN_DT ?? r.거래일자 ?? r.거래일);
+      if (!tx_date) {
+        log(`[WARN] Skipping row ${rowIdx}: missing or invalid tx_date`, r);
+        continue;
+      }
+
+      // 2) 거래시간
+      const tx_time = normalizeTimeHms(r.tx_time ?? r.TRN_TM ?? r.거래시각 ?? r.거래시간 ?? null);
+
+      // 3) 금액 및 방향
+      const depositAmount = normalizeAmount(r.입금액 ?? r.amount_in ?? 0);
+      const withdrawAmount = normalizeAmount(r.출금액 ?? r.amount_out ?? 0);
+
+      let amount = 0;
+      let direction: Direction = "OUT";
+
+      if (depositAmount > 0) {
+        amount = depositAmount;
+        direction = "IN";
+      } else if (withdrawAmount > 0) {
+        amount = withdrawAmount;
+        direction = "OUT";
+      } else {
+        amount = normalizeAmount(r.amount ?? r.TRN_AMT ?? r.거래금액);
+        direction = normalizeDirection(r.direction ?? r.입출금구분 ?? "");
+      }
+
+      // 필터: 입금 내역만
+      if (direction !== "IN" || amount <= 0) {
+        continue;
+      }
+
+      // 4) 기타 필드
+      const balance = normalizeAmount(r.balance ?? r.TRN_BAL ?? r.거래후잔액 ?? r.잔액 ?? null);
+      const memo = (r.memo ?? r.기재사항2 ?? r.적요 ?? null);
+      const sender = (r.sender ?? r.기재사항1 ?? r.counterparty ?? r.상대방 ?? null);
+
+      // 5) Hash 생성
+      const tx_hash = await generateTxHash(tx_date, tx_time, amount, balance, sender, memo);
+
+      out.push({
+        event_id: eventId,
+        scrape_account_id: scrapeAccountId,
+        tx_date,
+        tx_time,
+        amount,
+        direction,
+        balance,
+        memo,
+        counterparty: sender,
+        sender,
+        tx_hash,
+        raw_json: r,
+      });
+
+    } catch (rowErr: any) {
+      log(`[ERROR] Failed to normalize row ${rowIdx}:`, { error: rowErr.message, raw: r });
+      // Skip bad row and continue
+    }
+  }
+
+  log(`[SUMMARY] Total input rows: ${list.length}, Normalized deposit rows: ${out.length}`);
   return out;
 }
 
