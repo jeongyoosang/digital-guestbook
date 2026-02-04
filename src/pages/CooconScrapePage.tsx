@@ -268,10 +268,10 @@ export default function CooconScrapePage() {
           // popupRef.current.close(); // Keep open for debugging
         }
 
-        // ✅ 4️⃣ 거래내역 스크래핑 요청 (최근 3개월)
+        // ✅ 4️⃣ 거래내역 스크래핑 요청 (최근 1개월)
         const endDate = new Date();
         const startDate = new Date();
-        startDate.setMonth(startDate.getMonth() - 3);
+        startDate.setMonth(startDate.getMonth() - 1);
 
         const formatDate = (d: Date) => d.toISOString().split("T")[0];
 

@@ -326,10 +326,10 @@
       function executeScraping(certInfo, callback) {
         log("4) 스크래핑 Job 구성 (로그인 + 수시거래내역조회)...");
 
-        // 날짜 범위: 최근 3개월 (React Side와 동일하게 맞춤)
+        // 날짜 범위: 최근 1개월
         var now = new Date();
-        var threeMonthsAgo = new Date();
-        threeMonthsAgo.setMonth(now.getMonth() - 3);
+        var oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(now.getMonth() - 1);
 
         var formatDate = function (d) {
           var yyyy = d.getFullYear();
@@ -414,7 +414,7 @@
             Job: "수시거래내역조회",
             Input: {
               계좌번호: accountNumber,
-              조회시작일: formatDate(threeMonthsAgo),
+              조회시작일: formatDate(oneMonthAgo),
               조회종료일: formatDate(now),
             },
           },
@@ -427,7 +427,7 @@
         ];
 
         log("5) nx.execute 실행 (3개 Job: 로그인→조회→로그아웃)...");
-        log("조회기간: " + formatDate(threeMonthsAgo) + " ~ " + formatDate(now));
+        log("조회기간: " + formatDate(oneMonthAgo) + " ~ " + formatDate(now));
 
         nx.execute(inputList, 0, function (results, idx) {
           log("✅ nx.execute 완료 (전체 " + (results ? results.length : 0) + "건 응답)");
