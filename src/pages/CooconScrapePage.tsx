@@ -190,7 +190,7 @@ export default function CooconScrapePage() {
          D️⃣ 쿠콘 HTML 팝업 오픈
          ========================= */
       const url =
-        `/coocon/은행_거래내역조회.html` +
+        `/coocon/bank_scrape.html` +
         `?eventId=${eventId}` +
         `&scrapeAccountId=${data.scrapeAccountId}` +
         `&bankCode=${encodeURIComponent(derivedBankCode)}` +
@@ -283,24 +283,26 @@ export default function CooconScrapePage() {
           console.log("[CooconScrapePage] Attempting Client-Side Decryption (TypeScript)...");
           try {
             // Dynamic import to keep initial bundle small
-            const { isasDecrypt } = await import("@/lib/seed-cbc");
+            const { isasDecrypt } = await import("../lib/seed-cbc");
 
-            const decryptedJson = await isasDecrypt(
+            const decryptedJsonStr = await isasDecrypt(
               cooconOutput.Output.Result,
               decryptParams.uid,
               decryptParams.action
             );
 
-            if (decryptedJson) {
-              console.log("✅ [CooconScrapePage] 복호화 성공! 전체 데이터:", decryptedJson);
+            if (decryptedJsonStr) {
+              const decryptedObj = JSON.parse(decryptedJsonStr);
+              console.log("✅ [CooconScrapePage] 복호화 성공! 전체 데이터:", decryptedObj);
 
               // 거래내역 리스트만 따로 출력 (은행마다 키 값이 다를 수 있음)
-              const txList = decryptedJson["거래내역조회"] || decryptedJson["수시거래내역조회"] || decryptedJson["List"] || decryptedJson["ResultList"];
+              const txList = decryptedObj["거래내역조회"] || decryptedObj["수시거래내역조회"] || decryptedObj["List"] || decryptedObj["ResultList"];
               if (txList) {
-                console.table(txList); // 표 형태로 깔끔하게 출력
                 console.log(`📊 총 ${txList.length}건의 거래내역이 발견되었습니다.`);
+                console.table(txList); // 표 형태로 깔끔하게 출력
               } else {
                 console.log("⚠️ 거래내역 리스트를 찾을 수 없습니다. (데이터 구조 확인 필요)");
+                console.log("전체 키:", Object.keys(decryptedObj));
               }
 
               // Replace encrypted string with decrypted object
@@ -308,7 +310,7 @@ export default function CooconScrapePage() {
                 ...cooconOutput,
                 Output: {
                   ...cooconOutput.Output,
-                  Result: decryptedJson
+                  Result: decryptedObj
                 }
               };
             } else {
