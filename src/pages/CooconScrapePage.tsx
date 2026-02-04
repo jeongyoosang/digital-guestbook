@@ -351,7 +351,23 @@ export default function CooconScrapePage() {
 
 
           if (scrapeErr) {
+            const anyErr: any = scrapeErr;
             console.error("[CooconScrapePage] Transaction scraping failed:", scrapeErr);
+            if (anyErr?.context) {
+              console.error("[CooconScrapePage] Edge Function error context:", {
+                status: anyErr.context.status,
+                statusText: anyErr.context.statusText,
+                body: anyErr.context.body,
+              });
+            }
+
+            const serverMsg =
+              anyErr?.context?.body?.error ??
+              anyErr?.context?.body?.message ??
+              anyErr?.context?.statusText ??
+              anyErr?.message ??
+              "거래내역 불러오기에 실패했습니다.";
+            setError(String(serverMsg));
           } else {
             console.log("[CooconScrapePage] Transaction scraping success:", scrapeRes);
             if (scrapeRes.debugLogs) {
@@ -362,6 +378,7 @@ export default function CooconScrapePage() {
           }
         } catch (e) {
           console.error("[CooconScrapePage] Exception calling scrape-transactions:", e);
+          setError(`거래내역 호출 중 예외가 발생했습니다: ${String(e)}`);
         }
 
         // 리포트 페이지로 이동
