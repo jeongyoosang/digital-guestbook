@@ -387,7 +387,7 @@ Deno.serve(async (req) => {
       }
       insertedTx = count ?? normalized.length;
 
-      /* 3️⃣ event_ledger_entries에도 자동 추가 */
+      /* 3️⃣ event_ledger_entries에도 자동 추가 (중복 방지) */
       // scrape_account_id로 event_scrape_accounts 조회하여 owner_member_id 가져오기
       const { data: scrapeAccount, error: scrapeErr } = await admin
         .from("event_scrape_accounts")
@@ -412,29 +412,44 @@ Deno.serve(async (req) => {
         }
 
         if (eventAccount?.owner_member_id) {
-          // 장부 엔트리 생성
-          const ledgerEntries = normalized.map((tx) => ({
-            event_id: tx.event_id,
-            owner_member_id: eventAccount.owner_member_id,
-            guest_name: tx.sender || "입금자 미상",
-            attended: true,
-            gift_amount: tx.amount,
-            gift_method: "account" as const,
-            created_source: "scrape" as const,
-            memo: tx.memo,
-          }));
+          // upsert된 거래내역의 실제 ID 조회 (중복 방지를 위해)
+          const { data: insertedTransactions, error: txQueryErr } = await admin
+            .from("event_scrape_transactions")
+            .select("id, tx_hash, sender, amount, memo")
+            .eq("scrape_account_id", body.scrapeAccountId)
+            .in("tx_hash", normalized.map(tx => tx.tx_hash));
 
-          const { error: ledgerErr, count: ledgerCount } = await admin
-            .from("event_ledger_entries")
-            .insert(ledgerEntries, {
-              count: "exact",
-            });
+          if (txQueryErr) {
+            log("[WARN] Failed to query inserted transactions:", txQueryErr);
+          } else if (insertedTransactions && insertedTransactions.length > 0) {
+            // 장부 엔트리 생성 (scrape_transaction_id 포함)
+            const ledgerEntries = insertedTransactions.map((tx: any) => ({
+              event_id: body.eventId,
+              owner_member_id: eventAccount.owner_member_id,
+              scrape_transaction_id: tx.id,
+              guest_name: tx.sender || "입금자 미상",
+              attended: true,
+              gift_amount: tx.amount,
+              gift_method: "account" as const,
+              created_source: "scrape" as const,
+              memo: tx.memo,
+            }));
 
-          if (ledgerErr) {
-            log("[WARN] Failed to insert ledger entries:", ledgerErr);
-          } else {
-            insertedLedger = ledgerCount ?? ledgerEntries.length;
-            log(`[SUCCESS] Inserted ${insertedLedger} ledger entries`);
+            // upsert로 중복 방지
+            const { error: ledgerErr, count: ledgerCount } = await admin
+              .from("event_ledger_entries")
+              .upsert(ledgerEntries, {
+                onConflict: "scrape_transaction_id",
+                ignoreDuplicates: false,
+                count: "exact",
+              });
+
+            if (ledgerErr) {
+              log("[WARN] Failed to upsert ledger entries:", ledgerErr);
+            } else {
+              insertedLedger = ledgerCount ?? ledgerEntries.length;
+              log(`[SUCCESS] Upserted ${insertedLedger} ledger entries`);
+            }
           }
         } else {
           log("[WARN] No owner_member_id found for event_account");
