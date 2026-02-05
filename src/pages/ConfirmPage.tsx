@@ -770,7 +770,7 @@ export default function ConfirmPage() {
             onClick={() => navigate("/app")}
             className="text-xs md:text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900 whitespace-nowrap"
           >
-            뒤로가기
+           이벤트 홈
           </button>
 
           <button
@@ -785,16 +785,16 @@ export default function ConfirmPage() {
         <div>
           <h1 className="text-xl md:text-2xl font-bold">예식 기본 정보 설정</h1>
           <p className="text-xs md:text-sm text-gray-600 mt-1">
-            예식 시간, 디스플레이(축의금/메시지/사진) 구성이 전광판에 그대로 반영됩니다.
+            예식 시간, 성함, 디스플레이 배경 구성이 전광판에 반영됩니다.
           </p>
         </div>
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">
-        {/* 모바일 초대장 */}
+        {/* 모바일 청첩장 */}
         <section className="bg-white/70 border border-rose-200/70 ring-1 ring-rose-200/40 rounded-2xl p-4 space-y-4 shadow-2xl shadow-rose-200/30 backdrop-blur-xl transition-all hover:border-rose-300/80">
-          <h2 className="text-sm md:text-lg font-semibold">모바일 초대장</h2>
-          <p className="text-[11px] text-gray-500">모바일 초대장 링크가 필요합니다. (카카오톡 공유용 링크)</p>
+          <h2 className="text-sm md:text-lg font-semibold">모바일 청첩장</h2>
+          <p className="text-[11px] text-gray-500">모바일 청첩장 링크가 필요합니다. (계좌번호 확인용)</p>
 
           <div className="flex flex-col sm:flex-row gap-2">
             <input
@@ -828,7 +828,7 @@ export default function ConfirmPage() {
               <input
                 type="text"
                 className="w-full border rounded-md px-3 py-2 text-sm"
-                placeholder="예) 김철수"
+                placeholder="예) 김우빈"
                 value={groomName}
                 onChange={(e) => setGroomName(e.target.value)}
               />
@@ -838,7 +838,7 @@ export default function ConfirmPage() {
               <input
                 type="text"
                 className="w-full border rounded-md px-3 py-2 text-sm"
-                placeholder="예) 이영희"
+                placeholder="예) 신민아"
                 value={brideName}
                 onChange={(e) => setBrideName(e.target.value)}
               />
@@ -869,14 +869,13 @@ export default function ConfirmPage() {
             </div>
           </div>
 
-          <p className="text-[11px] text-gray-500 mt-1">여기서 입력한 정보는 전광판과 청첩장 화면에 그대로 반영됩니다.</p>
         </section>
 
         {/* 예식 시간 */}
         <section className="bg-white/70 border border-rose-200/70 ring-1 ring-rose-200/40 rounded-2xl p-4 space-y-4 shadow-2xl shadow-rose-200/30 backdrop-blur-xl transition-all hover:border-rose-300/80">
           <h2 className="text-sm md:text-lg font-semibold">예식 시간</h2>
           <p className="text-[11px] text-gray-500">
-            예식 시작 <span className="font-semibold">1시간 전</span>부터 예식 <span className="font-semibold">10분 전</span>까지
+            예식 시작 <span className="font-semibold">1시간 전</span>부터 종료 <span className="font-semibold">10분 전</span>까지
             디스플레이가 활성화됩니다.
           </p>
 
@@ -971,10 +970,10 @@ export default function ConfirmPage() {
 
         {/* 디스플레이 */}
         <section className="bg-white/70 border border-rose-200/70 ring-1 ring-rose-200/40 rounded-2xl p-4 space-y-4 shadow-2xl shadow-rose-200/30 backdrop-blur-xl transition-all hover:border-rose-300/80">
-          <h2 className="text-sm md:text-lg font-semibold">디스플레이 사진/영상/테마</h2>
+          <h2 className="text-sm md:text-lg font-semibold">디스플레이 배경</h2>
 
           <div className="space-y-2">
-            <label className="block text-[11px] font-medium text-gray-600 mb-1">표시 방식</label>
+            <label className="block text-[11px] font-medium text-gray-600 mb-1">배경 선택</label>
             <div className="flex flex-col gap-1 text-sm">
               <label className="flex items-center gap-2">
                 <input
@@ -999,22 +998,22 @@ export default function ConfirmPage() {
               </label>
             </div>
 
-            <p className="text-[11px] text-gray-500">사진/영상은 전광판에 자동 재생되며 메시지는 위에 오버레이로 표시됩니다.</p>
+            <p className="text-[11px] text-gray-500">사진/영상은 디스플레이에 자동 재생되며 메시지는 오버레이로 표시됩니다.</p>
           </div>
 
           {backgroundMode === "photo" && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">신랑/신부 사진/영상 올리기(권장)</label>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">신랑/신부 사진/영상 올리기(추천)</label>
 
                 <label className="block">
                   <div className="w-full border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-center bg-white active:scale-[0.99] transition">
                     <span className="text-xl mb-1">🖼️ 사진 / 🎬 영상</span>
-                    <p className="text-sm font-medium text-gray-800">컴퓨터에서 파일 선택하기</p>
+                    <p className="text-sm font-medium text-gray-800">파일 업로드</p>
                     <p className="mt-1 text-[11px] text-gray-500">
-                      사진+영상 합쳐서 최대 {MAX_MEDIA_TOTAL}개까지 업로드할 수 있어요. (영상은 최대 {MAX_VIDEOS}개)
+                      사진+영상은 최대 {MAX_MEDIA_TOTAL}개까지 업로드할 수 있어요. <br /> (영상 최대 {MAX_VIDEOS}개)
                       <br />
-                      파일 1개당 {MAX_MEDIA_FILE_MB}MB 이하만 지원합니다. (긴 영상은 용량 때문에 업로드가 제한될 수 있어요)
+                      파일 1개당 {MAX_MEDIA_FILE_MB}MB 이하만 지원합니다. <br /> (최대 3분 내외 권장)
                     </p>
                   </div>
 
@@ -1284,7 +1283,7 @@ export default function ConfirmPage() {
                     onClick={() => navigate("/app")}
                     className="px-3 py-2 rounded-md bg-white border text-xs sm:text-sm hover:bg-gray-50"
                   >
-                    이벤트로 이동
+                    이벤트 홈
                   </button>
                   <button
                     type="button"

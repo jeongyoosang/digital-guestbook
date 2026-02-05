@@ -210,7 +210,7 @@ export default function LoginPage() {
           <div className="text-center mb-6">
             <div className="text-xl font-bold">신랑·신부 관리 로그인</div>
             <div className="text-sm text-muted-foreground mt-2">
-              예식 설정 및 리포트 확인을 위한 관리 페이지 접근 인증입니다.
+              예식 설정 및 리포트 확인을 위한 이벤트홈 페이지 접근 인증입니다.
             </div>
           </div>
 

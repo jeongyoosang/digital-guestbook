@@ -119,7 +119,7 @@ export default function DisplayPage() {
 
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [lowerMessage, setLowerMessage] = useState(
-    "친히 오셔서 축복해주셔서 감사합니다."
+    "자리를 빛내주셔서 감사합니다."
   );
   const [dateText, setDateText] = useState("");
 
