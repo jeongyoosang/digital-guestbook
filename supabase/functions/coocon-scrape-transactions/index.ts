@@ -435,20 +435,36 @@ Deno.serve(async (req) => {
               memo: tx.memo,
             }));
 
-            // upsert로 중복 방지
-            const { error: ledgerErr, count: ledgerCount } = await admin
+            // 장부에 추가 (로직으로 중복 체크)
+            const existingIds = new Set<string>();
+            const { data: existingEntries } = await admin
               .from("event_ledger_entries")
-              .upsert(ledgerEntries, {
-                onConflict: "scrape_transaction_id",
-                ignoreDuplicates: false,
-                count: "exact",
-              });
+              .select("scrape_transaction_id")
+              .in("scrape_transaction_id", ledgerEntries.map((e: any) => e.scrape_transaction_id).filter(Boolean));
 
-            if (ledgerErr) {
-              log("[WARN] Failed to upsert ledger entries:", ledgerErr);
+            if (existingEntries) {
+              existingEntries.forEach((e: any) => {
+                if (e.scrape_transaction_id) existingIds.add(e.scrape_transaction_id);
+              });
+            }
+
+            const newEntries = ledgerEntries.filter((e: any) => !existingIds.has(e.scrape_transaction_id));
+
+            if (newEntries.length > 0) {
+              const { error: ledgerErr, count: ledgerCount } = await admin
+                .from("event_ledger_entries")
+                .insert(newEntries, {
+                  count: "exact",
+                });
+
+              if (ledgerErr) {
+                log("[WARN] Failed to insert ledger entries:", ledgerErr);
+              } else {
+                insertedLedger = ledgerCount ?? newEntries.length;
+                log(`[SUCCESS] Inserted ${insertedLedger} new ledger entries (skipped ${ledgerEntries.length - newEntries.length} duplicates)`);
+              }
             } else {
-              insertedLedger = ledgerCount ?? ledgerEntries.length;
-              log(`[SUCCESS] Upserted ${insertedLedger} ledger entries`);
+              log("[INFO] All transactions already exist in ledger");
             }
           }
         } else {
