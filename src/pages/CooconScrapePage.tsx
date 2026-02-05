@@ -175,6 +175,7 @@ export default function CooconScrapePage() {
           body: {
             action: "start",
             eventId,
+            eventAccountId: account.id, // ✅ 설정한 계좌 ID 전달
             bankCode: derivedBankCode, // ✅ 매핑된 코드 사용
           },
         }
