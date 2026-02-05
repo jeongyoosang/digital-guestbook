@@ -25,6 +25,7 @@ function json(data: unknown, status = 200) {
 type StartBody = {
   action: "start";
   eventId: string;
+  eventAccountId?: string | null;
   bankCode?: string | null;
 };
 
@@ -96,6 +97,7 @@ Deno.serve(async (req) => {
   /* ---------------- start ---------------- */
   if (body.action === "start") {
     const bankCode = (body as StartBody).bankCode ?? null;
+    const eventAccountId = (body as StartBody).eventAccountId ?? null;
 
     // ✅ 중복 row 계속 생기는 것 방지: 기존 최신 row 있으면 재사용
     // (bank_code까지 동일하면 그걸 쓰고, bank_code가 없으면 event/owner/provider 기준 최신)
@@ -160,6 +162,7 @@ Deno.serve(async (req) => {
       .insert({
         event_id: eventId,
         owner_user_id: userId,
+        event_account_id: eventAccountId,
         provider: "coocon",
         bank_code: bankCode,
         status: "started",

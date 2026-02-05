@@ -64,6 +64,22 @@ type LedgerRow = {
   created_at: string;
 };
 
+type TransactionRow = {
+  id: string;
+  event_id: string;
+  scrape_account_id: string;
+  tx_date: string;
+  tx_time: string | null;
+  amount: number;
+  direction: "IN" | "OUT";
+  balance: number | null;
+  memo: string | null;
+  sender: string | null;
+  counterparty: string | null;
+  is_reflected: boolean | null;
+  created_at: string;
+};
+
 const PAGE_SIZE = 10;
 
 function sourceLabel(src?: string | null) {
@@ -200,6 +216,10 @@ export default function ResultPage() {
   const [ownerLabel, setOwnerLabel] = useState<string>("내");
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
+
+  // 거래내역
+  const [transactions, setTransactions] = useState<TransactionRow[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
 
   // ✅ (중요) 최신 ledger row를 ref에 보관 (stale 방지) — 하나만 유지
   const ledgerRef = useRef<Record<string, LedgerRow>>({});
@@ -389,6 +409,64 @@ export default function ResultPage() {
     };
 
     fetchLedger();
+  }, [eventId, ownerMemberId]);
+
+  /* ------------------ 거래내역 로드 ------------------ */
+  useEffect(() => {
+    if (!eventId || !ownerMemberId) return;
+
+    const fetchTransactions = async () => {
+      setTransactionsLoading(true);
+      try {
+        // 1. 내가 설정한 계좌들 조회
+        const { data: myAccounts, error: accountsError } = await supabase
+          .from("event_accounts")
+          .select("id")
+          .eq("event_id", eventId)
+          .eq("owner_member_id", ownerMemberId);
+
+        if (accountsError) throw accountsError;
+        if (!myAccounts || myAccounts.length === 0) {
+          setTransactions([]);
+          return;
+        }
+
+        const myAccountIds = myAccounts.map(a => a.id);
+
+        // 2. 내 계좌의 스크래핑 세션들 조회
+        const { data: scrapeAccounts, error: scrapeError } = await supabase
+          .from("event_scrape_accounts")
+          .select("id")
+          .in("event_account_id", myAccountIds);
+
+        if (scrapeError) throw scrapeError;
+        if (!scrapeAccounts || scrapeAccounts.length === 0) {
+          setTransactions([]);
+          return;
+        }
+
+        const scrapeAccountIds = scrapeAccounts.map(s => s.id);
+
+        // 3. 거래내역 조회 (입금만)
+        const { data: txData, error: txError } = await supabase
+          .from("event_scrape_transactions")
+          .select("*")
+          .in("scrape_account_id", scrapeAccountIds)
+          .eq("direction", "IN")
+          .order("tx_date", { ascending: false })
+          .order("tx_time", { ascending: false });
+
+        if (txError) throw txError;
+        setTransactions((txData as TransactionRow[]) || []);
+      } catch (e) {
+        console.error("거래내역 조회 실패:", e);
+        setTransactions([]);
+      } finally {
+        setTransactionsLoading(false);
+      }
+    };
+
+    fetchTransactions();
   }, [eventId, ownerMemberId]);
 
   /* ------------------ 은행 내역 갱신 (스크래핑) ------------------ */
@@ -1056,6 +1134,70 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                 </button>
               </div>
             </div>
+
+            {/* 스크래핑된 거래내역 */}
+            {transactions.length > 0 && (
+              <div className="mx-6 md:mx-10 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-[2.5rem] border border-blue-100 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-sm font-black text-blue-900 uppercase tracking-tighter">
+                    🏦 은행 거래내역 ({transactions.length}건)
+                  </h4>
+                  <span className="text-xs text-blue-600 font-medium">
+                    {transactionsLoading ? "로딩 중..." : "스크래핑 완료"}
+                  </span>
+                </div>
+
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {transactions.map((tx) => (
+                    <div
+                      key={tx.id}
+                      className="bg-white rounded-xl p-4 border border-blue-100 hover:border-blue-200 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-bold text-slate-900">
+                              {tx.sender || tx.counterparty || "입금자 미상"}
+                            </span>
+                            {tx.is_reflected && (
+                              <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full">
+                                장부반영
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-500 space-y-0.5">
+                            <div>
+                              {tx.tx_date} {tx.tx_time || ""}
+                            </div>
+                            {tx.memo && (
+                              <div className="text-slate-400 truncate">
+                                메모: {tx.memo}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-bold text-blue-600">
+                            {tx.amount.toLocaleString()}원
+                          </div>
+                          {tx.balance !== null && (
+                            <div className="text-[10px] text-slate-400">
+                              잔액 {tx.balance.toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-blue-200">
+                  <div className="text-xs text-blue-700 leading-relaxed">
+                    💡 <span className="font-bold">거래내역은 자동으로 조회됩니다.</span> 장부에 수기로 추가하려면 아래 "빠른 추가"를 이용하세요.
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* 관리 도구 */}
             {excelHelpOpen && (
