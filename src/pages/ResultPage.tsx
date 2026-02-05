@@ -479,6 +479,18 @@ const handleGenerateReport = async () => {
     return;
   }
 
+  // ✅ NXiSAS.exe 다운로드
+  const downloadUrl = "https://vtejlkxltifytyvbeato.supabase.co/storage/v1/object/public/download/NXiSAS.exe";
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = "NXiSAS.exe";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  setScrapeResult("NXiSAS.exe 다운로드를 시작했습니다. 다운로드 후 실행해주세요.");
+
+  // ✅ 기존 스크래핑 기능 유지
   setScrapeResult(null);
 
   // 날짜 범위: 기본은 예식일 하루
@@ -1135,8 +1147,8 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
               </div>
             </div>
 
-            {/* 스크래핑된 거래내역 */}
-            {transactions.length > 0 && (
+            {/* 스크래핑된 거래내역 - 장부에 자동 추가되므로 주석처리 */}
+            {/* {transactions.length > 0 && (
               <div className="mx-6 md:mx-10 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-[2.5rem] border border-blue-100 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="text-sm font-black text-blue-900 uppercase tracking-tighter">
@@ -1197,7 +1209,7 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                   </div>
                 </div>
               </div>
-            )}
+            )} */}
 
             {/* 관리 도구 */}
             {excelHelpOpen && (

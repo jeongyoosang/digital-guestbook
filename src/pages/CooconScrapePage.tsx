@@ -196,7 +196,8 @@ export default function CooconScrapePage() {
         `&scrapeAccountId=${data.scrapeAccountId}` +
         `&bankCode=${encodeURIComponent(derivedBankCode)}` +
         `&bankName=${encodeURIComponent(account.bank_name)}` +
-        `&accountMasked=${encodeURIComponent(accountMasked)}`;
+        `&accountMasked=${encodeURIComponent(accountMasked)}` +
+        `&accountNumber=${encodeURIComponent(rawNum)}`;
 
       popupRef.current = window.open(
         url,

@@ -367,6 +367,7 @@ Deno.serve(async (req) => {
 
     /* 2️⃣ Upsert (중복 방어: unique index (scrape_account_id, tx_hash)) */
     let insertedTx = 0;
+    let insertedLedger = 0;
 
     if (normalized.length > 0) {
       const onConflict = "scrape_account_id, tx_hash";
@@ -385,12 +386,69 @@ Deno.serve(async (req) => {
         );
       }
       insertedTx = count ?? normalized.length;
+
+      /* 3️⃣ event_ledger_entries에도 자동 추가 */
+      // scrape_account_id로 event_scrape_accounts 조회하여 owner_member_id 가져오기
+      const { data: scrapeAccount, error: scrapeErr } = await admin
+        .from("event_scrape_accounts")
+        .select("event_account_id")
+        .eq("id", body.scrapeAccountId)
+        .maybeSingle();
+
+      if (scrapeErr) {
+        log("[WARN] Failed to fetch scrape account:", scrapeErr);
+      }
+
+      if (scrapeAccount?.event_account_id) {
+        // event_account_id로 owner_member_id 조회
+        const { data: eventAccount, error: accountErr } = await admin
+          .from("event_accounts")
+          .select("owner_member_id")
+          .eq("id", scrapeAccount.event_account_id)
+          .maybeSingle();
+
+        if (accountErr) {
+          log("[WARN] Failed to fetch event account:", accountErr);
+        }
+
+        if (eventAccount?.owner_member_id) {
+          // 장부 엔트리 생성
+          const ledgerEntries = normalized.map((tx) => ({
+            event_id: tx.event_id,
+            owner_member_id: eventAccount.owner_member_id,
+            guest_name: tx.sender || "입금자 미상",
+            attended: true,
+            gift_amount: tx.amount,
+            gift_method: "account" as const,
+            created_source: "scrape" as const,
+            memo: tx.memo,
+          }));
+
+          const { error: ledgerErr, count: ledgerCount } = await admin
+            .from("event_ledger_entries")
+            .insert(ledgerEntries, {
+              count: "exact",
+            });
+
+          if (ledgerErr) {
+            log("[WARN] Failed to insert ledger entries:", ledgerErr);
+          } else {
+            insertedLedger = ledgerCount ?? ledgerEntries.length;
+            log(`[SUCCESS] Inserted ${insertedLedger} ledger entries`);
+          }
+        } else {
+          log("[WARN] No owner_member_id found for event_account");
+        }
+      } else {
+        log("[WARN] No event_account_id found for scrape_account");
+      }
     }
 
     return json({
       ok: true,
       fetched: normalized.length,
       insertedTx,
+      insertedLedger,
       startDate: body.startDate,
       endDate: body.endDate,
       debugLogs, // Return logs
