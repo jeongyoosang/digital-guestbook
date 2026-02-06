@@ -635,6 +635,17 @@ export default function ConfirmPage() {
       return "축의금 계좌를 최소 1개 이상 등록해주세요. (라벨/예금주/은행/계좌번호 모두 필요)";
     }
 
+    // 중복 라벨 체크 (단, '기타'는 중복 허용 가능하지만 사용자 요청에 따라 기본적으로 체크)
+    const labels = validAccounts.map((a) => a.label.trim());
+    const duplicateLabels = labels.filter((item, index) => labels.indexOf(item) !== index);
+
+    // '기타'를 제외한 다른 라벨이 중복되면 에러 (기타는 여러 개일 수 있으므로)
+    const realDuplicates = [...new Set(duplicateLabels)].filter(l => l !== "기타");
+
+    if (realDuplicates.length > 0) {
+      return `중복된 라벨이 있습니다: ${realDuplicates.join(", ")}. 각 관계별로 하나의 계좌만 등록 가능합니다.`;
+    }
+
     return null;
   };
 
@@ -743,12 +754,24 @@ export default function ConfirmPage() {
       const { error: deleteError } = await deleteQuery;
       if (deleteError && deleteError.code !== "42P01") throw deleteError;
 
-      // 4-3) Upsert
-      if (validAccounts.length > 0) {
+      // 4-3) 분리하여 저장 (ID가 있는 것은 upsert, 없는 것은 insert)
+      // 혼합된 배열을 한 번에 upsert하면 새 행에 id: null이 들어가서 에러가 날 수 있음
+      const existingToUpsert = validAccounts.filter((a: any) => a.id);
+      const newToInsert = validAccounts.filter((a: any) => !a.id);
+
+      if (existingToUpsert.length > 0) {
         const { error: upsertError } = await supabase
           .from("event_accounts")
-          .upsert(validAccounts);
+          .upsert(existingToUpsert);
         if (upsertError && upsertError.code !== "42P01") throw upsertError;
+      }
+
+      if (newToInsert.length > 0) {
+        // insert 할 때는 id 컬럼 자체가 없는 상태여야 함 (이미 mapping에서 제외됨)
+        const { error: insertError } = await supabase
+          .from("event_accounts")
+          .insert(newToInsert);
+        if (insertError && insertError.code !== "42P01") throw insertError;
       }
 
       setSuccess("저장이 완료되었습니다. 상세 설정은 예식 1시간 전까지 변경할 수 있습니다.");
