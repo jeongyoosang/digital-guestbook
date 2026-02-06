@@ -3,9 +3,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
-interface RouteParams {
+type RouteParams = {
   eventId: string;
-}
+  [key: string]: string | undefined;
+};
 
 type EventRow = {
   id: string;
@@ -58,6 +59,7 @@ type AccountForm = {
   account_number: string;
   sort_order: number;
   is_active: boolean;
+  owner_member_id?: string | null;
 
   // UI 전용(서버 전송 X)
   bank_mode?: BankMode;
@@ -155,23 +157,13 @@ export default function ConfirmPage() {
 
     let memberId: string | null = null;
 
+    // user_id가 필수이므로 user_id로만 조회합니다.
     if (userId) {
       const { data, error } = await supabase
         .from("event_members")
         .select("id")
         .eq("event_id", evId)
         .eq("user_id", userId)
-        .maybeSingle();
-      if (error) throw error;
-      if (data?.id) memberId = data.id;
-    }
-
-    if (!memberId && email) {
-      const { data, error } = await supabase
-        .from("event_members")
-        .select("id")
-        .eq("event_id", evId)
-        .eq("email", email)
         .maybeSingle();
       if (error) throw error;
       if (data?.id) memberId = data.id;
@@ -192,6 +184,8 @@ export default function ConfirmPage() {
   const [event, setEvent] = useState<EventRow | null>(null);
   const [settings, setSettings] = useState<EventSettingsRow | null>(null);
   const [accounts, setAccounts] = useState<AccountForm[]>([]);
+  const [allMembers, setAllMembers] = useState<{ id: string; role: string }[]>([]);
+  const [myMemberId, setMyMemberId] = useState<string | null>(null);
 
   // ✅ 토스트 (짧게, 자동 사라짐)
   const [toast, setToast] = useState<{ type: "info" | "error"; text: string } | null>(null);
@@ -357,9 +351,19 @@ export default function ConfirmPage() {
         setMobileInvitationLink("");
       }
 
-      // 3) event_accounts (본인 계좌만)
-      const myMemberId = await getMyMemberId(id);
+      // 3) event_members (전체 멤버)
+      const { data: membersData, error: membersError } = await supabase
+        .from("event_members")
+        .select("id, role")
+        .eq("event_id", id);
+      if (membersError) throw membersError;
+      setAllMembers(membersData || []);
 
+      // 내 멤버 ID 찾기
+      const currentMyMemberId = await getMyMemberId(id);
+      setMyMemberId(currentMyMemberId);
+
+      // 4) event_accounts (전체 계좌 공유)
       const { data: accountData, error: accountError } = await supabase
         .from("event_accounts")
         .select(
@@ -370,11 +374,11 @@ export default function ConfirmPage() {
           bank_name,
           account_number,
           sort_order,
-          is_active
+          is_active,
+          owner_member_id
         `
         )
         .eq("event_id", id)
-        .eq("owner_member_id", myMemberId)
         .order("sort_order", { ascending: true });
 
       if (accountError && accountError.code !== "42P01") throw accountError;
@@ -392,6 +396,7 @@ export default function ConfirmPage() {
               account_number: row.account_number,
               sort_order: row.sort_order ?? 0,
               is_active: row.is_active ?? true,
+              owner_member_id: row.owner_member_id,
               bank_mode: mode,
             } as AccountForm;
           })
@@ -406,6 +411,7 @@ export default function ConfirmPage() {
             sort_order: 0,
             is_active: true,
             bank_mode: "select",
+            owner_member_id: null,
           },
           {
             label: "신부",
@@ -415,6 +421,7 @@ export default function ConfirmPage() {
             sort_order: 1,
             is_active: true,
             bank_mode: "select",
+            owner_member_id: null,
           },
         ]);
       }
@@ -426,8 +433,27 @@ export default function ConfirmPage() {
     }
   }
 
-  function handleAccountChange(index: number, field: keyof AccountForm, value: string | boolean) {
+  function handleAccountChange(index: number, field: keyof AccountForm, value: string | boolean | null) {
     setAccounts((prev) => prev.map((acct, i) => (i === index ? { ...acct, [field]: value } : acct)));
+  }
+
+  // ✅ 본인 선택 (나머지 계좌에서 내 ID 제거)
+  function handleSelectMe(index: number) {
+    if (!myMemberId) return;
+    setAccounts((prev) =>
+      prev.map((acct, i) => {
+        if (i === index) {
+          // 이미 나로 선택되어 있으면 해제, 아니면 나로 선택
+          return { ...acct, owner_member_id: acct.owner_member_id === myMemberId ? null : myMemberId };
+        } else {
+          // 다른 계좌에서 내 ID가 있으면 제거
+          return {
+            ...acct,
+            owner_member_id: acct.owner_member_id === myMemberId ? null : acct.owner_member_id,
+          };
+        }
+      })
+    );
   }
 
   function addAccount() {
@@ -442,6 +468,7 @@ export default function ConfirmPage() {
         sort_order: prev.length,
         is_active: true,
         bank_mode: "select",
+        owner_member_id: null,
       },
     ]);
   }
@@ -685,15 +712,13 @@ export default function ConfirmPage() {
       }
 
       // 4) 계좌 저장 (필요한 것만 삭제 후 upsert)
-      const myMemberId = await getMyMemberId(eventId);
-
       const validAccounts = accounts
         .filter((a) => a.is_active)
         .filter((a) => a.label.trim() && a.holder_name.trim() && a.bank_name.trim() && a.account_number.trim())
         .map((a, index) => ({
           ...(a.id ? { id: a.id } : {}),
           event_id: eventId,
-          owner_member_id: myMemberId,
+          owner_member_id: a.owner_member_id || null, // 수정: 내 것이 아닐 수도 있으므로 a.owner_member_id 사용
           label: a.label.trim(),
           holder_name: a.holder_name.trim(),
           bank_name: a.bank_name.trim(),
@@ -702,15 +727,14 @@ export default function ConfirmPage() {
           is_active: a.is_active,
         }));
 
-      // 4-1) 보전할 ID 목록 (기존에 있던 계좌들)
+      // 4-1) 보전할 ID 목록
       const keepIds = validAccounts.map((a: any) => a.id).filter(Boolean);
 
-      // 4-2) 현재 DB에 있는 내 계좌 중, validAccounts에 없는 것만 삭제
+      // 4-2) 현재 DB에 있는 전체 계좌 중, validAccounts에 없는 것만 삭제 (공유 모드)
       let deleteQuery = supabase
         .from("event_accounts")
         .delete()
-        .eq("event_id", eventId)
-        .eq("owner_member_id", myMemberId);
+        .eq("event_id", eventId);
 
       if (keepIds.length > 0) {
         deleteQuery = deleteQuery.not("id", "in", `(${keepIds.join(",")})`);
@@ -719,7 +743,7 @@ export default function ConfirmPage() {
       const { error: deleteError } = await deleteQuery;
       if (deleteError && deleteError.code !== "42P01") throw deleteError;
 
-      // 4-3) Upsert (새것은 insert, 기존것은 update)
+      // 4-3) Upsert
       if (validAccounts.length > 0) {
         const { error: upsertError } = await supabase
           .from("event_accounts")
@@ -785,7 +809,7 @@ export default function ConfirmPage() {
             onClick={() => navigate("/app")}
             className="text-xs md:text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900 whitespace-nowrap"
           >
-           이벤트 홈
+            이벤트 홈
           </button>
 
           <button
@@ -1182,22 +1206,52 @@ export default function ConfirmPage() {
 
               const selectValue = bankMode === "custom" ? "기타(직접 입력)" : acct.bank_name ? acct.bank_name : "";
 
+              // 누가 소유하고 있는지 정보
+              const owner = allMembers.find((m) => m.id === acct.owner_member_id);
+              const isMine = acct.owner_member_id === myMemberId;
+
               return (
-                <div key={index} className="border rounded-lg p-3 bg-gray-50 space-y-2">
+                <div key={index} className="border rounded-lg p-3 bg-gray-50 space-y-3">
                   <div className="flex items-center justify-between">
-                    <div className="text-[11px] font-semibold text-gray-600">계좌 #{index + 1}</div>
-                    {accounts.length > 1 && (
-                      <button type="button" onClick={() => removeAccount(index)} className="text-[11px] text-red-500">
-                        삭제
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <div className="text-[11px] font-semibold text-gray-600">계좌 #{index + 1}</div>
+                      {acct.owner_member_id && (
+                        <div
+                          className={`text-[10px] px-1.5 py-0.5 rounded ${isMine ? "bg-rose-100 text-rose-700" : "bg-gray-200 text-gray-700"
+                            }`}
+                        >
+                          {isMine ? "본인(나)" : `${owner?.role === "groom" ? "신랑" : owner?.role === "bride" ? "신부" : "관리자"}의 계좌`}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {accounts.length > 1 && (
+                        <button type="button" onClick={() => removeAccount(index)} className="text-[11px] text-red-500 hover:underline">
+                          삭제
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-medium text-gray-600 mb-1">관계</label>
+                  <div className="grid grid-cols-1 md:grid-cols-[60px_110px_1fr_1.5fr_2.5fr] gap-3 items-start">
+                    {/* 1. 본인체크 열 */}
+                    <div className="flex flex-col gap-2">
+                      <label className="block text-[11px] font-semibold text-gray-500 px-1">본인체크</label>
+                      <div className="flex items-center justify-start h-10 px-2">
+                        <input
+                          type="checkbox"
+                          checked={isMine}
+                          onChange={() => handleSelectMe(index)}
+                          className="w-5 h-5 accent-rose-500 cursor-pointer rounded border-gray-300"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 2. 라벨(관계) */}
+                    <div className="flex flex-col gap-2">
+                      <label className="block text-[11px] font-semibold text-gray-500 px-1">라벨(관계)</label>
                       <select
-                        className="w-full border rounded-md px-2 py-1.5 text-xs"
+                        className="w-full border border-gray-200 rounded-full px-3 py-2 text-xs h-10 bg-white focus:ring-2 focus:ring-rose-100 outline-none transition-all"
                         value={acct.label}
                         onChange={(e) => handleAccountChange(index, "label", e.target.value)}
                       >
@@ -1211,64 +1265,64 @@ export default function ConfirmPage() {
                       </select>
                     </div>
 
-                    <div>
-                      <label className="block text-[11px] font-medium text-gray-600 mb-1">예금주</label>
+                    {/* 3. 예금주 */}
+                    <div className="flex flex-col gap-2">
+                      <label className="block text-[11px] font-semibold text-gray-500 px-1">예금주</label>
                       <input
                         type="text"
-                        className="w-full border rounded-md px-2 py-1.5 text-xs"
+                        className="w-full border border-gray-200 rounded-full px-4 py-2 text-xs h-10 bg-white focus:ring-2 focus:ring-rose-100 outline-none transition-all"
                         value={acct.holder_name}
                         onChange={(e) => handleAccountChange(index, "holder_name", e.target.value)}
                       />
                     </div>
 
-                    <div>
-                      <label className="block text-[11px] font-medium text-gray-600 mb-1">은행</label>
-
-                      <select
-                        className="w-full border rounded-md px-2 py-1.5 text-xs mb-1"
-                        value={selectValue}
-                        onChange={(e) => {
-                          const v = e.target.value;
-
-                          if (v === "") {
+                    {/* 4. 은행 */}
+                    <div className="flex flex-col gap-2">
+                      <label className="block text-[11px] font-semibold text-gray-500 px-1">은행</label>
+                      <div className="flex flex-col gap-1">
+                        <select
+                          className="w-full border border-gray-200 rounded-full px-3 py-2 text-xs h-10 bg-white focus:ring-2 focus:ring-rose-100 outline-none transition-all"
+                          value={selectValue}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v === "") {
+                              handleAccountChange(index, "bank_mode", "select");
+                              handleAccountChange(index, "bank_name", "");
+                              return;
+                            }
+                            if (v === "기타(직접 입력)") {
+                              handleAccountChange(index, "bank_mode", "custom");
+                              return;
+                            }
                             handleAccountChange(index, "bank_mode", "select");
-                            handleAccountChange(index, "bank_name", "");
-                            return;
-                          }
-
-                          if (v === "기타(직접 입력)") {
-                            handleAccountChange(index, "bank_mode", "custom");
-                            return;
-                          }
-
-                          handleAccountChange(index, "bank_mode", "select");
-                          handleAccountChange(index, "bank_name", v);
-                        }}
-                      >
-                        <option value="">은행 선택</option>
-                        {BANK_OPTIONS.map((name) => (
-                          <option key={name} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-
-                      {bankMode === "custom" && (
-                        <input
-                          type="text"
-                          className="w-full border rounded-md px-2 py-1.5 text-xs"
-                          placeholder="예) 새마을금고 등"
-                          value={acct.bank_name}
-                          onChange={(e) => handleAccountChange(index, "bank_name", e.target.value)}
-                        />
-                      )}
+                            handleAccountChange(index, "bank_name", v);
+                          }}
+                        >
+                          <option value="">은행 선택</option>
+                          {BANK_OPTIONS.map((name) => (
+                            <option key={name} value={name}>
+                              {name}
+                            </option>
+                          ))}
+                        </select>
+                        {bankMode === "custom" && (
+                          <input
+                            type="text"
+                            className="w-full border border-gray-200 rounded-full px-4 py-2 text-xs h-10 mt-1 bg-white focus:ring-2 focus:ring-rose-100 outline-none transition-all animate-in fade-in slide-in-from-top-1 px-1"
+                            placeholder="은행명 입력"
+                            value={acct.bank_name}
+                            onChange={(e) => handleAccountChange(index, "bank_name", e.target.value)}
+                          />
+                        )}
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="block text-[11px] font-medium text-gray-600 mb-1">계좌번호</label>
+                    {/* 5. 계좌번호 */}
+                    <div className="flex flex-col gap-2">
+                      <label className="block text-[11px] font-semibold text-gray-500 px-1">계좌번호</label>
                       <input
                         type="text"
-                        className="w-full border rounded-md px-2 py-1.5 text-xs"
+                        className="w-full border border-gray-200 rounded-full px-4 py-2 text-xs h-10 bg-white focus:ring-2 focus:ring-rose-100 outline-none transition-all"
                         value={acct.account_number}
                         onChange={(e) => handleAccountChange(index, "account_number", e.target.value)}
                       />
