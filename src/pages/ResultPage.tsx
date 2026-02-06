@@ -1049,26 +1049,47 @@ export default function ResultPage() {
         return lines;
       };
 
-      // 높이 계산(페이지 메시지 카드들)
-      const fake = document.createElement("canvas").getContext("2d")!;
-      fake.font = `600 13px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+     // 높이 계산(페이지 메시지 카드들) — 여유 높이 보정 버전
+        const fake = document.createElement("canvas").getContext("2d")!;
+        fake.font = `600 13px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
 
-      const cardW = width - padding * 2;
-      const bodyW = cardW - cardPad * 2;
+        const cardW = width - padding * 2;
+        const bodyW = cardW - cardPad * 2;
 
-      let totalH = 0;
-      totalH += 20 + 26 + 10; // top title block
-      totalH += 10;
+        // ✅ 안전 여유값 (잘림 방지 핵심)
+        const EXTRA_TOP = 16;        // 상단 여유
+        const EXTRA_BOTTOM = 140;    // 하단 페이지/워터마크/여백
+        const EXTRA_SAFE = 80;       // 전체 안전 마진
+        const MIN_HEIGHT = 1200;     // 너무 작게 잡히는 상황 방지
 
-      for (const m of msgSlice) {
-        const body = (m.body ?? "").trim();
-        const lines = wrap(fake, body, bodyW);
-        const bodyH = Math.max(1, lines.length) * lineH;
-        totalH += 14 + 18 + 6 + bodyH + 14; // card top + name + meta + body + bottom
-        totalH += 12; // gap
-      }
+        let totalH = 0;
 
-      totalH += 22; // footer
+        // top title block
+        totalH += 20 + 26 + 10;
+        totalH += 10;
+        totalH += EXTRA_TOP;
+
+        for (const m of msgSlice) {
+          const body = (m.body ?? "").trim();
+          const lines = wrap(fake, body, bodyW);
+          const bodyH = Math.max(1, lines.length) * lineH;
+
+          // card block
+          totalH += 14;        // card top
+          totalH += 18;        // name
+          totalH += 6;         // meta
+          totalH += bodyH;     // body
+          totalH += 14;        // card bottom
+          totalH += 12;        // gap
+        }
+
+        // footer
+        totalH += 22;
+        totalH += EXTRA_SAFE + EXTRA_BOTTOM;
+
+        // ✅ 최소 높이 보장
+        totalH = Math.max(totalH, MIN_HEIGHT);
+
 
       // canvas
       const canvas = document.createElement("canvas");
@@ -1366,20 +1387,7 @@ export default function ResultPage() {
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
-              <button
-                onClick={refreshMessages}
-                disabled={messagesLoading}
-                className="flex-1 md:flex-none px-6 py-3.5 bg-white text-slate-700 rounded-2xl text-sm font-bold border border-slate-100 shadow-sm active:scale-95 transition-all disabled:opacity-50"
-              >
-                {messagesLoading ? "새로고침 중..." : "새로고침"}
-              </button>
-
-              <div className="bg-white/90 backdrop-blur border border-slate-100 px-6 py-3 rounded-2xl shadow-sm">
-                <p className="text-[10px] font-black text-slate-300 uppercase leading-none mb-1">페이지</p>
-                <p className="text-xs font-bold text-slate-600">
-                  {safeMsgPage} / {totalMessagePages}
-                </p>
-              </div>
+           
             </div>
           )}
         </header>
@@ -1391,7 +1399,7 @@ export default function ResultPage() {
         )}
 
         {/* 2) 대시보드 요약 */}
-        <div className="px-6 md:px-10 grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+        <div className="px-2 md:px-10 grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
           {[
             {
               label: "총 축의금",
@@ -1423,8 +1431,10 @@ export default function ResultPage() {
               className="bg-white/90 backdrop-blur p-6 rounded-[2rem] shadow-sm border border-slate-100/60 hover:shadow-md transition-shadow"
             >
               <p className="text-slate-400 text-[11px] font-bold uppercase mb-1 tracking-widest">{s.label}</p>
-              <p className={`text-xl md:text-2xl font-black ${s.color} mb-1`}>{s.value}</p>
-              <p className="text-[10px] text-slate-400 font-medium">{s.sub}</p>
+                <p className={`font-black ${s.color} mb-1 whitespace-nowrap tracking-tight text-[clamp(18px,5.2vw,26px)]`}>
+                    {s.value}
+                  </p>              
+                <p className="text-[10px] text-slate-400 font-medium">{s.sub}</p>
             </div>
           ))}
         </div>
@@ -1904,9 +1914,10 @@ export default function ResultPage() {
 
                 {/* watermark */}
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                  <div className="text-[36px] md:text-[56px] font-black tracking-tight text-slate-900/5 rotate-[-10deg] select-none">
+                  <div className="absolute right-6 top-6 text-white/30 font-semibold tracking-wide pointer-events-none">
                     Digital Guestbook
                   </div>
+
                 </div>
 
                 {/* top bar */}
@@ -1916,9 +1927,6 @@ export default function ResultPage() {
                       Messages • {safeMsgPage}/{totalMessagePages}
                     </div>
                     <h2 className="mt-2 text-xl md:text-2xl font-black text-slate-900">축하 메시지</h2>
-                    <p className="mt-1 text-xs text-slate-500 font-medium">
-                      디스플레이 느낌으로 모아보기 • {messages.length.toLocaleString()}개
-                    </p>
                   </div>
 
                   <div className="flex items-center gap-2">
