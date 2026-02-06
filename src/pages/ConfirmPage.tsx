@@ -635,6 +635,17 @@ export default function ConfirmPage() {
       return "축의금 계좌를 최소 1개 이상 등록해주세요. (라벨/예금주/은행/계좌번호 모두 필요)";
     }
 
+    // 중복 라벨 체크 (단, '기타'는 중복 허용 가능하지만 사용자 요청에 따라 기본적으로 체크)
+    const labels = validAccounts.map((a) => a.label.trim());
+    const duplicateLabels = labels.filter((item, index) => labels.indexOf(item) !== index);
+
+    // '기타'를 제외한 다른 라벨이 중복되면 에러 (기타는 여러 개일 수 있으므로)
+    const realDuplicates = [...new Set(duplicateLabels)].filter(l => l !== "기타");
+
+    if (realDuplicates.length > 0) {
+      return `중복된 라벨이 있습니다: ${realDuplicates.join(", ")}. 각 관계별로 하나의 계좌만 등록 가능합니다.`;
+    }
+
     return null;
   };
 
