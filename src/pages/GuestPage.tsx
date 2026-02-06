@@ -121,7 +121,7 @@ const I18N: Record<
     giftTitle: "축의금 송금하기",
     copyBtn: "계좌번호 복사하기",
     copied: "계좌번호가 복사되었습니다.",
-    attendanceNoteShort: "복사해서 송금하셔도\n현장 참석으로 기록됩니다.",
+    attendanceNoteShort: "복사해서 송금앱에서 축의하셔도\n현장 참석으로 기록됩니다.",
     kakaoThanks: "카카오톡 알림톡으로 감사인사 받기",
     selectSideFirst: "어느 쪽 하객이신지 선택해주세요.",
     selectRelationship: "관계를 선택해주세요.",

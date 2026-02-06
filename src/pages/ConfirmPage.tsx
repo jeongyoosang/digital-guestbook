@@ -3,6 +3,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
+const ADMIN_EMAIL =
+  (import.meta as any).env?.VITE_ADMIN_EMAIL || "goraeuniverse@gmail.com";
+
 type RouteParams = {
   eventId: string;
   [key: string]: string | undefined;
@@ -158,33 +161,36 @@ export default function ConfirmPage() {
   const { eventId } = useParams<RouteParams>();
   const navigate = useNavigate();
 
-  async function getMyMemberId(evId: string): Promise<string> {
-    const { data: userRes, error: userErr } = await supabase.auth.getUser();
-    if (userErr) throw userErr;
-    const userId = userRes?.user?.id;
-    const email = userRes?.user?.email;
-    if (!userId && !email) throw new Error("로그인이 필요합니다.");
+  async function getMyMemberId(evId: string): Promise<string | null> {
+  const { data: userRes, error: userErr } = await supabase.auth.getUser();
+  if (userErr) throw userErr;
 
-    let memberId: string | null = null;
+  const user = userRes?.user;
+  const userId = user?.id;
+  const email = (user?.email ?? "").toLowerCase();
 
-    // user_id가 필수이므로 user_id로만 조회합니다.
-    if (userId) {
-      const { data, error } = await supabase
-        .from("event_members")
-        .select("id")
-        .eq("event_id", evId)
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (error) throw error;
-      if (data?.id) memberId = data.id;
-    }
+  if (!userId && !email) throw new Error("로그인이 필요합니다.");
 
-    if (!memberId) {
-      throw new Error("event_members에 현재 사용자가 없습니다. (초대/멤버 여부 확인 필요)");
-    }
-
-    return memberId;
+  // 1) 일반: 내 member id 조회
+  if (userId) {
+    const { data, error } = await supabase
+      .from("event_members")
+      .select("id")
+      .eq("event_id", evId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw error;
+    if (data?.id) return data.id;
   }
+
+  // 2) ADMIN: 멤버 아니어도 페이지 진입/검수 가능해야 함 → null로 허용
+  const isAdmin = email === String(ADMIN_EMAIL).toLowerCase();
+  if (isAdmin) return null;
+
+  // 3) 그 외: 기존 정책 유지
+  throw new Error("event_members에 현재 사용자가 없습니다. (초대/멤버 여부 확인 필요)");
+}
+
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -198,6 +204,8 @@ export default function ConfirmPage() {
     []
   );
   const [myMemberId, setMyMemberId] = useState<string | null>(null);
+
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // ✅ 토스트 (짧게, 자동 사라짐)
   const [toast, setToast] = useState<{ type: "info" | "error"; text: string } | null>(
@@ -374,9 +382,22 @@ export default function ConfirmPage() {
       if (membersError) throw membersError;
       setAllMembers(membersData || []);
 
-      // 내 멤버 ID 찾기
-      const currentMyMemberId = await getMyMemberId(id);
-      setMyMemberId(currentMyMemberId);
+      // 내 멤버 ID 찾기 (ADMIN은 null일 수 있음)
+        const currentMyMemberId = await getMyMemberId(id);
+        setMyMemberId(currentMyMemberId);
+
+        const { data: u } = await supabase.auth.getUser();
+        const email = (u?.user?.email ?? "").toLowerCase();
+        const admin = email === String(ADMIN_EMAIL).toLowerCase();
+        setIsAdmin(admin);
+
+        if (admin && !currentMyMemberId) {
+          setToast({
+            type: "info",
+            text: "운영자 모드: 모든 계좌를 설정하고 ‘내 계좌’ 소유자를 지정할 수 있습니다.",
+          });
+        }
+
 
       // 4) event_accounts (전체 계좌 공유)
       const { data: accountData, error: accountError } = await supabase
@@ -1369,48 +1390,87 @@ export default function ConfirmPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-[110px_1fr_1.5fr_2.5fr] gap-3 items-start">
                     {/* ✅ 1) 내 계좌 토글 */}
-                    <div className="flex flex-col gap-2">
-                      <label className="block text-[11px] font-semibold text-gray-500 px-1">
-                        내 계좌
-                      </label>
+                    {isAdmin ? (
+                  /* ================= ADMIN 전용 ================= */
+                  <div className="flex flex-col gap-2">
+                    <label className="block text-[11px] font-semibold text-gray-500 px-1">
+                      내 계좌 지정 (ADMIN)
+                    </label>
 
-                      <button
-                        type="button"
-                        onClick={() => handleSelectMe(index)}
-                        disabled={!myMemberId}
-                        className={[
-                          "h-10 w-full rounded-full px-3 text-xs border transition-all",
-                          !myMemberId ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
-                          isMine
-                            ? "bg-rose-600 text-white border-rose-600 shadow-sm"
-                            : "bg-white text-gray-700 border-gray-200 hover:border-rose-200",
-                        ].join(" ")}
-                        aria-pressed={isMine}
-                      >
-                        <div className="flex items-center justify-center gap-2">
+                    <select
+                      className="w-full border border-gray-200 rounded-full px-3 py-2 text-xs h-10 bg-white"
+                      value={acct.owner_member_id ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value || null;
+
+                        setAccounts((prev) =>
+                          prev.map((a, i) => {
+                            if (i === index) return { ...a, owner_member_id: v };
+                            if (v && a.owner_member_id === v)
+                              return { ...a, owner_member_id: null };
+                            return a;
+                          })
+                        );
+                      }}
+                    >
+                      <option value="">(지정 안 함)</option>
+                      {allMembers.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.role}
+                        </option>
+                      ))}
+                    </select>
+
+                    <p className="text-[10px] text-gray-400 px-1">
+                      * 운영자는 계좌별 ‘내 계좌’ 소유자를 직접 지정할 수 있습니다
+                    </p>
+                  </div>
+                ) : (
+                  /* ================= 기존 유저 ================= */
+                  <div className="flex flex-col gap-2">
+                    <label className="block text-[11px] font-semibold text-gray-500 px-1">
+                      내 계좌
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSelectMe(index)}
+                      disabled={!myMemberId}
+                      className={[
+                        "h-10 w-full rounded-full px-3 text-xs border transition-all",
+                        !myMemberId ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+                        isMine
+                          ? "bg-rose-600 text-white border-rose-600 shadow-sm"
+                          : "bg-white text-gray-700 border-gray-200 hover:border-rose-200",
+                      ].join(" ")}
+                      aria-pressed={isMine}
+                    >
+                      <div className="flex items-center justify-center gap-2">
+                        <span
+                          className={[
+                            "inline-flex items-center w-9 h-5 rounded-full p-[2px] transition-all",
+                            isMine ? "bg-white/40" : "bg-gray-200",
+                          ].join(" ")}
+                        >
                           <span
                             className={[
-                              "inline-flex items-center w-9 h-5 rounded-full p-[2px] transition-all",
-                              isMine ? "bg-white/40" : "bg-gray-200",
+                              "w-4 h-4 rounded-full bg-white shadow transition-transform",
+                              isMine ? "translate-x-4" : "translate-x-0",
                             ].join(" ")}
-                          >
-                            <span
-                              className={[
-                                "w-4 h-4 rounded-full bg-white shadow transition-transform",
-                                isMine ? "translate-x-4" : "translate-x-0",
-                              ].join(" ")}
-                            />
-                          </span>
-                          <span className="font-semibold">
-                            {isMine ? "내 계좌" : "선택"}
-                          </span>
-                        </div>
-                      </button>
+                          />
+                        </span>
+                        <span className="font-semibold">
+                          {isMine ? "내 계좌" : "선택"}
+                        </span>
+                      </div>
+                    </button>
 
-                      <p className="text-[10px] text-gray-400 px-1 whitespace-nowrap">
-                        * 내 계좌만 축의금 내역을 확인할 수 있습니다
-                      </p>
-                    </div>
+                    <p className="text-[10px] text-gray-400 px-1 whitespace-nowrap">
+                      * 내 계좌만 축의금 내역을 확인할 수 있습니다
+                    </p>
+                  </div>
+                )}
+
 
                     {/* 2) 라벨(관계) */}
                     <div className="flex flex-col gap-2">
