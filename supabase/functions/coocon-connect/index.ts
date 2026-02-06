@@ -110,37 +110,56 @@ Deno.serve(async (req) => {
     // (bank_code까지 동일하면 그걸 쓰고, bank_code가 없으면 event/owner/provider 기준 최신)
     let existingId: string | null = null;
 
-    if (bankCode) {
-      const { data: ex } = await admin
+    // 1️⃣ eventAccountId가 제공되었다면, 해당 계좌로 이미 생성된 스크래핑 행이 있는지 먼저 확인 (Unique 제약 조건 방지)
+    if (eventAccountId) {
+      const { data: exByAcc } = await admin
         .from("event_scrape_accounts")
         .select("id")
-        .eq("event_id", eventId)
-        .eq("owner_user_id", userId)
-        .eq("provider", "coocon")
-        .eq("bank_code", bankCode)
-        .order("verified_at", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false })
-        .limit(1)
+        .eq("event_account_id", eventAccountId)
         .maybeSingle();
-      existingId = ex?.id ?? null;
-    } else {
-      const { data: ex } = await admin
-        .from("event_scrape_accounts")
-        .select("id")
-        .eq("event_id", eventId)
-        .eq("owner_user_id", userId)
-        .eq("provider", "coocon")
-        .order("verified_at", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      existingId = ex?.id ?? null;
+
+      if (exByAcc) {
+        existingId = exByAcc.id;
+        console.log("[coocon-connect] Found existing scrape account by eventAccountId:", existingId);
+      }
+    }
+
+    // 2️⃣ 못 찾았다면 기존 로직(유저/은행코드 기준)으로 재사용할 행 찾기
+    if (!existingId) {
+      if (bankCode) {
+        const { data: ex } = await admin
+          .from("event_scrape_accounts")
+          .select("id")
+          .eq("event_id", eventId)
+          .eq("owner_user_id", userId)
+          .eq("provider", "coocon")
+          .eq("bank_code", bankCode)
+          .order("verified_at", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        existingId = ex?.id ?? null;
+      } else {
+        const { data: ex } = await admin
+          .from("event_scrape_accounts")
+          .select("id")
+          .eq("event_id", eventId)
+          .eq("owner_user_id", userId)
+          .eq("provider", "coocon")
+          .order("verified_at", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        existingId = ex?.id ?? null;
+      }
     }
 
     if (existingId) {
-      // status만 started로 갱신 (연결된 계정도 “재연결 시작” 가능하게)
-      // ✅ If bankCode is null, do NOT overwrite existing bank_code with null (constraint violation)
-      const updatePayload: any = { status: "started" };
+      // status를 started로 갱신하고, 소유자도 현재 유저로 업데이트 (승계 가능하게)
+      const updatePayload: any = {
+        status: "started",
+        owner_user_id: userId // 현재 유저가 연결을 시도하므로 소유권 이전/갱신
+      };
       if (bankCode) {
         updatePayload.bank_code = bankCode;
       }

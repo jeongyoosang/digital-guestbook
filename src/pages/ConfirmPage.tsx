@@ -743,12 +743,24 @@ export default function ConfirmPage() {
       const { error: deleteError } = await deleteQuery;
       if (deleteError && deleteError.code !== "42P01") throw deleteError;
 
-      // 4-3) Upsert
-      if (validAccounts.length > 0) {
+      // 4-3) 분리하여 저장 (ID가 있는 것은 upsert, 없는 것은 insert)
+      // 혼합된 배열을 한 번에 upsert하면 새 행에 id: null이 들어가서 에러가 날 수 있음
+      const existingToUpsert = validAccounts.filter((a: any) => a.id);
+      const newToInsert = validAccounts.filter((a: any) => !a.id);
+
+      if (existingToUpsert.length > 0) {
         const { error: upsertError } = await supabase
           .from("event_accounts")
-          .upsert(validAccounts);
+          .upsert(existingToUpsert);
         if (upsertError && upsertError.code !== "42P01") throw upsertError;
+      }
+
+      if (newToInsert.length > 0) {
+        // insert 할 때는 id 컬럼 자체가 없는 상태여야 함 (이미 mapping에서 제외됨)
+        const { error: insertError } = await supabase
+          .from("event_accounts")
+          .insert(newToInsert);
+        if (insertError && insertError.code !== "42P01") throw insertError;
       }
 
       setSuccess("저장이 완료되었습니다. 상세 설정은 예식 1시간 전까지 변경할 수 있습니다.");
