@@ -25,6 +25,7 @@ function json(data: unknown, status = 200) {
 type StartBody = {
   action: "start";
   eventId: string;
+  eventAccountId?: string | null;
   bankCode?: string | null;
 };
 
@@ -96,6 +97,14 @@ Deno.serve(async (req) => {
   /* ---------------- start ---------------- */
   if (body.action === "start") {
     const bankCode = (body as StartBody).bankCode ?? null;
+    const eventAccountId = (body as StartBody).eventAccountId ?? null;
+
+    console.log("[coocon-connect] START action received:", {
+      eventId,
+      eventAccountId,
+      bankCode,
+      hasEventAccountId: !!eventAccountId
+    });
 
     // ✅ 중복 row 계속 생기는 것 방지: 기존 최신 row 있으면 재사용
     // (bank_code까지 동일하면 그걸 쓰고, bank_code가 없으면 event/owner/provider 기준 최신)
@@ -155,11 +164,20 @@ Deno.serve(async (req) => {
     }
 
     // 새로 생성
+    console.log("[coocon-connect] Inserting new scrape account:", {
+      event_id: eventId,
+      owner_user_id: userId,
+      event_account_id: eventAccountId,
+      provider: "coocon",
+      bank_code: bankCode,
+    });
+
     const { data, error } = await admin
       .from("event_scrape_accounts")
       .insert({
         event_id: eventId,
         owner_user_id: userId,
+        event_account_id: eventAccountId,
         provider: "coocon",
         bank_code: bankCode,
         status: "started",
@@ -167,7 +185,12 @@ Deno.serve(async (req) => {
       .select("id, status, bank_code")
       .maybeSingle();
 
-    if (error || !data) return json({ error: "start failed", detail: error?.message }, 500);
+    if (error || !data) {
+      console.error("[coocon-connect] Insert failed:", error);
+      return json({ error: "start failed", detail: error?.message }, 500);
+    }
+
+    console.log("[coocon-connect] Insert success:", data);
 
     return json({
       ok: true,

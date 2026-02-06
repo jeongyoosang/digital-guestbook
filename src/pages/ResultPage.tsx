@@ -5,9 +5,10 @@ import { supabase } from "../lib/supabase";
 import * as XLSX from "xlsx";
 import html2canvas from "html2canvas";
 
-interface RouteParams {
+type RouteParams = {
   eventId: string;
-}
+  [key: string]: string | undefined;
+};
 
 type MessageRow = {
   id: string;
@@ -60,8 +61,30 @@ type LedgerRow = {
   memo: string | null;
 
   created_source?: CreatedSource | null;
+  scrape_transaction_id?: string | null;
+
+  // Joined data
+  event_scrape_transactions?: {
+    tx_date: string;
+  } | null;
 
   updated_at: string;
+  created_at: string;
+};
+
+type TransactionRow = {
+  id: string;
+  event_id: string;
+  scrape_account_id: string;
+  tx_date: string;
+  tx_time: string | null;
+  amount: number;
+  direction: "IN" | "OUT";
+  balance: number | null;
+  memo: string | null;
+  sender: string | null;
+  counterparty: string | null;
+  is_reflected: boolean | null;
   created_at: string;
 };
 
@@ -219,6 +242,10 @@ export default function ResultPage() {
   const [ownerLabel, setOwnerLabel] = useState<string>("내");
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
+
+  // 거래내역
+  const [transactions, setTransactions] = useState<TransactionRow[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
 
   // ✅ (중요) 최신 ledger row를 ref에 보관 (stale 방지) — 하나만 유지
   const ledgerRef = useRef<Record<string, LedgerRow>>({});
@@ -435,8 +462,9 @@ export default function ResultPage() {
             attended, attended_at,
             gift_amount, gift_method,
             ticket_count, return_given, thanks_done, memo,
-            created_source,
-            created_at, updated_at
+            created_source, scrape_transaction_id,
+            created_at, updated_at,
+            event_scrape_transactions(tx_date)
           `
           )
           .eq("event_id", eventId)
@@ -460,6 +488,71 @@ export default function ResultPage() {
     fetchLedger();
   }, [eventId, ownerMemberId]);
 
+  /* ------------------ 거래내역 로드 ------------------ */
+  useEffect(() => {
+    if (!eventId || !ownerMemberId) return;
+
+    const fetchTransactions = async () => {
+      setTransactionsLoading(true);
+      try {
+        // 1. 내가 설정한 계좌들 조회
+        const { data: myAccounts, error: accountsError } = await supabase
+          .from("event_accounts")
+          .select("id")
+          .eq("event_id", eventId)
+          .eq("owner_member_id", ownerMemberId);
+
+        if (accountsError) throw accountsError;
+        if (!myAccounts || myAccounts.length === 0) {
+          setTransactions([]);
+          return;
+        }
+
+        const myAccountIds = myAccounts.map(a => a.id);
+
+        // 2. 내 계좌의 스크래핑 세션들 조회
+        const { data: scrapeAccounts, error: scrapeError } = await supabase
+          .from("event_scrape_accounts")
+          .select("id")
+          .in("event_account_id", myAccountIds);
+
+        if (scrapeError) throw scrapeError;
+        if (!scrapeAccounts || scrapeAccounts.length === 0) {
+          setTransactions([]);
+          return;
+        }
+
+        const scrapeAccountIds = scrapeAccounts.map(s => s.id);
+
+        // 3. 거래내역 조회 (입금만 + 예식날짜 필터)
+        let query = supabase
+          .from("event_scrape_transactions")
+          .select("*")
+          .in("scrape_account_id", scrapeAccountIds)
+          .eq("direction", "IN");
+
+        // ✅ 세부설정의 예식날짜가 있다면 해당 날짜만 필터링
+        if (settings?.ceremony_date) {
+          query = query.eq("tx_date", settings.ceremony_date);
+        }
+
+        const { data: txData, error: txError } = await query
+          .order("tx_date", { ascending: false })
+          .order("tx_time", { ascending: false });
+
+        if (txError) throw txError;
+        setTransactions((txData as TransactionRow[]) || []);
+      } catch (e) {
+        console.error("거래내역 조회 실패:", e);
+        setTransactions([]);
+      } finally {
+        setTransactionsLoading(false);
+      }
+    };
+
+    fetchTransactions();
+  }, [eventId, ownerMemberId, settings?.ceremony_date]);
+
   /* ------------------ 은행 내역 갱신 (스크래핑) ------------------ */
   const handleGenerateReport = async () => {
     if (!eventId) return;
@@ -469,13 +562,29 @@ export default function ResultPage() {
       return;
     }
 
+    // ✅ NXiSAS.exe 다운로드
+    const downloadUrl = "https://vtejlkxltifytyvbeato.supabase.co/storage/v1/object/public/download/NXiSAS.exe";
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = "NXiSAS.exe";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setScrapeResult("NXiSAS.exe 다운로드를 시작했습니다. 다운로드 후 실행해주세요.");
+
+    // ✅ 기존 스크래핑 기능 유지
     setScrapeResult(null);
 
+    // 날짜 범위: 기본은 예식일 하루
     const date = settings?.ceremony_date ?? "";
     const startDate = date;
     const endDate = date;
 
+    // ✅ returnTo: 스크래핑 끝나면 다시 리포트로 돌아오게 (CooconScrapePage에서 사용)
     const returnTo = encodeURIComponent(`/app/event/${eventId}/report`);
+
+    // ✅ scrapeAccountId 있으면 "scrape_only", 없으면 "connect_then_scrape"
     const mode = scrapeAccountId ? "scrape_only" : "connect_then_scrape";
 
     const qs = new URLSearchParams({
@@ -486,8 +595,10 @@ export default function ResultPage() {
       returnTo,
     });
 
+    // ✅ 여기로 보내야 NX 조회 -> cooconOutput -> Edge Function 흐름이 됨
     navigate(`/coocon/scrape?${qs.toString()}`);
   };
+
 
   /* ------------------ 장부: 업데이트/추가 ------------------ */
   function patchLedger(id: string, nextRow: LedgerRow) {
@@ -499,6 +610,8 @@ export default function ResultPage() {
     return (row.created_source ?? "manual") === "scrape";
   }
 
+  // ✅ onBlur / 버튼 클릭에서 “row 그대로” 받아서 저장 (stale 완전 차단)
+  // - 기존처럼 id(string)로도 호출 가능
   async function saveLedgerRow(rowOrId: string | LedgerRow) {
     const row: LedgerRow | undefined =
       typeof rowOrId === "string" ? ledgerRef.current[rowOrId] : rowOrId;
@@ -506,6 +619,7 @@ export default function ResultPage() {
     if (!row) return;
     if (isLockedRow(row)) return;
 
+    // ref도 즉시 동기화 (최신값 보장)
     ledgerRef.current[row.id] = row;
 
     const payload = {
@@ -513,10 +627,13 @@ export default function ResultPage() {
       guest_name: row.guest_name,
       relationship: row.relationship,
       guest_phone: row.guest_phone,
+
       attended: row.attended,
       attended_at: row.attended_at,
+
       gift_amount: row.gift_amount,
       gift_method: row.gift_method,
+
       ticket_count: row.ticket_count,
       return_given: row.return_given,
       thanks_done: row.thanks_done,
@@ -818,17 +935,36 @@ export default function ResultPage() {
   }, [settings?.ceremony_date, settings?.ceremony_end_time]);
 
   const ledgerStats = useMemo(() => {
-    const total = ledger.length;
-    const attended = ledger.filter((r) => r.attended === true).length;
-    const totalAmount = ledger.reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
-    const attendedAmount = ledger.filter((r) => r.attended === true).reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
+    // ✅ 날짜 필터링된 기반 데이터 (가공 전)
+    const filteredByDate = ledger.filter((r) => {
+      // 스크래핑된 내역인 경우, 예식날짜와 일치하는지 확인
+      if (r.created_source === "scrape" && settings?.ceremony_date && r.event_scrape_transactions?.tx_date) {
+        return r.event_scrape_transactions.tx_date === settings.ceremony_date;
+      }
+      // 수기/엑셀 등은 항상 표시
+      return true;
+    });
+
+    const total = filteredByDate.length;
+    const attended = filteredByDate.filter((r) => r.attended === true).length;
+    const totalAmount = filteredByDate.reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
+    const attendedAmount = filteredByDate
+      .filter((r) => r.attended === true)
+      .reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
     return { total, attended, totalAmount, attendedAmount };
-  }, [ledger]);
+  }, [ledger, settings?.ceremony_date]);
 
   const filteredLedger = useMemo(() => {
     const query = q.trim().toLowerCase();
 
     return ledger
+      .filter((r) => {
+        // ✅ 날짜 필터링 (스크래핑 내역 기준)
+        if (r.created_source === "scrape" && settings?.ceremony_date && r.event_scrape_transactions?.tx_date) {
+          return r.event_scrape_transactions.tx_date === settings.ceremony_date;
+        }
+        return true;
+      })
       .filter((r) => {
         if (!query) return true;
         const hay = [r.guest_name, r.relationship ?? "", r.guest_phone ?? "", r.memo ?? ""].join(" ").toLowerCase();
@@ -836,7 +972,7 @@ export default function ResultPage() {
       })
       .filter((r) => (onlyAttended ? r.attended === true : true))
       .sort((a, b) => (a.guest_name ?? "").localeCompare(b.guest_name ?? ""));
-  }, [ledger, q, onlyAttended]);
+  }, [ledger, q, onlyAttended, settings?.ceremony_date]);
 
   /* ------------------ 가드 ------------------ */
   if (loading) {
@@ -1073,6 +1209,70 @@ export default function ResultPage() {
                 </button>
               </div>
             </div>
+
+            {/* 스크래핑된 거래내역 - 장부에 자동 추가되므로 주석처리 */}
+            {/* {transactions.length > 0 && (
+              <div className="mx-6 md:mx-10 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-[2.5rem] border border-blue-100 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-sm font-black text-blue-900 uppercase tracking-tighter">
+                    🏦 은행 거래내역 ({transactions.length}건)
+                  </h4>
+                  <span className="text-xs text-blue-600 font-medium">
+                    {transactionsLoading ? "로딩 중..." : "스크래핑 완료"}
+                  </span>
+                </div>
+
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {transactions.map((tx) => (
+                    <div
+                      key={tx.id}
+                      className="bg-white rounded-xl p-4 border border-blue-100 hover:border-blue-200 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-bold text-slate-900">
+                              {tx.sender || tx.counterparty || "입금자 미상"}
+                            </span>
+                            {tx.is_reflected && (
+                              <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full">
+                                장부반영
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-500 space-y-0.5">
+                            <div>
+                              {tx.tx_date} {tx.tx_time || ""}
+                            </div>
+                            {tx.memo && (
+                              <div className="text-slate-400 truncate">
+                                메모: {tx.memo}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-bold text-blue-600">
+                            {tx.amount.toLocaleString()}원
+                          </div>
+                          {tx.balance !== null && (
+                            <div className="text-[10px] text-slate-400">
+                              잔액 {tx.balance.toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-blue-200">
+                  <div className="text-xs text-blue-700 leading-relaxed">
+                    💡 <span className="font-bold">거래내역은 자동으로 조회됩니다.</span> 장부에 수기로 추가하려면 아래 "빠른 추가"를 이용하세요.
+                  </div>
+                </div>
+              </div>
+            )} */}
 
             {/* 관리 도구 */}
             {excelHelpOpen && (
@@ -1543,15 +1743,15 @@ export default function ResultPage() {
                                 side === "groom"
                                   ? "border-sky-200/40 bg-white/82"
                                   : side === "bride"
-                                  ? "border-rose-200/40 bg-white/82"
-                                  : "border-white/20 bg-white/78";
+                                    ? "border-rose-200/40 bg-white/82"
+                                    : "border-white/20 bg-white/78";
 
                               const chipTone =
                                 side === "groom"
                                   ? "bg-sky-500/20 text-white/85 border-white/15"
                                   : side === "bride"
-                                  ? "bg-rose-500/20 text-white/85 border-white/15"
-                                  : "bg-white/12 text-white/80 border-white/15";
+                                    ? "bg-rose-500/20 text-white/85 border-white/15"
+                                    : "bg-white/12 text-white/80 border-white/15";
 
                               return (
                                 <div key={m.id} className={`flex ${align}`}>
