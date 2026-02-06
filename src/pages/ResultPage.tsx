@@ -1150,9 +1150,19 @@ export default function ResultPage() {
       ctx.fillText("Digital Guestbook", 0, 0);
       ctx.restore();
 
-      // header
+     // header
       const title = "축하 메시지";
-      const sub = `${safeMsgPage} / ${totalMessagePages} • ${yyyymmdd(settings?.ceremony_date)} • ${ownerLabel} 리포트`;
+
+      // ✅ 신랑/신부 이름 추출 (settings.recipients 기반)
+      const recipients = settings?.recipients ?? [];
+      const groomName =
+        recipients.find((r) => r.role === "groom" || String(r.role ?? "").includes("신랑"))?.name ?? "";
+      const brideName =
+        recipients.find((r) => r.role === "bride" || String(r.role ?? "").includes("신부"))?.name ?? "";
+
+      // ✅ 날짜 + 누구누구 결혼식 (주최리포트/페이지표시 제거)
+      const dateText = settings?.ceremony_date ?? yyyymmdd(settings?.ceremony_date);
+      const sub = `${dateText} • ${groomName || "신랑"} & ${brideName || "신부"} 결혼식`;
 
       ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
       ctx.font = `900 20px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
@@ -1162,6 +1172,7 @@ export default function ResultPage() {
       ctx.fillStyle = "rgba(100, 116, 139, 0.95)";
       ctx.font = `700 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
       ctx.fillText(sub, padding, 56);
+
 
       // cards
       let y = 72;
@@ -1929,22 +1940,35 @@ export default function ResultPage() {
                     <h2 className="mt-2 text-xl md:text-2xl font-black text-slate-900">축하 메시지</h2>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {/* 모바일 전용: 이미지 저장 */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {/* 이미지 저장 */}
                     <button
                       onClick={saveCurrentMessageImage}
                       disabled={savingImage}
-                      className="md:hidden px-4 py-2 rounded-2xl bg-slate-900 text-white text-[11px] font-black shadow-lg shadow-slate-200 disabled:opacity-50"
+                      className="h-10 px-3 md:px-5 rounded-2xl bg-slate-900 text-white font-black shadow-lg shadow-slate-200 disabled:opacity-50 whitespace-nowrap"
+                      aria-label="현재화면 이미지 저장"
                     >
-                      {savingImage ? "저장 중..." : "현재화면 이미지 저장"}
+                      {/* 모바일 */}
+                      <span className="md:hidden text-base">💾저장</span>
+                      {/* PC */}
+                      <span className="hidden md:inline text-sm">
+                        {savingImage ? "저장 중..." : "현재화면 이미지 저장"}
+                      </span>
                     </button>
 
+                    {/* 새로고침 */}
                     <button
                       onClick={refreshMessages}
                       disabled={messagesLoading}
-                      className="px-4 py-2 rounded-2xl bg-white/90 border border-slate-100 text-slate-700 text-[11px] font-black shadow-sm disabled:opacity-50"
+                      className="h-10 px-3 md:px-5 rounded-2xl bg-white/90 border border-slate-100 text-slate-700 font-black shadow-sm disabled:opacity-50 whitespace-nowrap"
+                      aria-label="새로고침"
                     >
-                      {messagesLoading ? "새로고침..." : "새로고침"}
+                      {/* 모바일 */}
+                      <span className="md:hidden text-base">🔄</span>
+                      {/* PC */}
+                      <span className="hidden md:inline text-sm">
+                        {messagesLoading ? "새로고침..." : "새로고침"}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -2030,7 +2054,7 @@ export default function ResultPage() {
 
               {/* desktop hint */}
               <div className="hidden md:block px-8 py-4 text-[11px] text-slate-500">
-                * 모바일에서는 “현재화면 이미지 저장” 버튼으로 페이지 단위(PAGE_SIZE={PAGE_SIZE}) 메시지를 이미지로 저장할 수 있어요.
+                * 모바일에서는 “이미지 저장” 버튼으로 페이지 단위fh 메시지를 이미지로 저장할 수 있어요.
               </div>
             </div>
           </div>
