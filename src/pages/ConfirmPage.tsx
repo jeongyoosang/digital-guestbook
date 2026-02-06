@@ -684,13 +684,14 @@ export default function ConfirmPage() {
         if (inserted) setSettings(inserted as EventSettingsRow);
       }
 
-      // 4) 계좌 저장 (삭제 후 재삽입)
+      // 4) 계좌 저장 (필요한 것만 삭제 후 upsert)
       const myMemberId = await getMyMemberId(eventId);
 
       const validAccounts = accounts
         .filter((a) => a.is_active)
         .filter((a) => a.label.trim() && a.holder_name.trim() && a.bank_name.trim() && a.account_number.trim())
         .map((a, index) => ({
+          ...(a.id ? { id: a.id } : {}),
           event_id: eventId,
           owner_member_id: myMemberId,
           label: a.label.trim(),
@@ -701,15 +702,30 @@ export default function ConfirmPage() {
           is_active: a.is_active,
         }));
 
-      const { error: deleteError } = await supabase
+      // 4-1) 보전할 ID 목록 (기존에 있던 계좌들)
+      const keepIds = validAccounts.map((a: any) => a.id).filter(Boolean);
+
+      // 4-2) 현재 DB에 있는 내 계좌 중, validAccounts에 없는 것만 삭제
+      let deleteQuery = supabase
         .from("event_accounts")
         .delete()
         .eq("event_id", eventId)
         .eq("owner_member_id", myMemberId);
+
+      if (keepIds.length > 0) {
+        deleteQuery = deleteQuery.not("id", "in", `(${keepIds.join(",")})`);
+      }
+
+      const { error: deleteError } = await deleteQuery;
       if (deleteError && deleteError.code !== "42P01") throw deleteError;
 
-      const { error: insertAccountsError } = await supabase.from("event_accounts").insert(validAccounts);
-      if (insertAccountsError && insertAccountsError.code !== "42P01") throw insertAccountsError;
+      // 4-3) Upsert (새것은 insert, 기존것은 update)
+      if (validAccounts.length > 0) {
+        const { error: upsertError } = await supabase
+          .from("event_accounts")
+          .upsert(validAccounts);
+        if (upsertError && upsertError.code !== "42P01") throw upsertError;
+      }
 
       setSuccess("저장이 완료되었습니다. 상세 설정은 예식 1시간 전까지 변경할 수 있습니다.");
     } catch (e: any) {
@@ -753,9 +769,8 @@ export default function ConfirmPage() {
       {toast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999]">
           <div
-            className={`px-4 py-2 rounded-full text-xs shadow-lg border backdrop-blur bg-white/90 ${
-              toast.type === "error" ? "border-red-200 text-red-700" : "border-gray-200 text-gray-700"
-            }`}
+            className={`px-4 py-2 rounded-full text-xs shadow-lg border backdrop-blur bg-white/90 ${toast.type === "error" ? "border-red-200 text-red-700" : "border-gray-200 text-gray-700"
+              }`}
           >
             {toast.text}
           </div>
