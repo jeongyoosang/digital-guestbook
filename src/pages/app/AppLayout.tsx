@@ -1,9 +1,32 @@
 // src/pages/app/AppLayout.tsx
 import { Outlet, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 export default function AppLayout() {
   const navigate = useNavigate();
+  const [userEmail, setUserEmail] = useState<string>("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    const load = async () => {
+      const { data } = await supabase.auth.getSession();
+      const email = data.session?.user?.email ?? "";
+      if (mounted) setUserEmail(email);
+    };
+
+    load();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserEmail(session?.user?.email ?? "");
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription?.unsubscribe();
+    };
+  }, []);
 
   const logout = async () => {
     await supabase.auth.signOut();
@@ -39,30 +62,36 @@ export default function AppLayout() {
             DIGITAL GUESTBOOK
           </button>
 
-          {/* 로그아웃 */}
-          <button
-            type="button"
-            className="
-              text-sm rounded-xl border border-rose-200/70
-              bg-white/55 px-3 py-1.5
-              hover:bg-white/70
-              text-ink/80
-            "
-            onClick={async () => {
-              try {
-                await supabase.auth.signOut(); // ✅ 전역 로그아웃
-              } finally {
-                // ✅ 로그인 화면으로 이동
-                window.location.assign("/login");
-              }
-            }}
-          >
-            로그아웃
-          </button>
+          {/* 우측: 로그인 이메일(PC만) + 로그아웃 */}
+          <div className="flex items-center gap-3">
+            {userEmail && (
+              <div className="hidden sm:block text-xs text-slate-400">
+                로그인: <span className="font-medium text-slate-500">{userEmail}</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="
+                text-sm rounded-xl border border-rose-200/70
+                bg-white/55 px-3 py-1.5
+                hover:bg-white/70
+                text-ink/80
+              "
+              onClick={async () => {
+                try {
+                  await supabase.auth.signOut(); // ✅ 전역 로그아웃
+                } finally {
+                  // ✅ 로그인 화면으로 이동
+                  window.location.assign("/login");
+                }
+              }}
+            >
+              로그아웃
+            </button>
+          </div>
         </div>
       </header>
-
-
 
       {/* Content */}
       <main className="relative z-10 mx-auto max-w-5xl px-4 py-6">

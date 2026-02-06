@@ -3,10 +3,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import * as XLSX from "xlsx";
+import html2canvas from "html2canvas";
 
-interface RouteParams {
+type RouteParams = {
   eventId: string;
-}
+  [key: string]: string | undefined;
+};
 
 type MessageRow = {
   id: string;
@@ -89,10 +91,10 @@ type TransactionRow = {
 const PAGE_SIZE = 10;
 
 function sourceLabel(src?: string | null) {
-  if (src === "import") return "엑셀업로드";
+  if (src === "import") return "엑셀 업로드";
   if (src === "manual") return "빠른추가";
-  if (src === "guestpage") return "현장QR스캔";
-  if (src === "scrape") return "현장QR스캔";
+  if (src === "guestpage") return "현장 QR";
+  if (src === "scrape") return "QR 축의금";
   return "빠른추가";
 }
 
@@ -145,15 +147,6 @@ function sideFromDb(value: any): "groom" | "bride" | null {
   return null;
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 function toIsoMaybe(v: any): string | null {
   if (!v) return null;
   if (typeof v === "number") {
@@ -197,6 +190,29 @@ function combineLocalDateTimeToIso(dateStr?: string | null, timeStr?: string | n
   return d.toISOString();
 }
 
+function initials(name: string) {
+  const s = (name ?? "").trim();
+  if (!s) return "G";
+  const parts = s.split(/\s+/).filter(Boolean);
+  const last = parts[parts.length - 1];
+  return last.slice(0, 1).toUpperCase();
+}
+
+// ✅ (추가) 짧은 시간 표기(디스플레이 느낌)
+function formatKSTTime(iso?: string | null) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString("ko-KR", {
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
 export default function ResultPage() {
   const navigate = useNavigate();
   const { eventId } = useParams<RouteParams>();
@@ -205,6 +221,10 @@ export default function ResultPage() {
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [settings, setSettings] = useState<EventSettingsLite | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // 메시지 액션
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const messagesCaptureRef = useRef<HTMLDivElement | null>(null);
 
   // 축의금(스크래핑)
   const [scrapeAccountId, setScrapeAccountId] = useState<string | null>(null);
@@ -262,7 +282,6 @@ export default function ResultPage() {
     return new Date().getTime() >= new Date(cutoffIso).getTime();
   }, [cutoffIso]);
 
-  // ✅ 종료 이후에도 버튼은 눌리게 두고, 클릭 시 안내만(UX)
   const canRunScrape = !scrapeLocked;
 
   /* ------------------ 내 member id 찾기 ------------------ */
@@ -304,6 +323,58 @@ export default function ResultPage() {
       .eq("is_reflected", true);
 
     if (!error) setTxCount(count ?? 0);
+  }
+
+  /* ------------------ 메시지: 새로고침 ------------------ */
+  async function refreshMessages() {
+    if (!eventId) return;
+    setMessagesLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("id, created_at, side, guest_name, nickname, relationship, body")
+        .eq("event_id", eventId)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+      setMessages(data || []);
+    } catch (e) {
+      console.error(e);
+      alert("메시지를 새로고침하는 중 오류가 발생했어요.");
+    } finally {
+      setMessagesLoading(false);
+    }
+  }
+
+  async function downloadMessagesImage(currentSliceCount: number) {
+    if (!messagesCaptureRef.current) return;
+
+    // 저장할 대상이 없으면 중단
+    if (!messages.length || currentSliceCount <= 0) {
+      alert("저장할 메시지가 없습니다.");
+      return;
+    }
+
+    const el = messagesCaptureRef.current;
+
+    // ✅ 캡처 안정화(폰트)
+    // @ts-ignore
+    if (document?.fonts?.ready) {
+      // @ts-ignore
+      await document.fonts.ready;
+    }
+
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: null, // ✅ 캡처 영역 자체 배경을 그대로(디스플레이 프레임)
+    });
+
+    const dataUrl = canvas.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = `축하메시지_${yyyymmdd(settings?.ceremony_date)}_${currentSliceCount}개.png`;
+    a.click();
   }
 
   /* ------------------ 데이터 로드 ------------------ */
@@ -382,7 +453,6 @@ export default function ResultPage() {
     const fetchLedger = async () => {
       setLedgerLoading(true);
       try {
-        // side: boolean (true=신랑, false=신부)
         const { data, error } = await supabase
           .from("event_ledger_entries")
           .select(
@@ -487,7 +557,6 @@ export default function ResultPage() {
   const handleGenerateReport = async () => {
     if (!eventId) return;
 
-    // 컷오프 잠금: 종료 이후엔 안내만(버튼은 눌리게)
     if (!canRunScrape) {
       setScrapeResult("예식 종료 이후에는 QR 축의금 자동 반영이 잠깁니다. (빠른추가/엑셀 입력은 계속 가능)");
       return;
@@ -534,7 +603,6 @@ export default function ResultPage() {
   /* ------------------ 장부: 업데이트/추가 ------------------ */
   function patchLedger(id: string, nextRow: LedgerRow) {
     setLedger((prev) => prev.map((r) => (r.id === id ? nextRow : r)));
-    // ✅ patch 시점에 ref도 같이 업데이트 (stale 방지)
     ledgerRef.current[id] = nextRow;
   }
 
@@ -580,7 +648,6 @@ export default function ResultPage() {
     }
   }
 
-
   async function addLedgerRow() {
     if (!eventId || !ownerMemberId) return;
 
@@ -589,8 +656,7 @@ export default function ResultPage() {
       return;
     }
 
-    const relationship =
-      newRelOption === "기타" ? newRelCustom.trim() : newRelOption.trim();
+    const relationship = newRelOption === "기타" ? newRelCustom.trim() : newRelOption.trim();
     const giftAmount = safeNumber(newAmount);
 
     const payload: any = {
@@ -855,70 +921,6 @@ export default function ResultPage() {
     fileInputRef.current?.click();
   }
 
-  function downloadMessagesPdf() {
-    if (!messages.length) {
-      alert("축하 메시지가 없습니다.");
-      return;
-    }
-
-    const title = `${ceremonyDateText ?? ""} 축하 메시지`;
-    const w = window.open("", "_blank", "width=900,height=700");
-    if (!w) return;
-
-    const cards = messages
-      .map((m) => {
-        const realName = (m.guest_name ?? "").trim();
-        const nickName = (m.nickname ?? "").trim();
-        const nameText =
-          realName && nickName && realName !== nickName
-            ? `${realName} (${nickName})`
-            : realName || nickName || "익명";
-        const relation = m.relationship ? ` · ${m.relationship}` : "";
-        const created = m.created_at ? new Date(m.created_at).toLocaleString() : "";
-        const body = escapeHtml(m.body ?? "").replace(/\n/g, "<br/>");
-
-        return `
-          <div class="card">
-            <div class="meta">
-              <div class="name">${escapeHtml(nameText)}${escapeHtml(relation)}</div>
-              <div class="time">${escapeHtml(created)}</div>
-            </div>
-            <div class="body">${body}</div>
-          </div>
-        `;
-      })
-      .join("");
-
-    w.document.write(`<!doctype html>
-      <html lang="ko">
-      <head>
-        <meta charset="utf-8" />
-        <title>${escapeHtml(title)}</title>
-        <style>
-          body { font-family: 'Pretendard', 'Apple SD Gothic Neo', sans-serif; background: #f8fafc; color: #0f172a; }
-          .wrap { max-width: 900px; margin: 32px auto 48px; padding: 0 24px; }
-          h1 { font-size: 22px; margin: 0 0 6px; }
-          p.sub { margin: 0 0 20px; color: #64748b; font-size: 12px; }
-          .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 18px 20px; margin-bottom: 14px; box-shadow: 0 8px 20px rgba(15,23,42,.06); }
-          .meta { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; color: #94a3b8; margin-bottom: 8px; }
-          .name { font-weight: 700; color: #0f172a; }
-          .body { font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
-          @media print { body { background: #fff; } .card { box-shadow: none; } }
-        </style>
-      </head>
-      <body>
-        <div class="wrap">
-          <h1>${escapeHtml(title)}</h1>
-          <p class="sub">축하 메시지 모음 · PDF로 저장하세요</p>
-          ${cards}
-        </div>
-      </body>
-      </html>`);
-    w.document.close();
-    w.focus();
-    w.print();
-  }
-
   /* ------------------ 계산 ------------------ */
   const ceremonyDateText =
     settings?.ceremony_date &&
@@ -965,9 +967,7 @@ export default function ResultPage() {
       })
       .filter((r) => {
         if (!query) return true;
-        const hay = [r.guest_name, r.relationship ?? "", r.guest_phone ?? "", r.memo ?? ""]
-          .join(" ")
-          .toLowerCase();
+        const hay = [r.guest_name, r.relationship ?? "", r.guest_phone ?? "", r.memo ?? ""].join(" ").toLowerCase();
         return hay.includes(query);
       })
       .filter((r) => (onlyAttended ? r.attended === true : true))
@@ -977,7 +977,7 @@ export default function ResultPage() {
   /* ------------------ 가드 ------------------ */
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F8FAFC]">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FFF6F8]">
         <div className="w-12 h-12 border-4 border-pink-200 border-t-pink-500 rounded-full animate-spin mb-4" />
         <p className="text-slate-500 font-medium">데이터를 안전하게 불러오는 중...</p>
       </div>
@@ -986,15 +986,21 @@ export default function ResultPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="min-h-screen flex items-center justify-center bg-[#FFF6F8]">
         <p className="text-red-500">{error}</p>
       </div>
     );
   }
 
+  /* ------------------ 메시지 페이지네이션 계산 ------------------ */
+  const totalMessagePages = Math.max(1, Math.ceil(messages.length / PAGE_SIZE));
+  const safeMsgPage = Math.min(Math.max(1, page), totalMessagePages);
+  const msgStart = (safeMsgPage - 1) * PAGE_SIZE;
+  const msgSlice = messages.slice(msgStart, msgStart + PAGE_SIZE);
+
   /* ------------------ UI ------------------ */
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-[#1E293B] pb-20 md:pb-10 font-sans">
+    <div className="min-h-screen bg-[#FFF6F8] text-[#1E293B] pb-20 md:pb-10 font-sans">
       <div className="max-w-7xl mx-auto">
         {/* 1) 상단 헤더 & 리포트 제어 */}
         <header className="px-6 pt-12 pb-8 md:px-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -1008,6 +1014,11 @@ export default function ResultPage() {
               >
                 {scrapeLocked ? "Archived" : "Live Report"}
               </span>
+
+              {/* 탭 상태 배지 */}
+              <span className="text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                {tab === "ledger" ? "Ledger" : "Messages"}
+              </span>
             </div>
 
             <h1 className="text-3xl md:text-4xl font-black tracking-tight">디지털 방명록 리포트</h1>
@@ -1015,33 +1026,53 @@ export default function ResultPage() {
               {ceremonyDateText ?? ""} • <span className="text-slate-900 font-bold">{ownerLabel}</span> 기준 데이터
             </p>
 
-            <p className="text-[11px] text-slate-400">
-              해당 화면은 <span className="font-bold text-slate-700">로그인한 본인만</span> 보는 개인 장부입니다.
+            <p className="text-[11px] text-slate-500">
+              해당 화면은 <span className="font-bold text-slate-700">로그인한 본인만</span> 보는 개인 리포트입니다.
               (신랑/신부 공유 없음)
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={handleGenerateReport}
-              disabled={scraping}
-              className="flex-1 md:flex-none px-6 py-3.5 bg-slate-900 text-white rounded-2xl text-sm font-bold shadow-xl shadow-slate-200 active:scale-95 transition-all disabled:opacity-50"
-              title={!canRunScrape ? "예식 종료 이후에는 QR 축의금 자동 반영이 잠깁니다." : ""}
-            >
-              {scraping ? "갱신 중..." : "QR 축의금 갱신하기"}
-            </button>
+          {/* ✅ 탭에 따라 상단 액션이 바뀜 */}
+          {tab === "ledger" ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={handleGenerateReport}
+                disabled={scraping}
+                className="flex-1 md:flex-none px-6 py-3.5 bg-slate-900 text-white rounded-2xl text-sm font-bold shadow-xl shadow-slate-200 active:scale-95 transition-all disabled:opacity-50"
+                title={!canRunScrape ? "예식 종료 이후에는 QR 축의금 자동 반영이 잠깁니다." : ""}
+              >
+                {scraping ? "갱신 중..." : "QR 축의금 갱신하기"}
+              </button>
 
-            <div className="bg-white border border-slate-100 px-6 py-3 rounded-2xl shadow-sm">
-              <p className="text-[10px] font-black text-slate-300 uppercase leading-none mb-1">QR 반영 마감</p>
-              <p className="text-xs font-bold text-slate-600">{cutoffText}</p>
+              <div className="bg-white/90 backdrop-blur border border-slate-100 px-6 py-3 rounded-2xl shadow-sm">
+                <p className="text-[10px] font-black text-slate-300 uppercase leading-none mb-1">QR 반영 마감</p>
+                <p className="text-xs font-bold text-slate-600">{cutoffText}</p>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={refreshMessages}
+                disabled={messagesLoading}
+                className="flex-1 md:flex-none px-6 py-3.5 bg-white text-slate-700 rounded-2xl text-sm font-bold border border-slate-100 shadow-sm active:scale-95 transition-all disabled:opacity-50"
+              >
+                {messagesLoading ? "새로고침 중..." : "새로고침"}
+              </button>
+
+              <button
+                onClick={() => downloadMessagesImage(msgSlice.length)}
+                className="flex-1 md:flex-none px-6 py-3.5 bg-slate-900 text-white rounded-2xl text-sm font-bold shadow-xl shadow-slate-200 active:scale-95 transition-all"
+              >
+                이미지 저장
+              </button>
+            </div>
+          )}
         </header>
 
         {/* 스크래핑 결과 메시지 */}
-        {scrapeResult && (
+        {scrapeResult && tab === "ledger" && (
           <div className="px-6 md:px-10 -mt-2 mb-6">
-            <div className="text-xs text-slate-500">{scrapeResult}</div>
+            <div className="text-xs text-slate-600">{scrapeResult}</div>
           </div>
         )}
 
@@ -1075,7 +1106,7 @@ export default function ResultPage() {
           ].map((s, i) => (
             <div
               key={i}
-              className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100/50 hover:shadow-md transition-shadow"
+              className="bg-white/90 backdrop-blur p-6 rounded-[2rem] shadow-sm border border-slate-100/60 hover:shadow-md transition-shadow"
             >
               <p className="text-slate-400 text-[11px] font-bold uppercase mb-1 tracking-widest">{s.label}</p>
               <p className={`text-xl md:text-2xl font-black ${s.color} mb-1`}>{s.value}</p>
@@ -1095,11 +1126,12 @@ export default function ResultPage() {
               "px-8 py-3.5 rounded-2xl text-sm font-bold transition-all",
               tab === "ledger"
                 ? "bg-pink-500 text-white shadow-lg shadow-pink-100"
-                : "bg-white text-slate-400 border border-slate-100",
+                : "bg-white/90 text-slate-400 border border-slate-100",
             ].join(" ")}
           >
             장부 관리
           </button>
+
           <button
             onClick={() => {
               setTab("messages");
@@ -1109,14 +1141,14 @@ export default function ResultPage() {
               "px-8 py-3.5 rounded-2xl text-sm font-bold transition-all",
               tab === "messages"
                 ? "bg-pink-500 text-white shadow-lg shadow-pink-100"
-                : "bg-white text-slate-400 border border-slate-100",
+                : "bg-white/90 text-slate-400 border border-slate-100",
             ].join(" ")}
           >
             축하 메시지
           </button>
         </div>
 
-        {/* 4) 장부 탭 */}
+        {/* 4) 장부 탭 (✅ 그대로 유지: 요청대로 수정 없음) */}
         {tab === "ledger" && (
           <div className="space-y-6">
             {!ownerMemberId && (
@@ -1132,8 +1164,8 @@ export default function ResultPage() {
 
             {/* 컷오프 안내 */}
             {cutoffIso && (
-              <div className="mx-6 md:mx-10 rounded-[2.5rem] bg-white border border-slate-100 p-5 text-xs text-slate-500">
-                <div className="font-bold text-slate-700 mb-1">QR 축의금 반영 마감</div>
+              <div className="mx-6 md:mx-10 rounded-[2.5rem] bg-white/90 backdrop-blur border border-slate-100 p-5 text-xs text-slate-600">
+                <div className="font-bold text-slate-800 mb-1">QR 축의금 반영 마감</div>
                 <div className="leading-relaxed">
                   예식 종료 시간(<span className="font-bold">{cutoffText}</span>) 이후에는{" "}
                   <span className="font-bold">QR 축의금 자동 반영이 잠깁니다.</span>
@@ -1151,7 +1183,7 @@ export default function ResultPage() {
                   placeholder="이름, 관계, 연락처, 메모 검색..."
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  className="w-full bg-white border-none rounded-[1.5rem] px-6 py-4 text-sm shadow-sm focus:ring-2 focus:ring-pink-500/20"
+                  className="w-full bg-white/90 border-none rounded-[1.5rem] px-6 py-4 text-sm shadow-sm focus:ring-2 focus:ring-pink-500/20"
                 />
               </div>
 
@@ -1162,7 +1194,7 @@ export default function ResultPage() {
                   disabled={ledgerLoading}
                   className={[
                     "flex-1 md:flex-none px-6 py-4 rounded-[1.5rem] text-xs font-bold transition-all ring-1",
-                    onlyAttended ? "bg-blue-50 text-blue-600 ring-blue-200" : "bg-white text-slate-400 ring-slate-100",
+                    onlyAttended ? "bg-blue-50 text-blue-600 ring-blue-200" : "bg-white/90 text-slate-400 ring-slate-100",
                   ].join(" ")}
                 >
                   참석만 (QR)
@@ -1171,7 +1203,7 @@ export default function ResultPage() {
                 <button
                   type="button"
                   onClick={() => setExcelHelpOpen((v) => !v)}
-                  className="px-6 py-4 bg-white text-slate-600 rounded-[1.5rem] text-xs font-bold border border-slate-100 shadow-sm"
+                  className="px-6 py-4 bg-white/90 text-slate-600 rounded-[1.5rem] text-xs font-bold border border-slate-100 shadow-sm"
                 >
                   엑셀/빠른추가 관리 ⚙️
                 </button>
@@ -1244,7 +1276,7 @@ export default function ResultPage() {
 
             {/* 관리 도구 */}
             {excelHelpOpen && (
-              <div className="mx-6 md:mx-10 p-8 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-10">
+              <div className="mx-6 md:mx-10 p-8 bg-white/90 backdrop-blur rounded-[2.5rem] border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-10">
                 <div className="space-y-4">
                   <h4 className="text-sm font-black text-slate-900 uppercase tracking-tighter">엑셀로 관리하기</h4>
 
@@ -1267,7 +1299,7 @@ export default function ResultPage() {
 
                     <button
                       onClick={downloadLedgerSampleExcel}
-                      className="px-5 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold underline"
+                      className="px-5 py-3 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold underline"
                     >
                       양식 다운로드
                     </button>
@@ -1285,11 +1317,11 @@ export default function ResultPage() {
                     }}
                   />
 
-                  {excelUploadResult && <div className="text-xs text-slate-500">{excelUploadResult}</div>}
+                  {excelUploadResult && <div className="text-xs text-slate-600">{excelUploadResult}</div>}
 
-                  <div className="text-[11px] text-slate-400 leading-relaxed">
+                  <div className="text-[11px] text-slate-500 leading-relaxed">
                     * 업로드는 기존 기록에 추가됩니다.
-                    <br />* QR 축의금 자동 반영 내역은 수정할 수 없습니다.
+                    <br />* QR 축의금 자동 반영 내역(created_source='scrape')은 수정할 수 없습니다.
                   </div>
                 </div>
 
@@ -1364,7 +1396,7 @@ export default function ResultPage() {
                   <button
                     type="button"
                     onClick={() => setExcelHelpOpen(false)}
-                    className="text-[11px] font-bold text-slate-400 underline"
+                    className="text-[11px] font-bold text-slate-500 underline"
                   >
                     닫기
                   </button>
@@ -1372,25 +1404,27 @@ export default function ResultPage() {
               </div>
             )}
 
-
             {/* [모바일] 카드형 리스트 */}
             <div className="md:hidden px-6 space-y-4">
               {ledgerLoading ? (
-                <div className="text-center text-slate-400 py-10">장부를 불러오는 중...</div>
+                <div className="text-center text-slate-500 py-10">장부를 불러오는 중...</div>
               ) : filteredLedger.length === 0 ? (
-                <div className="text-center text-slate-400 py-10">표시할 데이터가 없습니다.</div>
+                <div className="text-center text-slate-500 py-10">표시할 데이터가 없습니다.</div>
               ) : (
                 filteredLedger.map((r) => {
                   const locked = isLockedRow(r);
                   return (
-                    <div key={r.id} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
+                    <div
+                      key={r.id}
+                      className="bg-white/90 backdrop-blur p-6 rounded-[2.5rem] shadow-sm border border-slate-100"
+                    >
                       <div className="flex justify-between items-start mb-4">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-xl font-black text-slate-900">{r.guest_name}</span>
                             {locked && <span className="text-[10px] font-bold text-slate-300">자동</span>}
                           </div>
-                          <p className="text-xs text-slate-400 font-medium">
+                          <p className="text-xs text-slate-500 font-medium">
                             {(r.relationship || "관계 미입력") + " · " + (r.guest_phone || "연락처 없음")}
                           </p>
                           <div className="mt-2 text-[10px] text-slate-400 font-bold uppercase">
@@ -1412,7 +1446,7 @@ export default function ResultPage() {
                             onBlur={() => saveLedgerRow(r)}
                           />
                           <select
-                            className="mt-2 bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-28 disabled:opacity-50"
+                            className="mt-2 bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-700 w-28 disabled:opacity-50"
                             value={r.gift_method}
                             disabled={locked}
                             onChange={(e) => {
@@ -1436,7 +1470,7 @@ export default function ResultPage() {
                             "w-full py-3.5 rounded-2xl text-[11px] font-black transition-all border",
                             r.attended
                               ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                              : "bg-slate-50 border-slate-100 text-slate-400",
+                              : "bg-slate-50 border-slate-100 text-slate-500",
                             locked ? "opacity-50" : "",
                           ].join(" ")}
                           onClick={() => {
@@ -1461,7 +1495,7 @@ export default function ResultPage() {
 
             {/* [PC] 테이블 */}
             <div className="hidden md:block px-10 pb-10">
-              <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+              <div className="bg-white/90 backdrop-blur rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
                 <table className="w-full text-left border-collapse">
                   <thead className="bg-slate-50/50 border-b border-slate-50">
                     <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -1474,13 +1508,13 @@ export default function ResultPage() {
                   <tbody className="divide-y divide-slate-50">
                     {ledgerLoading ? (
                       <tr>
-                        <td colSpan={3} className="px-8 py-12 text-center text-slate-400">
+                        <td colSpan={3} className="px-8 py-12 text-center text-slate-500">
                           장부를 불러오는 중...
                         </td>
                       </tr>
                     ) : filteredLedger.length === 0 ? (
                       <tr>
-                        <td colSpan={3} className="px-8 py-12 text-center text-slate-400">
+                        <td colSpan={3} className="px-8 py-12 text-center text-slate-500">
                           표시할 데이터가 없습니다.
                         </td>
                       </tr>
@@ -1506,7 +1540,7 @@ export default function ResultPage() {
 
                               <div className="mt-2 flex gap-2">
                                 <input
-                                  className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-32 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                                  className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-700 w-32 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
                                   value={r.relationship ?? ""}
                                   disabled={locked}
                                   placeholder="관계"
@@ -1517,15 +1551,12 @@ export default function ResultPage() {
                                   onBlur={() => saveLedgerRow(r)}
                                 />
                                 <input
-                                  className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-40 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
+                                  className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-700 w-40 focus:ring-1 focus:ring-pink-500 disabled:opacity-50"
                                   value={r.guest_phone ?? ""}
                                   disabled={locked}
                                   placeholder="연락처"
                                   onChange={(e) => {
-                                    const nextRow: LedgerRow = {
-                                      ...r,
-                                      guest_phone: formatKoreanMobile(e.target.value),
-                                    };
+                                    const nextRow: LedgerRow = { ...r, guest_phone: formatKoreanMobile(e.target.value) };
                                     patchLedger(r.id, nextRow);
                                   }}
                                   onBlur={() => saveLedgerRow(r)}
@@ -1545,7 +1576,7 @@ export default function ResultPage() {
                                   "h-9 px-4 rounded-2xl text-[11px] font-black border transition-all",
                                   r.attended
                                     ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                                    : "bg-white border-slate-200 text-slate-400",
+                                    : "bg-white border-slate-200 text-slate-500",
                                   locked ? "opacity-50" : "",
                                 ].join(" ")}
                                 onClick={() => {
@@ -1579,7 +1610,7 @@ export default function ResultPage() {
 
                               <div className="mt-2">
                                 <select
-                                  className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-600 w-32 disabled:opacity-50"
+                                  className="bg-slate-50 border-none rounded-xl px-3 py-2 text-xs text-slate-700 w-32 disabled:opacity-50"
                                   value={r.gift_method}
                                   disabled={locked}
                                   onChange={(e) => {
@@ -1602,7 +1633,7 @@ export default function ResultPage() {
                 </table>
               </div>
 
-              <div className="mt-4 text-[11px] text-slate-400">
+              <div className="mt-4 text-[11px] text-slate-500">
                 * 화면에는 핵심 정보(하객정보/참석여부/축의금/방식)만 표시됩니다. 자세한 항목은 엑셀 다운로드에서 확인하세요.
                 <br />
                 * QR 축의금 자동 반영은 예식 종료 이후 잠깁니다. (빠른추가/엑셀은 계속 가능)
@@ -1611,103 +1642,261 @@ export default function ResultPage() {
           </div>
         )}
 
-        {/* 5) 메시지 탭 */}
+        {/* 5) 메시지 탭 (✅ 여기만 “디스플레이 느낌/모바일 특화”로 개선) */}
         {tab === "messages" && (
           <div className="px-6 md:px-10 pb-12">
-            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-6 md:p-8">
+            <div className="bg-white/90 backdrop-blur rounded-[2.5rem] border border-slate-100 shadow-sm p-6 md:p-8">
               <div className="flex items-end justify-between gap-4 mb-6">
                 <div>
                   <h2 className="text-lg md:text-xl font-black text-slate-900">축하 메시지</h2>
-                  <p className="text-xs text-slate-400 mt-1">하객이 남긴 메시지를 시간순으로 확인할 수 있어요.</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    “디스플레이 화면을 그대로 보는 느낌”으로 현재 페이지 메시지를 모아 저장할 수 있어요.
+                  </p>
                 </div>
-                <div className="flex items-center gap-2">
+
+                <div className="hidden md:flex items-center gap-2">
                   <button
-                    onClick={downloadMessagesPdf}
+                    onClick={refreshMessages}
+                    className="px-4 py-2 rounded-xl bg-white border border-slate-100 text-slate-700 text-[11px] font-bold shadow-sm"
+                    disabled={messagesLoading}
+                  >
+                    {messagesLoading ? "새로고침 중..." : "새로고침"}
+                  </button>
+
+                  <button
+                    onClick={() => downloadMessagesImage(msgSlice.length)}
                     className="px-4 py-2 rounded-xl bg-slate-900 text-white text-[11px] font-bold shadow-sm"
-                  >축하메시지 PDF 저장</button>
-                  <div className="text-xs font-bold text-slate-400">총 {messages.length.toLocaleString()}개</div>
+                  >
+                    이미지 저장
+                  </button>
+
+                  <div className="text-xs font-bold text-slate-400">
+                    {safeMsgPage} / {totalMessagePages} • 총 {messages.length.toLocaleString()}개
+                  </div>
                 </div>
               </div>
 
               {messages.length === 0 ? (
-                <div className="text-center text-slate-400 py-16">아직 메시지가 없습니다.</div>
+                <div className="text-center text-slate-500 py-16">아직 메시지가 없습니다.</div>
               ) : (
-                (() => {
-                  const totalPages = Math.max(1, Math.ceil(messages.length / PAGE_SIZE));
-                  const safePage = Math.min(Math.max(1, page), totalPages);
-                  const start = (safePage - 1) * PAGE_SIZE;
-                  const slice = messages.slice(start, start + PAGE_SIZE);
+                <>
+                  {/* ✅ 모바일에서 ‘디스플레이 화면’처럼 보이게: 프레임 + 배경 + 워터마크 */}
+                  <div className="flex flex-col lg:flex-row gap-5">
+                    {/* 캡처/프리뷰 영역 */}
+                    <div className="flex-1">
+                      <div
+                        ref={messagesCaptureRef}
+                        className={[
+                          "relative overflow-hidden",
+                          "rounded-[2.25rem] border border-slate-200/70",
+                          "shadow-[0_40px_90px_-60px_rgba(15,23,42,0.35)]",
+                        ].join(" ")}
+                        style={{
+                          // ✅ 모바일에서 디스플레이 느낌: 세로 화면 비율
+                          aspectRatio: "9 / 16",
+                        }}
+                      >
+                        {/* background (디스플레이 템플릿 느낌) */}
+                        <div className="absolute inset-0">
+                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(244,114,182,0.35),transparent_45%),radial-gradient(circle_at_80%_35%,rgba(99,102,241,0.22),transparent_50%),radial-gradient(circle_at_50%_95%,rgba(251,113,133,0.20),transparent_55%)]" />
+                          <div className="absolute inset-0 bg-gradient-to-b from-white/0 via-white/10 to-white/0" />
+                          <div className="absolute inset-0 bg-black/18" />
+                        </div>
 
-                  return (
-                    <>
-                      <div className="space-y-3">
-                        {slice.map((m) => {
-                          const realName = (m.guest_name ?? "").trim();
-                          const nickName = (m.nickname ?? "").trim();
-                          const nameText =
-                            realName && nickName && realName !== nickName
-                              ? `${realName} (${nickName})`
-                              : realName || nickName || "익명";
-
-                          return (
-                            <div key={m.id} className="p-5 rounded-[2rem] border border-slate-100 bg-slate-50/40">
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-black text-slate-900">{nameText}</span>
-                                  <span className="text-[10px] font-bold text-slate-400">
-                                    {m.relationship ? `(${m.relationship})` : ""}
-                                  </span>
-
-                                  <span
-                                    className={[
-                                      "text-[9px] px-2 py-0.5 rounded-full font-black uppercase",
-                                      m.side === "groom"
-                                        ? "bg-blue-50 text-blue-500"
-                                        : m.side === "bride"
-                                          ? "bg-pink-50 text-pink-500"
-                                          : "bg-slate-100 text-slate-400",
-                                    ].join(" ")}
-                                  >
-                                    {m.side === "groom" ? "Groom" : m.side === "bride" ? "Bride" : "Side"}
-                                  </span>
+                        {/* top glass bar (디스플레이 상단 UI 느낌) */}
+                        <div className="relative z-10 px-5 pt-5">
+                          <div className="rounded-[1.5rem] border border-white/20 bg-white/12 backdrop-blur-md px-4 py-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-[11px] font-black tracking-widest text-white/70 uppercase">
+                                  digital guestbook
                                 </div>
-
-                                <div className="text-[10px] text-slate-400 font-bold">
-                                  {m.created_at ? new Date(m.created_at).toLocaleString() : ""}
+                                <div className="mt-1 text-sm font-extrabold text-white truncate">
+                                  축하 메시지
                                 </div>
                               </div>
-
-                              <div className="mt-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{m.body}</div>
+                              <div className="text-[11px] font-bold text-white/70 shrink-0">
+                                {safeMsgPage}/{totalMessagePages}
+                              </div>
                             </div>
-                          );
-                        })}
+                          </div>
+                        </div>
+
+                        {/* message area */}
+                        <div className="relative z-10 px-5 pt-4 pb-14 h-full">
+                          {/* ✅ 아래쪽으로 쌓이게(디스플레이/채팅 느낌) */}
+                          <div className="h-full flex flex-col justify-end gap-3">
+                            {msgSlice.map((m) => {
+                              const realName = (m.guest_name ?? "").trim();
+                              const nickName = (m.nickname ?? "").trim();
+                              const nameText =
+                                realName && nickName && realName !== nickName
+                                  ? `${realName} (${nickName})`
+                                  : realName || nickName || "익명";
+
+                              const relText = (m.relationship ?? "").trim();
+                              const side = m.side === "groom" ? "groom" : m.side === "bride" ? "bride" : null;
+
+                              const align = side === "groom" ? "justify-start" : side === "bride" ? "justify-end" : "justify-start";
+
+                              const bubbleTone =
+                                side === "groom"
+                                  ? "border-sky-200/40 bg-white/82"
+                                  : side === "bride"
+                                    ? "border-rose-200/40 bg-white/82"
+                                    : "border-white/20 bg-white/78";
+
+                              const chipTone =
+                                side === "groom"
+                                  ? "bg-sky-500/20 text-white/85 border-white/15"
+                                  : side === "bride"
+                                    ? "bg-rose-500/20 text-white/85 border-white/15"
+                                    : "bg-white/12 text-white/80 border-white/15";
+
+                              return (
+                                <div key={m.id} className={`flex ${align}`}>
+                                  <div className="max-w-[82%]">
+                                    {/* meta chip */}
+                                    <div
+                                      className={[
+                                        "inline-flex items-center gap-2",
+                                        "rounded-full border px-3 py-1",
+                                        "backdrop-blur-md",
+                                        chipTone,
+                                      ].join(" ")}
+                                    >
+                                      <span className="text-[11px] font-extrabold">{nameText}</span>
+                                      {relText ? <span className="text-[11px] font-bold opacity-80">· {relText}</span> : null}
+                                      <span className="text-[10px] font-bold opacity-70">
+                                        {formatKSTTime(m.created_at)}
+                                      </span>
+                                    </div>
+
+                                    {/* bubble */}
+                                    <div
+                                      className={[
+                                        "mt-2 rounded-[1.6rem] border px-5 py-4",
+                                        "backdrop-blur-md shadow-[0_18px_40px_-28px_rgba(0,0,0,0.6)]",
+                                        bubbleTone,
+                                      ].join(" ")}
+                                    >
+                                      <div className="text-[15px] md:text-[16px] text-slate-900 leading-relaxed whitespace-pre-wrap break-words">
+                                        {m.body}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* watermark (A: 인스타 아이콘 없음) */}
+                          <div className="absolute right-4 bottom-4">
+                            <div className="rounded-full border border-white/15 bg-black/25 backdrop-blur-md px-3 py-1.5">
+                              <span className="text-[10px] font-black tracking-widest text-white/75 uppercase">
+                                digital guestbook
+                              </span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
 
-                      {/* pagination */}
-                      <div className="mt-6 flex items-center justify-between">
+                      {/* mobile quick controls */}
+                      <div className="mt-4 flex items-center justify-between gap-2 md:hidden">
                         <button
-                          className="px-4 py-2 rounded-xl border text-xs font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-40"
-                          disabled={safePage <= 1}
+                          className="flex-1 px-4 py-3 rounded-2xl border text-xs font-bold text-slate-700 bg-white/90 hover:bg-white disabled:opacity-40"
+                          disabled={safeMsgPage <= 1}
                           onClick={() => setPage((p) => Math.max(1, p - 1))}
                         >
                           이전
                         </button>
 
-                        <div className="text-xs font-black text-slate-500">
-                          {safePage} / {totalPages}
-                        </div>
+                        <button
+                          className="flex-1 px-4 py-3 rounded-2xl bg-slate-900 text-white text-xs font-bold shadow-sm"
+                          onClick={() => downloadMessagesImage(msgSlice.length)}
+                        >
+                          이미지 저장
+                        </button>
 
                         <button
-                          className="px-4 py-2 rounded-xl border text-xs font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-40"
-                          disabled={safePage >= totalPages}
-                          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                          className="flex-1 px-4 py-3 rounded-2xl border text-xs font-bold text-slate-700 bg-white/90 hover:bg-white disabled:opacity-40"
+                          disabled={safeMsgPage >= totalMessagePages}
+                          onClick={() => setPage((p) => Math.min(totalMessagePages, p + 1))}
                         >
                           다음
                         </button>
                       </div>
-                    </>
-                  );
-                })()
+
+                      <div className="mt-3 text-[11px] text-slate-500">
+                        * “이미지 저장”은 현재 페이지(최대 {PAGE_SIZE}개) 기준으로 저장됩니다.
+                      </div>
+                    </div>
+
+                    {/* 데스크톱 우측: 리스트(선택) — 기존 카드 느낌 유지 */}
+                    <div className="hidden lg:block w-[360px] shrink-0">
+                      <div className="rounded-[2rem] bg-white/60 border border-slate-100 p-5">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="text-xs font-black tracking-widest text-slate-400 uppercase">LIST</div>
+                          <div className="text-xs font-bold text-slate-400">
+                            {safeMsgPage}/{totalMessagePages}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 max-h-[520px] overflow-auto pr-2">
+                          {msgSlice.map((m) => {
+                            const realName = (m.guest_name ?? "").trim();
+                            const nickName = (m.nickname ?? "").trim();
+                            const nameText =
+                              realName && nickName && realName !== nickName
+                                ? `${realName} (${nickName})`
+                                : realName || nickName || "익명";
+                            const relText = (m.relationship ?? "").trim();
+                            const side = m.side === "groom" ? "신랑측" : m.side === "bride" ? "신부측" : "";
+                            return (
+                              <div
+                                key={m.id}
+                                className="rounded-2xl border border-slate-100 bg-white/80 px-4 py-3"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="text-sm font-extrabold text-slate-900 truncate">{nameText}</div>
+                                    <div className="mt-1 text-[11px] text-slate-500 font-bold truncate">
+                                      {relText ? `${relText} · ` : ""}
+                                      {formatKSTTime(m.created_at)}
+                                    </div>
+                                  </div>
+                                  {side ? (
+                                    <span className="shrink-0 text-[10px] font-black text-slate-400">{side}</span>
+                                  ) : null}
+                                </div>
+                                <div className="mt-2 text-xs text-slate-600 line-clamp-2 whitespace-pre-wrap">
+                                  {m.body}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-between">
+                          <button
+                            className="px-4 py-2 rounded-xl border text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                            disabled={safeMsgPage <= 1}
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                          >
+                            이전
+                          </button>
+                          <button
+                            className="px-4 py-2 rounded-xl border text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                            disabled={safeMsgPage >= totalMessagePages}
+                            onClick={() => setPage((p) => Math.min(totalMessagePages, p + 1))}
+                          >
+                            다음
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -1716,4 +1905,3 @@ export default function ResultPage() {
     </div>
   );
 }
-

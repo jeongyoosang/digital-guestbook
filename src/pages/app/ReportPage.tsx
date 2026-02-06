@@ -26,7 +26,7 @@ export default function ReportPage() {
           onClick={() => navigate(`/app/event/${safeEventId}/settings`)}
           className="underline underline-offset-4"
         >
-          예식 설정
+          상세 설정
         </button>
       </div>
 
@@ -53,7 +53,7 @@ export default function ReportPage() {
             onClick={() => navigate(`/app/event/${safeEventId}/settings`)}
             className="text-sm text-gray-500 underline underline-offset-4 hover:text-gray-900 whitespace-nowrap"
           >
-            예식 설정
+            상세 설정
           </button>
         </div>
       </div>

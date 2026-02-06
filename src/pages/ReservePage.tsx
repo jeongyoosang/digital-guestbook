@@ -55,9 +55,9 @@ export default function ReservePage({ onServiceFlowClick, onReportClick }: Reser
               className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition"
             >
               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-foreground/5">
-                📄
+                🔐
               </span>
-              <span className="font-medium">리포트</span>
+              <span className="font-medium">로그인</span>
             </button>
           </div>
         </div>
