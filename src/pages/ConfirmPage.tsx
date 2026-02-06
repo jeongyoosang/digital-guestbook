@@ -73,7 +73,7 @@ const MAX_ACCOUNTS = 6;
 // 미디어 정책
 const MAX_MEDIA_TOTAL = 18; // 사진+영상 합쳐서 최대 18개
 const MAX_VIDEOS = 2; // 영상은 최대 2개
-const MAX_MEDIA_FILE_MB = 50; // 사진/영상 모두 파일 1개당 50MB 이하
+const MAX_MEDIA_FILE_MB = 150; // 사진/영상 모두 파일 1개당 150MB 이하
 
 const DEFAULT_TITLE = "WEDDING MESSAGES";
 const DEFAULT_SUBTITLE = "소중한 분들의 마음을 전하는 메시지를 남겨주세요";
