@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 
 type RouteParams = {
   eventId?: string;
+  [key: string]: string | undefined;
 };
 
 type StartResponse = {
