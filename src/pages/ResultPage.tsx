@@ -59,6 +59,12 @@ type LedgerRow = {
   memo: string | null;
 
   created_source?: CreatedSource | null;
+  scrape_transaction_id?: string | null;
+
+  // Joined data
+  event_scrape_transactions?: {
+    tx_date: string;
+  } | null;
 
   updated_at: string;
   created_at: string;
@@ -386,8 +392,9 @@ export default function ResultPage() {
             attended, attended_at,
             gift_amount, gift_method,
             ticket_count, return_given, thanks_done, memo,
-            created_source,
-            created_at, updated_at
+            created_source, scrape_transaction_id,
+            created_at, updated_at,
+            event_scrape_transactions(tx_date)
           `
           )
           .eq("event_id", eventId)
@@ -447,12 +454,19 @@ export default function ResultPage() {
 
         const scrapeAccountIds = scrapeAccounts.map(s => s.id);
 
-        // 3. 거래내역 조회 (입금만)
-        const { data: txData, error: txError } = await supabase
+        // 3. 거래내역 조회 (입금만 + 예식날짜 필터)
+        let query = supabase
           .from("event_scrape_transactions")
           .select("*")
           .in("scrape_account_id", scrapeAccountIds)
-          .eq("direction", "IN")
+          .eq("direction", "IN");
+
+        // ✅ 세부설정의 예식날짜가 있다면 해당 날짜만 필터링
+        if (settings?.ceremony_date) {
+          query = query.eq("tx_date", settings.ceremony_date);
+        }
+
+        const { data: txData, error: txError } = await query
           .order("tx_date", { ascending: false })
           .order("tx_time", { ascending: false });
 
@@ -467,54 +481,54 @@ export default function ResultPage() {
     };
 
     fetchTransactions();
-  }, [eventId, ownerMemberId]);
+  }, [eventId, ownerMemberId, settings?.ceremony_date]);
 
   /* ------------------ 은행 내역 갱신 (스크래핑) ------------------ */
-const handleGenerateReport = async () => {
-  if (!eventId) return;
+  const handleGenerateReport = async () => {
+    if (!eventId) return;
 
-  // 컷오프 잠금: 종료 이후엔 안내만(버튼은 눌리게)
-  if (!canRunScrape) {
-    setScrapeResult("예식 종료 이후에는 QR 축의금 자동 반영이 잠깁니다. (빠른추가/엑셀 입력은 계속 가능)");
-    return;
-  }
+    // 컷오프 잠금: 종료 이후엔 안내만(버튼은 눌리게)
+    if (!canRunScrape) {
+      setScrapeResult("예식 종료 이후에는 QR 축의금 자동 반영이 잠깁니다. (빠른추가/엑셀 입력은 계속 가능)");
+      return;
+    }
 
-  // ✅ NXiSAS.exe 다운로드
-  const downloadUrl = "https://vtejlkxltifytyvbeato.supabase.co/storage/v1/object/public/download/NXiSAS.exe";
-  const link = document.createElement("a");
-  link.href = downloadUrl;
-  link.download = "NXiSAS.exe";
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+    // ✅ NXiSAS.exe 다운로드
+    const downloadUrl = "https://vtejlkxltifytyvbeato.supabase.co/storage/v1/object/public/download/NXiSAS.exe";
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = "NXiSAS.exe";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
-  setScrapeResult("NXiSAS.exe 다운로드를 시작했습니다. 다운로드 후 실행해주세요.");
+    setScrapeResult("NXiSAS.exe 다운로드를 시작했습니다. 다운로드 후 실행해주세요.");
 
-  // ✅ 기존 스크래핑 기능 유지
-  setScrapeResult(null);
+    // ✅ 기존 스크래핑 기능 유지
+    setScrapeResult(null);
 
-  // 날짜 범위: 기본은 예식일 하루
-  const date = settings?.ceremony_date ?? "";
-  const startDate = date;
-  const endDate = date;
+    // 날짜 범위: 기본은 예식일 하루
+    const date = settings?.ceremony_date ?? "";
+    const startDate = date;
+    const endDate = date;
 
-  // ✅ returnTo: 스크래핑 끝나면 다시 리포트로 돌아오게 (CooconScrapePage에서 사용)
-  const returnTo = encodeURIComponent(`/app/event/${eventId}/report`);
+    // ✅ returnTo: 스크래핑 끝나면 다시 리포트로 돌아오게 (CooconScrapePage에서 사용)
+    const returnTo = encodeURIComponent(`/app/event/${eventId}/report`);
 
-  // ✅ scrapeAccountId 있으면 "scrape_only", 없으면 "connect_then_scrape"
-  const mode = scrapeAccountId ? "scrape_only" : "connect_then_scrape";
+    // ✅ scrapeAccountId 있으면 "scrape_only", 없으면 "connect_then_scrape"
+    const mode = scrapeAccountId ? "scrape_only" : "connect_then_scrape";
 
-  const qs = new URLSearchParams({
-    eventId,
-    mode,
-    ...(startDate ? { startDate } : {}),
-    ...(endDate ? { endDate } : {}),
-    returnTo,
-  });
+    const qs = new URLSearchParams({
+      eventId,
+      mode,
+      ...(startDate ? { startDate } : {}),
+      ...(endDate ? { endDate } : {}),
+      returnTo,
+    });
 
-  // ✅ 여기로 보내야 NX 조회 -> cooconOutput -> Edge Function 흐름이 됨
-  navigate(`/coocon/scrape?${qs.toString()}`);
-};
+    // ✅ 여기로 보내야 NX 조회 -> cooconOutput -> Edge Function 흐름이 됨
+    navigate(`/coocon/scrape?${qs.toString()}`);
+  };
 
 
   /* ------------------ 장부: 업데이트/추가 ------------------ */
@@ -528,43 +542,43 @@ const handleGenerateReport = async () => {
     return (row.created_source ?? "manual") === "scrape";
   }
 
- // ✅ onBlur / 버튼 클릭에서 “row 그대로” 받아서 저장 (stale 완전 차단)
-// - 기존처럼 id(string)로도 호출 가능
-async function saveLedgerRow(rowOrId: string | LedgerRow) {
-  const row: LedgerRow | undefined =
-    typeof rowOrId === "string" ? ledgerRef.current[rowOrId] : rowOrId;
+  // ✅ onBlur / 버튼 클릭에서 “row 그대로” 받아서 저장 (stale 완전 차단)
+  // - 기존처럼 id(string)로도 호출 가능
+  async function saveLedgerRow(rowOrId: string | LedgerRow) {
+    const row: LedgerRow | undefined =
+      typeof rowOrId === "string" ? ledgerRef.current[rowOrId] : rowOrId;
 
-  if (!row) return;
-  if (isLockedRow(row)) return;
+    if (!row) return;
+    if (isLockedRow(row)) return;
 
-  // ref도 즉시 동기화 (최신값 보장)
-  ledgerRef.current[row.id] = row;
+    // ref도 즉시 동기화 (최신값 보장)
+    ledgerRef.current[row.id] = row;
 
-  const payload = {
-    side: sideToDb(row.side),
-    guest_name: row.guest_name,
-    relationship: row.relationship,
-    guest_phone: row.guest_phone,
+    const payload = {
+      side: sideToDb(row.side),
+      guest_name: row.guest_name,
+      relationship: row.relationship,
+      guest_phone: row.guest_phone,
 
-    attended: row.attended,
-    attended_at: row.attended_at,
+      attended: row.attended,
+      attended_at: row.attended_at,
 
-    gift_amount: row.gift_amount,
-    gift_method: row.gift_method,
+      gift_amount: row.gift_amount,
+      gift_method: row.gift_method,
 
-    ticket_count: row.ticket_count,
-    return_given: row.return_given,
-    thanks_done: row.thanks_done,
-    memo: row.memo,
-  };
+      ticket_count: row.ticket_count,
+      return_given: row.return_given,
+      thanks_done: row.thanks_done,
+      memo: row.memo,
+    };
 
-  const { error } = await supabase.from("event_ledger_entries").update(payload).eq("id", row.id);
+    const { error } = await supabase.from("event_ledger_entries").update(payload).eq("id", row.id);
 
-  if (error) {
-    console.error(error);
-    alert(`저장 실패: ${error.message}`);
+    if (error) {
+      console.error(error);
+      alert(`저장 실패: ${error.message}`);
+    }
   }
-}
 
 
   async function addLedgerRow() {
@@ -919,19 +933,36 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
   }, [settings?.ceremony_date, settings?.ceremony_end_time]);
 
   const ledgerStats = useMemo(() => {
-    const total = ledger.length;
-    const attended = ledger.filter((r) => r.attended === true).length;
-    const totalAmount = ledger.reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
-    const attendedAmount = ledger
+    // ✅ 날짜 필터링된 기반 데이터 (가공 전)
+    const filteredByDate = ledger.filter((r) => {
+      // 스크래핑된 내역인 경우, 예식날짜와 일치하는지 확인
+      if (r.created_source === "scrape" && settings?.ceremony_date && r.event_scrape_transactions?.tx_date) {
+        return r.event_scrape_transactions.tx_date === settings.ceremony_date;
+      }
+      // 수기/엑셀 등은 항상 표시
+      return true;
+    });
+
+    const total = filteredByDate.length;
+    const attended = filteredByDate.filter((r) => r.attended === true).length;
+    const totalAmount = filteredByDate.reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
+    const attendedAmount = filteredByDate
       .filter((r) => r.attended === true)
       .reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
     return { total, attended, totalAmount, attendedAmount };
-  }, [ledger]);
+  }, [ledger, settings?.ceremony_date]);
 
   const filteredLedger = useMemo(() => {
     const query = q.trim().toLowerCase();
 
     return ledger
+      .filter((r) => {
+        // ✅ 날짜 필터링 (스크래핑 내역 기준)
+        if (r.created_source === "scrape" && settings?.ceremony_date && r.event_scrape_transactions?.tx_date) {
+          return r.event_scrape_transactions.tx_date === settings.ceremony_date;
+        }
+        return true;
+      })
       .filter((r) => {
         if (!query) return true;
         const hay = [r.guest_name, r.relationship ?? "", r.guest_phone ?? "", r.memo ?? ""]
@@ -941,7 +972,7 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
       })
       .filter((r) => (onlyAttended ? r.attended === true : true))
       .sort((a, b) => (a.guest_name ?? "").localeCompare(b.guest_name ?? ""));
-  }, [ledger, q, onlyAttended]);
+  }, [ledger, q, onlyAttended, settings?.ceremony_date]);
 
   /* ------------------ 가드 ------------------ */
   if (loading) {
@@ -1633,8 +1664,8 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                                       m.side === "groom"
                                         ? "bg-blue-50 text-blue-500"
                                         : m.side === "bride"
-                                        ? "bg-pink-50 text-pink-500"
-                                        : "bg-slate-100 text-slate-400",
+                                          ? "bg-pink-50 text-pink-500"
+                                          : "bg-slate-100 text-slate-400",
                                     ].join(" ")}
                                   >
                                     {m.side === "groom" ? "Groom" : m.side === "bride" ? "Bride" : "Side"}
@@ -1662,7 +1693,7 @@ async function saveLedgerRow(rowOrId: string | LedgerRow) {
                           이전
                         </button>
 
-                                                <div className="text-xs font-black text-slate-500">
+                        <div className="text-xs font-black text-slate-500">
                           {safePage} / {totalPages}
                         </div>
 
