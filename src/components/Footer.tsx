@@ -71,7 +71,7 @@ export default function Footer() {
         <div className="mt-5 text-center text-xs text-muted-foreground leading-relaxed">
           ㈜고래유니버스 | 대표 정유상 | 사업자등록번호 : 521-81-03425 <br />
           서울특별시 서대문구 연세로2나길 61 204호
-          <div className="mt-2">© 2025 GORAE UNIVERSE. All rights reserved.</div>
+          <div className="mt-2">© 2026 GORAE UNIVERSE. All rights reserved.</div>
         </div>
       </div>
     </footer>
