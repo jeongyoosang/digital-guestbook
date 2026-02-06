@@ -466,10 +466,58 @@ export default function EventHome() {
               정보를 불러오는 중...
             </div>
           ) : events.length === 0 ? (
-            <div className="py-20 text-center text-muted-foreground">
-              표시할 이벤트가 없습니다.
-            </div>
-          ) : (
+  <div className="py-16">
+    <div className="mx-auto max-w-xl rounded-[2.5rem] border border-slate-200 bg-white/70 p-8 text-center shadow-xl shadow-slate-200/30 backdrop-blur">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-2xl">
+        📭
+      </div>
+
+      <h3 className="mt-4 text-xl font-extrabold tracking-tight text-slate-900">
+        아직 생성된 예식 홈이 없습니다
+      </h3>
+
+      <p className="mt-2 text-sm leading-relaxed text-slate-600">
+        예약이 확인되면 예식 홈이 자동으로 생성되며,
+        <br />
+        이후 예식 설정과 웨딩 리포트를 확인할 수 있어요.
+      </p>
+
+      <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left">
+        <div className="text-[11px] font-black tracking-widest text-slate-400">
+          안내
+        </div>
+        <ul className="mt-2 space-y-2 text-sm text-slate-600">
+          <li>• 결제/입금 직후에는 반영까지 시간이 걸릴 수 있어요.</li>
+          <li>• 예약금을 입금했는데도 예식 홈이 보이지 않으면 카카오톡 채널로 문의해 주세요.</li>
+        </ul>
+      </div>
+
+      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+        <Button
+          variant="outline"
+          onClick={fetchEvents}
+          className="h-11 rounded-full border-slate-200 bg-white/70 px-6 text-slate-700 hover:bg-slate-50"
+        >
+          <RefreshCcw className="mr-2 h-4 w-4" />
+          새로고침
+        </Button>
+
+        <a
+          href="https://pf.kakao.com/_UyaHn/chat" 
+          target="_blank"
+          rel="noreferrer"
+          className="block"
+        >
+          <Button className="h-11 w-full rounded-full bg-rose-500 px-6 font-bold text-white hover:bg-rose-600 sm:w-auto">
+            카카오톡 문의
+          </Button>
+        </a>
+      </div>
+
+    </div>
+  </div>
+) : (
+
             events.map((ev) => {
               const eventDate = getEventDate(ev);
               const dDay = getDDayInfo(eventDate);

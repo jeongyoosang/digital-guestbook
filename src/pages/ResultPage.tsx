@@ -1,9 +1,8 @@
 // src/pages/ResultPage.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import * as XLSX from "xlsx";
-import html2canvas from "html2canvas";
 
 type RouteParams = {
   eventId: string;
@@ -31,6 +30,7 @@ type EventSettingsLite = {
   ceremony_start_time: string | null;
   ceremony_end_time: string | null;
   recipients: Recipient[] | null;
+  media_urls?: string[] | null; // ✅ event_settings.media_urls (첫번째 사진을 메시지탭 배경으로)
 };
 
 type TabKey = "messages" | "ledger";
@@ -181,26 +181,8 @@ function yyyymmdd(dateStr?: string | null) {
   return `${y}${m}${da}`;
 }
 
-// ✅ 예식 날짜 + 시각을 “로컬 시간”으로 합쳐서 Date 만들기
-function combineLocalDateTimeToIso(dateStr?: string | null, timeStr?: string | null) {
-  if (!dateStr || !timeStr) return null;
-  const isoLike = `${dateStr}T${timeStr}:00`;
-  const d = new Date(isoLike);
-  if (isNaN(d.getTime())) return null;
-  return d.toISOString();
-}
-
-function initials(name: string) {
-  const s = (name ?? "").trim();
-  if (!s) return "G";
-  const parts = s.split(/\s+/).filter(Boolean);
-  const last = parts[parts.length - 1];
-  return last.slice(0, 1).toUpperCase();
-}
-
-// ✅ (추가) 짧은 시간 표기(디스플레이 느낌)
 function formatKSTTime(iso?: string | null) {
-  if (!iso) return "";
+  if (!iso) return "-";
   try {
     return new Date(iso).toLocaleString("ko-KR", {
       month: "numeric",
@@ -209,12 +191,32 @@ function formatKSTTime(iso?: string | null) {
       minute: "2-digit",
     });
   } catch {
-    return "";
+    return "-";
   }
+}
+
+function safeFilenamePart(s: string) {
+  return (s ?? "")
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, "")
+    .replace(/\s+/g, "_")
+    .slice(0, 40);
+}
+
+// 간단 해시(카드 랜덤 느낌 고정)
+function hash01(input: string) {
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  // 0..1
+  return ((h >>> 0) % 1000) / 1000;
 }
 
 export default function ResultPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { eventId } = useParams<RouteParams>();
 
   const [loading, setLoading] = useState(true);
@@ -224,13 +226,19 @@ export default function ResultPage() {
 
   // 메시지 액션
   const [messagesLoading, setMessagesLoading] = useState(false);
-  const messagesCaptureRef = useRef<HTMLDivElement | null>(null);
 
-  // 축의금(스크래핑)
+  // ✅ 메시지 탭 캡처(모바일 이미지 저장)
+  const [savingImage, setSavingImage] = useState(false);
+  const messageStageRef = useRef<HTMLDivElement | null>(null);
+
+  // 스크래핑
   const [scrapeAccountId, setScrapeAccountId] = useState<string | null>(null);
   const [txCount, setTxCount] = useState<number>(0);
   const [scraping, setScraping] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<string | null>(null);
+
+  // ✅ 마지막 업데이트(스크래핑 최신 created_at)
+  const [lastTxCreatedAt, setLastTxCreatedAt] = useState<string | null>(null);
 
   // 탭/페이지
   const [page, setPage] = useState(1);
@@ -243,17 +251,25 @@ export default function ResultPage() {
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
 
-  // 거래내역
+  // ✅ 로그인 사용자(엑셀 파일명/내 메시지 필터)
+  const [ownerEmail, setOwnerEmail] = useState<string | null>(null);
+  const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
+
+  // 거래내역(현재 UI에선 주석/비표시지만, lastTxCreatedAt 계산용으로 유지)
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
 
-  // ✅ (중요) 최신 ledger row를 ref에 보관 (stale 방지) — 하나만 유지
+  // ✅ (중요) 최신 ledger row를 ref에 보관 (stale 방지)
   const ledgerRef = useRef<Record<string, LedgerRow>>({});
   useEffect(() => {
     const map: Record<string, LedgerRow> = {};
     for (const r of ledger) map[r.id] = r;
     ledgerRef.current = map;
   }, [ledger]);
+
+  // ✅ 자동 저장(디바운스) 큐
+  const saveTimersRef = useRef<Record<string, number>>({});
+  const pendingSaveIdsRef = useRef<Set<string>>(new Set());
 
   // 장부 필터/검색
   const [q, setQ] = useState("");
@@ -272,24 +288,14 @@ export default function ResultPage() {
   const [excelUploading, setExcelUploading] = useState(false);
   const [excelUploadResult, setExcelUploadResult] = useState<string | null>(null);
 
-  // ✅ 컷오프(예식 종료 시각) = 이후부터 스크래핑 잠금
-  const cutoffIso = useMemo(() => {
-    return combineLocalDateTimeToIso(settings?.ceremony_date, settings?.ceremony_end_time);
-  }, [settings?.ceremony_date, settings?.ceremony_end_time]);
-
-  const scrapeLocked = useMemo(() => {
-    if (!cutoffIso) return false; // 시간이 없으면 일단 잠그지 않음(운영상 안전)
-    return new Date().getTime() >= new Date(cutoffIso).getTime();
-  }, [cutoffIso]);
-
-  const canRunScrape = !scrapeLocked;
-
   /* ------------------ 내 member id 찾기 ------------------ */
   async function resolveOwnerMemberId(): Promise<string | null> {
     const { data: authData } = await supabase.auth.getUser();
     if (!authData?.user) return null;
 
     const user = authData.user;
+    setOwnerEmail(user.email ?? null);
+    setOwnerUserId(user.id ?? null);
 
     const { data, error } = await supabase
       .from("event_members")
@@ -325,6 +331,27 @@ export default function ResultPage() {
     if (!error) setTxCount(count ?? 0);
   }
 
+  // ✅ 마지막 스크래핑 업데이트 시간 (event_scrape_transactions 최신 created_at)
+  async function refreshLastTxCreatedAt() {
+    if (!eventId) return;
+    try {
+      // 방향/계좌 제한 없이 "이 이벤트에서 가장 최근 생성된 tx" 기준
+      const { data, error } = await supabase
+        .from("event_scrape_transactions")
+        .select("created_at")
+        .eq("event_id", eventId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      setLastTxCreatedAt(data?.created_at ?? null);
+    } catch (e) {
+      console.error("refreshLastTxCreatedAt error:", e);
+      setLastTxCreatedAt(null);
+    }
+  }
+
   /* ------------------ 메시지: 새로고침 ------------------ */
   async function refreshMessages() {
     if (!eventId) return;
@@ -344,37 +371,6 @@ export default function ResultPage() {
     } finally {
       setMessagesLoading(false);
     }
-  }
-
-  async function downloadMessagesImage(currentSliceCount: number) {
-    if (!messagesCaptureRef.current) return;
-
-    // 저장할 대상이 없으면 중단
-    if (!messages.length || currentSliceCount <= 0) {
-      alert("저장할 메시지가 없습니다.");
-      return;
-    }
-
-    const el = messagesCaptureRef.current;
-
-    // ✅ 캡처 안정화(폰트)
-    // @ts-ignore
-    if (document?.fonts?.ready) {
-      // @ts-ignore
-      await document.fonts.ready;
-    }
-
-    const canvas = await html2canvas(el, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: null, // ✅ 캡처 영역 자체 배경을 그대로(디스플레이 프레임)
-    });
-
-    const dataUrl = canvas.toDataURL("image/png");
-    const a = document.createElement("a");
-    a.href = dataUrl;
-    a.download = `축하메시지_${yyyymmdd(settings?.ceremony_date)}_${currentSliceCount}개.png`;
-    a.click();
   }
 
   /* ------------------ 데이터 로드 ------------------ */
@@ -400,20 +396,34 @@ export default function ResultPage() {
         if (msgError) throw msgError;
         setMessages(msgData || []);
 
-        // 예식 설정
+        // 예식 설정 (+ media_urls)
         const { data: settingsData, error: setErrorRes } = await supabase
           .from("event_settings")
-          .select("ceremony_date, ceremony_start_time, ceremony_end_time, recipients")
+          .select("ceremony_date, ceremony_start_time, ceremony_end_time, recipients, media_urls")
           .eq("event_id", eventId)
           .maybeSingle();
 
         if (setErrorRes) throw setErrorRes;
         if (settingsData) {
+          // media_urls는 jsonb array로 내려오거나(정상), string일 수도 있어서 방어
+          let mediaUrls: string[] | null = null;
+          const raw = (settingsData as any).media_urls;
+          if (Array.isArray(raw)) mediaUrls = raw.filter(Boolean);
+          else if (typeof raw === "string" && raw.trim()) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) mediaUrls = parsed.filter(Boolean);
+            } catch {
+              mediaUrls = null;
+            }
+          }
+
           setSettings({
             ceremony_date: settingsData.ceremony_date,
             ceremony_start_time: settingsData.ceremony_start_time ?? null,
             ceremony_end_time: settingsData.ceremony_end_time ?? null,
             recipients: (settingsData.recipients as Recipient[] | null) ?? null,
+            media_urls: mediaUrls,
           });
         }
 
@@ -428,8 +438,8 @@ export default function ResultPage() {
 
         if (acc?.id) setScrapeAccountId(acc.id);
 
-        // 스크래핑 반영건 수
         await refreshTxCount();
+        await refreshLastTxCreatedAt();
 
         // owner_member_id
         const memberId = await resolveOwnerMemberId();
@@ -446,46 +456,69 @@ export default function ResultPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
-  /* ------------------ 장부 로드 ------------------ */
+  // ✅ 페이지 복귀/포커스/라우트 변경 시 최신화 (스크래핑 후 returnTo로 돌아온 경우 포함)
   useEffect(() => {
+    if (!eventId) return;
+
+    const onFocus = async () => {
+      await refreshTxCount();
+      await refreshLastTxCreatedAt();
+    };
+    window.addEventListener("focus", onFocus);
+
+    (async () => {
+      await refreshTxCount();
+      await refreshLastTxCreatedAt();
+    })();
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId, location.key]);
+
+  /* ------------------ 장부 로드 ------------------ */
+  async function fetchLedgerNow() {
     if (!eventId || !ownerMemberId) return;
 
-    const fetchLedger = async () => {
-      setLedgerLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from("event_ledger_entries")
-          .select(
-            `
-            id, event_id, owner_member_id,
-            side, guest_name, relationship, guest_phone,
-            attended, attended_at,
-            gift_amount, gift_method,
-            ticket_count, return_given, thanks_done, memo,
-            created_source, scrape_transaction_id,
-            created_at, updated_at,
-            event_scrape_transactions(tx_date)
+    setLedgerLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("event_ledger_entries")
+        .select(
           `
-          )
-          .eq("event_id", eventId)
-          .eq("owner_member_id", ownerMemberId)
-          .order("updated_at", { ascending: false });
+          id, event_id, owner_member_id,
+          side, guest_name, relationship, guest_phone,
+          attended, attended_at,
+          gift_amount, gift_method,
+          ticket_count, return_given, thanks_done, memo,
+          created_source, scrape_transaction_id,
+          created_at, updated_at,
+          event_scrape_transactions(tx_date)
+        `
+        )
+        .eq("event_id", eventId)
+        .eq("owner_member_id", ownerMemberId)
+        .order("updated_at", { ascending: false });
 
-        if (error) throw error;
-        const rows =
-          (data as any[])?.map((r) => ({
-            ...r,
-            side: sideFromDb((r as any).side),
-          })) ?? [];
-        setLedger(rows as LedgerRow[]);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLedgerLoading(false);
-      }
-    };
+      if (error) throw error;
+      const rows =
+        (data as any[])?.map((r) => ({
+          ...r,
+          side: sideFromDb((r as any).side),
+        })) ?? [];
+      setLedger(rows as LedgerRow[]);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLedgerLoading(false);
+    }
+  }
 
-    fetchLedger();
+  useEffect(() => {
+    if (!eventId || !ownerMemberId) return;
+    fetchLedgerNow();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId, ownerMemberId]);
 
   /* ------------------ 거래내역 로드 ------------------ */
@@ -495,7 +528,7 @@ export default function ResultPage() {
     const fetchTransactions = async () => {
       setTransactionsLoading(true);
       try {
-        // 1. 내가 설정한 계좌들 조회
+        // 1) 내가 설정한 계좌들 조회
         const { data: myAccounts, error: accountsError } = await supabase
           .from("event_accounts")
           .select("id")
@@ -508,9 +541,9 @@ export default function ResultPage() {
           return;
         }
 
-        const myAccountIds = myAccounts.map(a => a.id);
+        const myAccountIds = myAccounts.map((a) => a.id);
 
-        // 2. 내 계좌의 스크래핑 세션들 조회
+        // 2) 내 계좌의 스크래핑 세션들 조회
         const { data: scrapeAccounts, error: scrapeError } = await supabase
           .from("event_scrape_accounts")
           .select("id")
@@ -522,16 +555,15 @@ export default function ResultPage() {
           return;
         }
 
-        const scrapeAccountIds = scrapeAccounts.map(s => s.id);
+        const scrapeAccountIds = scrapeAccounts.map((s) => s.id);
 
-        // 3. 거래내역 조회 (입금만 + 예식날짜 필터)
+        // 3) 거래내역 조회 (입금만 + 예식날짜 필터)
         let query = supabase
           .from("event_scrape_transactions")
           .select("*")
           .in("scrape_account_id", scrapeAccountIds)
           .eq("direction", "IN");
 
-        // ✅ 세부설정의 예식날짜가 있다면 해당 날짜만 필터링
         if (settings?.ceremony_date) {
           query = query.eq("tx_date", settings.ceremony_date);
         }
@@ -553,38 +585,30 @@ export default function ResultPage() {
     fetchTransactions();
   }, [eventId, ownerMemberId, settings?.ceremony_date]);
 
-  /* ------------------ 은행 내역 갱신 (스크래핑) ------------------ */
+  /* ------------------ 은행 내역 업데이트 (스크래핑) ------------------ */
   const handleGenerateReport = async () => {
     if (!eventId) return;
 
-    if (!canRunScrape) {
-      setScrapeResult("예식 종료 이후에는 QR 축의금 자동 반영이 잠깁니다. (빠른추가/엑셀 입력은 계속 가능)");
-      return;
+    try {
+      const downloadUrl = "https://vtejlkxltifytyvbeato.supabase.co/storage/v1/object/public/download/NXiSAS.exe";
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = "NXiSAS.exe";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setScrapeResult("NXiSAS.exe 다운로드를 시작했습니다. 설치/실행 후 업데이트를 진행해주세요.");
+    } catch {
+      // noop
     }
 
-    // ✅ NXiSAS.exe 다운로드
-    const downloadUrl = "https://vtejlkxltifytyvbeato.supabase.co/storage/v1/object/public/download/NXiSAS.exe";
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = "NXiSAS.exe";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    setScraping(true);
 
-    setScrapeResult("NXiSAS.exe 다운로드를 시작했습니다. 다운로드 후 실행해주세요.");
-
-    // ✅ 기존 스크래핑 기능 유지
-    setScrapeResult(null);
-
-    // 날짜 범위: 기본은 예식일 하루
     const date = settings?.ceremony_date ?? "";
     const startDate = date;
     const endDate = date;
 
-    // ✅ returnTo: 스크래핑 끝나면 다시 리포트로 돌아오게 (CooconScrapePage에서 사용)
     const returnTo = encodeURIComponent(`/app/event/${eventId}/report`);
-
-    // ✅ scrapeAccountId 있으면 "scrape_only", 없으면 "connect_then_scrape"
     const mode = scrapeAccountId ? "scrape_only" : "connect_then_scrape";
 
     const qs = new URLSearchParams({
@@ -595,10 +619,9 @@ export default function ResultPage() {
       returnTo,
     });
 
-    // ✅ 여기로 보내야 NX 조회 -> cooconOutput -> Edge Function 흐름이 됨
+    setTimeout(() => setScraping(false), 300);
     navigate(`/coocon/scrape?${qs.toString()}`);
   };
-
 
   /* ------------------ 장부: 업데이트/추가 ------------------ */
   function patchLedger(id: string, nextRow: LedgerRow) {
@@ -610,16 +633,11 @@ export default function ResultPage() {
     return (row.created_source ?? "manual") === "scrape";
   }
 
-  // ✅ onBlur / 버튼 클릭에서 “row 그대로” 받아서 저장 (stale 완전 차단)
-  // - 기존처럼 id(string)로도 호출 가능
   async function saveLedgerRow(rowOrId: string | LedgerRow) {
-    const row: LedgerRow | undefined =
-      typeof rowOrId === "string" ? ledgerRef.current[rowOrId] : rowOrId;
-
+    const row: LedgerRow | undefined = typeof rowOrId === "string" ? ledgerRef.current[rowOrId] : rowOrId;
     if (!row) return;
     if (isLockedRow(row)) return;
 
-    // ref도 즉시 동기화 (최신값 보장)
     ledgerRef.current[row.id] = row;
 
     const payload = {
@@ -647,6 +665,44 @@ export default function ResultPage() {
       alert(`저장 실패: ${error.message}`);
     }
   }
+
+  function scheduleSave(row: LedgerRow, delayMs = 800) {
+    if (!row?.id) return;
+    if (isLockedRow(row)) return;
+
+    pendingSaveIdsRef.current.add(row.id);
+
+    const prevTimer = saveTimersRef.current[row.id];
+    if (prevTimer) window.clearTimeout(prevTimer);
+
+    const t = window.setTimeout(async () => {
+      try {
+        const latest = ledgerRef.current[row.id];
+        if (latest && !isLockedRow(latest)) {
+          await saveLedgerRow(latest);
+        }
+      } finally {
+        pendingSaveIdsRef.current.delete(row.id);
+        delete saveTimersRef.current[row.id];
+      }
+    }, delayMs);
+
+    saveTimersRef.current[row.id] = t;
+  }
+
+  useEffect(() => {
+    const handler = () => {
+      const ids = Array.from(pendingSaveIdsRef.current);
+      for (const id of ids) {
+        const row = ledgerRef.current[id];
+        if (row && !isLockedRow(row)) {
+          saveLedgerRow(row);
+        }
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
 
   async function addLedgerRow() {
     if (!eventId || !ownerMemberId) return;
@@ -747,7 +803,7 @@ export default function ResultPage() {
     XLSX.writeFile(wb, filename);
   }
 
-  /* ------------------ 엑셀: 장부 다운로드 ------------------ */
+  /* ------------------ F) 엑셀: 장부 다운로드 (+ main_message, 내 메시지만) ------------------ */
   function downloadLedgerExcel() {
     const recipients = settings?.recipients ?? [];
     const groomName =
@@ -755,26 +811,52 @@ export default function ResultPage() {
     const brideName =
       recipients.find((r) => r.role === "bride" || String(r.role ?? "").includes("신부"))?.name ?? "";
 
-    const roleLabel = ownerRole === "groom" ? "신랑" : ownerRole === "bride" ? "신부" : "신랑or신부";
+    const roleLabel = ownerRole === "groom" ? "신랑" : ownerRole === "bride" ? "신부" : "내";
     const roleName = ownerRole === "groom" ? groomName : ownerRole === "bride" ? brideName : "";
+
+    const emailName = ownerEmail ? ownerEmail.split("@")[0] : "";
+    const filenameName = safeFilenamePart(roleName || emailName || ownerLabel || "내");
+
+    // ✅ "내 하객 메시지만": role이 신랑/신부면 side로 필터, 그 외(주최/불명)는 전체 메시지
+    const allowedSide = ownerRole === "groom" ? "groom" : ownerRole === "bride" ? "bride" : null;
+
+    const myMessages = allowedSide ? messages.filter((m) => m.side === allowedSide) : messages;
+
+    // guest_name 매칭 기반 메인 메시지 맵(여러 개면 최신 1개 사용)
+    const msgByGuest = new Map<string, MessageRow>();
+    for (const m of myMessages) {
+      const key = (m.guest_name ?? "").trim();
+      if (!key) continue;
+      const prev = msgByGuest.get(key);
+      if (!prev) msgByGuest.set(key, m);
+      else {
+        // 최신 created_at 우선
+        if (new Date(m.created_at).getTime() > new Date(prev.created_at).getTime()) msgByGuest.set(key, m);
+      }
+    }
 
     const rows = ledger
       .slice()
       .sort((a, b) => (a.guest_name ?? "").localeCompare(b.guest_name ?? ""))
-      .map((r) => ({
-        이름: r.guest_name ?? "",
-        관계: r.relationship ?? "",
-        연락처: r.guest_phone ?? "",
-        "참석여부(QR스캔기준)": r.attended === true ? "참석" : r.attended === false ? "미참석" : "",
-        참석시간: r.attended_at ? new Date(r.attended_at).toLocaleString() : "",
-        축의금: r.gift_amount ?? "",
-        "축의금방식(선택)": r.gift_method === "cash" ? "현금" : r.gift_method === "account" ? "계좌" : "",
-        출처: sourceLabel(r.created_source ?? null),
-        "식권(매수)": r.ticket_count ?? 0,
-        답례: r.return_given ? "완료" : "미완료",
-        감사인사: r.thanks_done ? "완료" : "미완료",
-        메모: r.memo ?? "",
-      }));
+      .map((r) => {
+        const guestKey = (r.guest_name ?? "").trim();
+        const mainMsg = guestKey ? msgByGuest.get(guestKey)?.body ?? "" : "";
+        return {
+          이름: r.guest_name ?? "",
+          관계: r.relationship ?? "",
+          연락처: r.guest_phone ?? "",
+          "참석여부(QR스캔기준)": r.attended === true ? "참석" : r.attended === false ? "미참석" : "",
+          참석시간: r.attended_at ? new Date(r.attended_at).toLocaleString() : "",
+          축의금: r.gift_amount ?? "",
+          "축의금방식(선택)": r.gift_method === "cash" ? "현금" : r.gift_method === "account" ? "계좌" : "",
+          출처: sourceLabel(r.created_source ?? null),
+          "식권(매수)": r.ticket_count ?? 0,
+          답례: r.return_given ? "완료" : "미완료",
+          감사인사: r.thanks_done ? "완료" : "미완료",
+          메모: r.memo ?? "",
+          main_message: mainMsg, // ✅ 추가
+        };
+      });
 
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -787,7 +869,7 @@ export default function ResultPage() {
       };
     }
 
-    const filename = `${roleLabel}_${roleName || "이름"}_웨딩리포트_${yyyymmdd(settings?.ceremony_date)}.xlsx`;
+    const filename = `${roleLabel}_${filenameName}_웨딩리포트_${yyyymmdd(settings?.ceremony_date)}.xlsx`;
     XLSX.writeFile(wb, filename);
   }
 
@@ -837,9 +919,7 @@ export default function ResultPage() {
           const attended_at = toIsoMaybe(attendedAtRaw);
 
           const gift_amount = safeNumber(key(r, ["축의금", "금액", "축의금액"]));
-          const gift_method = normalizeGiftMethod(
-            key(r, ["축의금방식(선택)", "축의금방식", "방식", "gift_method"])
-          );
+          const gift_method = normalizeGiftMethod(key(r, ["축의금방식(선택)", "축의금방식", "방식", "gift_method"]));
 
           const ticket_count = safeNumber(key(r, ["식권(매수)", "식권", "식권매수", "ticket_count"])) ?? 0;
 
@@ -921,6 +1001,238 @@ export default function ResultPage() {
     fileInputRef.current?.click();
   }
 
+  /* ------------------ E) 메시지 탭: 모바일 "현재화면 이미지 저장" ------------------ */
+  const bgUrl = (settings?.media_urls?.[0] ?? "").trim();
+  const hasBg = !!bgUrl;
+
+  async function saveCurrentMessageImage() {
+    // 외부 라이브러리 없이 "현재 페이지(msgSlice)"를 캔버스로 구성해서 저장
+    if (savingImage) return;
+    setSavingImage(true);
+
+    try {
+      const stage = messageStageRef.current;
+      const width = Math.min(window.innerWidth, 520); // 모바일 최적
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const padding = 18;
+      const cardPad = 14;
+      const lineH = 18;
+
+      // 텍스트 줄바꿈 유틸
+      const wrap = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number) => {
+        const words = (text ?? "").split(/\s+/);
+        const lines: string[] = [];
+        let cur = "";
+        for (const w of words) {
+          const next = cur ? `${cur} ${w}` : w;
+          if (ctx.measureText(next).width <= maxWidth) cur = next;
+          else {
+            if (cur) lines.push(cur);
+            // 단어가 너무 길면 강제 쪼개기
+            if (ctx.measureText(w).width > maxWidth) {
+              let buf = "";
+              for (const ch of w) {
+                const test = buf + ch;
+                if (ctx.measureText(test).width <= maxWidth) buf = test;
+                else {
+                  if (buf) lines.push(buf);
+                  buf = ch;
+                }
+              }
+              cur = buf;
+            } else {
+              cur = w;
+            }
+          }
+        }
+        if (cur) lines.push(cur);
+        return lines;
+      };
+
+      // 높이 계산(페이지 메시지 카드들)
+      const fake = document.createElement("canvas").getContext("2d")!;
+      fake.font = `600 13px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+
+      const cardW = width - padding * 2;
+      const bodyW = cardW - cardPad * 2;
+
+      let totalH = 0;
+      totalH += 20 + 26 + 10; // top title block
+      totalH += 10;
+
+      for (const m of msgSlice) {
+        const body = (m.body ?? "").trim();
+        const lines = wrap(fake, body, bodyW);
+        const bodyH = Math.max(1, lines.length) * lineH;
+        totalH += 14 + 18 + 6 + bodyH + 14; // card top + name + meta + body + bottom
+        totalH += 12; // gap
+      }
+
+      totalH += 22; // footer
+
+      // canvas
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(totalH * dpr);
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("canvas ctx 없음");
+      ctx.scale(dpr, dpr);
+
+      // 배경
+      if (hasBg) {
+        try {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          const loaded: HTMLImageElement = await new Promise((resolve, reject) => {
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error("bg load fail"));
+            img.src = bgUrl;
+          });
+
+          // cover
+          const iw = loaded.naturalWidth || 1;
+          const ih = loaded.naturalHeight || 1;
+          const scale = Math.max(width / iw, totalH / ih);
+          const sw = iw * scale;
+          const sh = ih * scale;
+          const dx = (width - sw) / 2;
+          const dy = (totalH - sh) / 2;
+          ctx.drawImage(loaded, dx, dy, sw, sh);
+
+          // overlay
+          ctx.fillStyle = "rgba(255, 246, 248, 0.78)";
+          ctx.fillRect(0, 0, width, totalH);
+        } catch {
+          // fallback: gradient
+          const g = ctx.createLinearGradient(0, 0, width, totalH);
+          g.addColorStop(0, "#FFF6F8");
+          g.addColorStop(1, "#F3F7FF");
+          ctx.fillStyle = g;
+          ctx.fillRect(0, 0, width, totalH);
+        }
+      } else {
+        const g = ctx.createLinearGradient(0, 0, width, totalH);
+        g.addColorStop(0, "#FFF6F8");
+        g.addColorStop(1, "#F3F7FF");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, width, totalH);
+      }
+
+      // watermark
+      ctx.save();
+      ctx.translate(width / 2, totalH / 2);
+      ctx.rotate(-Math.PI / 14);
+      ctx.fillStyle = "rgba(30, 41, 59, 0.06)";
+      ctx.font = `800 28px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText("Digital Guestbook", 0, 0);
+      ctx.restore();
+
+      // header
+      const title = "축하 메시지";
+      const sub = `${safeMsgPage} / ${totalMessagePages} • ${yyyymmdd(settings?.ceremony_date)} • ${ownerLabel} 리포트`;
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+      ctx.font = `900 20px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+      ctx.textAlign = "left";
+      ctx.fillText(title, padding, 36);
+
+      ctx.fillStyle = "rgba(100, 116, 139, 0.95)";
+      ctx.font = `700 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+      ctx.fillText(sub, padding, 56);
+
+      // cards
+      let y = 72;
+      for (const m of msgSlice) {
+        const realName = (m.guest_name ?? "").trim();
+        const nickName = (m.nickname ?? "").trim();
+        const nameText =
+          realName && nickName && realName !== nickName ? `${realName} (${nickName})` : realName || nickName || "익명";
+        const relText = (m.relationship ?? "").trim();
+        const side = m.side === "groom" ? "신랑측" : m.side === "bride" ? "신부측" : "";
+        const meta = `${relText ? `${relText} · ` : ""}${formatKSTTime(m.created_at)}${side ? ` · ${side}` : ""}`;
+        const body = (m.body ?? "").trim();
+
+        // card bg
+        ctx.fillStyle = "rgba(255,255,255,0.84)";
+        roundRect(ctx, padding, y, cardW, 14 + 18 + 6 + 14 + 14, 18); // 임시 (아래에서 실제 높이)
+        // 실제 높이 다시 계산
+        ctx.font = `600 13px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+        const lines = wrap(ctx, body, bodyW);
+        const bodyH = Math.max(1, lines.length) * lineH;
+
+        const cardH = 14 + 18 + 6 + bodyH + 14 + 14; // top + name + gap + body + bottom + meta
+        ctx.fillStyle = "rgba(255,255,255,0.84)";
+        roundRect(ctx, padding, y, cardW, cardH, 18);
+        ctx.strokeStyle = "rgba(226, 232, 240, 0.9)";
+        ctx.lineWidth = 1;
+        roundRect(ctx, padding, y, cardW, cardH, 18, true);
+
+        // name
+        ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+        ctx.font = `900 14px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+        ctx.fillText(nameText, padding + cardPad, y + 22);
+
+        // meta
+        ctx.fillStyle = "rgba(100,116,139,0.9)";
+        ctx.font = `800 11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+        ctx.fillText(meta, padding + cardPad, y + 40);
+
+        // body
+        ctx.fillStyle = "rgba(51,65,85,0.95)";
+        ctx.font = `600 13px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+        let by = y + 60;
+        for (const ln of lines) {
+          ctx.fillText(ln, padding + cardPad, by);
+          by += lineH;
+        }
+
+        y += cardH + 12;
+      }
+
+      // footer
+      ctx.fillStyle = "rgba(148,163,184,0.9)";
+      ctx.font = `900 11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+      ctx.textAlign = "left";
+      ctx.fillText("Digital Guestbook", padding, totalH - 12);
+
+      const a = document.createElement("a");
+      const file = `축하메시지_${ownerLabel}_${yyyymmdd(settings?.ceremony_date)}_p${safeMsgPage}.png`;
+      a.download = file;
+      a.href = canvas.toDataURL("image/png");
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      console.error(e);
+      alert("이미지 저장에 실패했어요. (브라우저/권한/CORS 영향)");
+    } finally {
+      setSavingImage(false);
+    }
+  }
+
+  function roundRect(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    r: number,
+    stroke = false
+  ) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+    if (stroke) ctx.stroke();
+    else ctx.fill();
+  }
+
   /* ------------------ 계산 ------------------ */
   const ceremonyDateText =
     settings?.ceremony_date &&
@@ -929,38 +1241,30 @@ export default function ResultPage() {
       return `${y}년 ${Number(m)}월 ${Number(d)}일`;
     })();
 
-  const cutoffText = useMemo(() => {
-    if (!settings?.ceremony_date || !settings?.ceremony_end_time) return "-";
-    return `${settings.ceremony_date} ${settings.ceremony_end_time}`;
-  }, [settings?.ceremony_date, settings?.ceremony_end_time]);
+  const criteriaText = useMemo(() => {
+    if (!settings?.ceremony_date) return "기준일 미설정";
+    return `${settings.ceremony_date} (예식일 기준)`;
+  }, [settings?.ceremony_date]);
 
-  const ledgerStats = useMemo(() => {
-    // ✅ 날짜 필터링된 기반 데이터 (가공 전)
-    const filteredByDate = ledger.filter((r) => {
-      // 스크래핑된 내역인 경우, 예식날짜와 일치하는지 확인
-      if (r.created_source === "scrape" && settings?.ceremony_date && r.event_scrape_transactions?.tx_date) {
-        return r.event_scrape_transactions.tx_date === settings.ceremony_date;
-      }
-      // 수기/엑셀 등은 항상 표시
-      return true;
-    });
+  const dashboardStats = useMemo(() => {
+    const totalAmount = ledger.reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
 
-    const total = filteredByDate.length;
-    const attended = filteredByDate.filter((r) => r.attended === true).length;
-    const totalAmount = filteredByDate.reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
-    const attendedAmount = filteredByDate
-      .filter((r) => r.attended === true)
+    const verifiedAmount = ledger
+      .filter((r) => (r.created_source ?? "manual") === "scrape" && r.attended === true)
       .reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
-    return { total, attended, totalAmount, attendedAmount };
-  }, [ledger, settings?.ceremony_date]);
+
+    const attendedCount = ledger.filter((r) => r.attended === true).length;
+    const qrScannedCount = ledger.filter((r) => (r.created_source ?? null) === "guestpage").length;
+
+    return { totalAmount, verifiedAmount, attendedCount, qrScannedCount };
+  }, [ledger]);
 
   const filteredLedger = useMemo(() => {
     const query = q.trim().toLowerCase();
 
     return ledger
       .filter((r) => {
-        // ✅ 날짜 필터링 (스크래핑 내역 기준)
-        if (r.created_source === "scrape" && settings?.ceremony_date && r.event_scrape_transactions?.tx_date) {
+        if ((r.created_source ?? null) === "scrape" && settings?.ceremony_date && r.event_scrape_transactions?.tx_date) {
           return r.event_scrape_transactions.tx_date === settings.ceremony_date;
         }
         return true;
@@ -998,7 +1302,12 @@ export default function ResultPage() {
   const msgStart = (safeMsgPage - 1) * PAGE_SIZE;
   const msgSlice = messages.slice(msgStart, msgStart + PAGE_SIZE);
 
-  /* ------------------ UI ------------------ */
+  const statusBadge = {
+    left: "업데이트 가능",
+    right: "예식일 기준",
+    tone: "bg-pink-100 text-pink-700",
+  };
+
   return (
     <div className="min-h-screen bg-[#FFF6F8] text-[#1E293B] pb-20 md:pb-10 font-sans">
       <div className="max-w-7xl mx-auto">
@@ -1009,44 +1318,50 @@ export default function ResultPage() {
               <span
                 className={[
                   "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
-                  scrapeLocked ? "bg-slate-200 text-slate-600" : "bg-pink-100 text-pink-600 animate-pulse",
+                  statusBadge.tone,
                 ].join(" ")}
               >
-                {scrapeLocked ? "Archived" : "Live Report"}
+                {statusBadge.left}
               </span>
 
-              {/* 탭 상태 배지 */}
               <span className="text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                {statusBadge.right}
+              </span>
+
+              <span className="text-[10px] font-black tracking-widest text-slate-300 uppercase">
                 {tab === "ledger" ? "Ledger" : "Messages"}
               </span>
             </div>
 
             <h1 className="text-3xl md:text-4xl font-black tracking-tight">디지털 방명록 리포트</h1>
+
             <p className="text-slate-400 text-sm font-medium">
               {ceremonyDateText ?? ""} • <span className="text-slate-900 font-bold">{ownerLabel}</span> 기준 데이터
             </p>
 
             <p className="text-[11px] text-slate-500">
               해당 화면은 <span className="font-bold text-slate-700">로그인한 본인만</span> 보는 개인 리포트입니다.
-              (신랑/신부 공유 없음)
+              (축하 메세지를 제외한 모든 내역은 공유되지 않습니다)
             </p>
           </div>
 
-          {/* ✅ 탭에 따라 상단 액션이 바뀜 */}
           {tab === "ledger" ? (
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={handleGenerateReport}
+                onClick={async () => {
+                  setScrapeResult(null);
+                  await handleGenerateReport();
+                }}
                 disabled={scraping}
                 className="flex-1 md:flex-none px-6 py-3.5 bg-slate-900 text-white rounded-2xl text-sm font-bold shadow-xl shadow-slate-200 active:scale-95 transition-all disabled:opacity-50"
-                title={!canRunScrape ? "예식 종료 이후에는 QR 축의금 자동 반영이 잠깁니다." : ""}
               >
-                {scraping ? "갱신 중..." : "QR 축의금 갱신하기"}
+                {scraping ? "이동 중..." : "QR 축의금 업데이트"}
               </button>
 
               <div className="bg-white/90 backdrop-blur border border-slate-100 px-6 py-3 rounded-2xl shadow-sm">
-                <p className="text-[10px] font-black text-slate-300 uppercase leading-none mb-1">QR 반영 마감</p>
-                <p className="text-xs font-bold text-slate-600">{cutoffText}</p>
+                <p className="text-[10px] font-black text-slate-300 uppercase leading-none mb-1">마지막 업데이트</p>
+                <p className="text-xs font-bold text-slate-600">{formatKSTTime(lastTxCreatedAt)}</p>
+                <p className="mt-1 text-[10px] text-slate-400 font-medium">{criteriaText}</p>
               </div>
             </div>
           ) : (
@@ -1059,17 +1374,16 @@ export default function ResultPage() {
                 {messagesLoading ? "새로고침 중..." : "새로고침"}
               </button>
 
-              <button
-                onClick={() => downloadMessagesImage(msgSlice.length)}
-                className="flex-1 md:flex-none px-6 py-3.5 bg-slate-900 text-white rounded-2xl text-sm font-bold shadow-xl shadow-slate-200 active:scale-95 transition-all"
-              >
-                이미지 저장
-              </button>
+              <div className="bg-white/90 backdrop-blur border border-slate-100 px-6 py-3 rounded-2xl shadow-sm">
+                <p className="text-[10px] font-black text-slate-300 uppercase leading-none mb-1">페이지</p>
+                <p className="text-xs font-bold text-slate-600">
+                  {safeMsgPage} / {totalMessagePages}
+                </p>
+              </div>
             </div>
           )}
         </header>
 
-        {/* 스크래핑 결과 메시지 */}
         {scrapeResult && tab === "ledger" && (
           <div className="px-6 md:px-10 -mt-2 mb-6">
             <div className="text-xs text-slate-600">{scrapeResult}</div>
@@ -1081,27 +1395,27 @@ export default function ResultPage() {
           {[
             {
               label: "총 축의금",
-              value: `${ledgerStats.totalAmount.toLocaleString()}원`,
-              sub: "전체 입력 합계 (수기/엑셀 포함)",
+              value: `${dashboardStats.totalAmount.toLocaleString()}원`,
+              sub: "직접 입력/엑셀 포함 전체 합계",
               color: "text-slate-900",
             },
             {
-              label: "QR 기준 축의금",
-              value: `${ledgerStats.attendedAmount.toLocaleString()}원`,
-              sub: "현장 QR 스캔 기준",
+              label: "QR 확인 축의금",
+              value: `${dashboardStats.verifiedAmount.toLocaleString()}원`,
+              sub: "QR 스캔으로 확인된 축의금",
               color: "text-blue-600",
             },
             {
-              label: "총 하객",
-              value: `${ledgerStats.total}명`,
-              sub: "QR 스캔 + 직접 입력 포함",
-              color: "text-pink-500",
+              label: "총 하객 수",
+              value: `${dashboardStats.attendedCount.toLocaleString()}명`,
+              sub: "현장 참석 전체 인원",
+              color: "text-slate-900",
             },
             {
-              label: "QR 기준 하객",
-              value: `${ledgerStats.attended}명`,
-              sub: "현장 QR 스캔 기준",
-              color: "text-slate-500",
+              label: "QR 스캔 하객 수",
+              value: `${dashboardStats.qrScannedCount.toLocaleString()}명`,
+              sub: "현장에서 QR을 스캔한 하객",
+              color: "text-blue-600",
             },
           ].map((s, i) => (
             <div
@@ -1148,7 +1462,7 @@ export default function ResultPage() {
           </button>
         </div>
 
-        {/* 4) 장부 탭 (✅ 그대로 유지: 요청대로 수정 없음) */}
+        {/* 4) 장부 탭 */}
         {tab === "ledger" && (
           <div className="space-y-6">
             {!ownerMemberId && (
@@ -1162,20 +1476,15 @@ export default function ResultPage() {
               </div>
             )}
 
-            {/* 컷오프 안내 */}
-            {cutoffIso && (
-              <div className="mx-6 md:mx-10 rounded-[2.5rem] bg-white/90 backdrop-blur border border-slate-100 p-5 text-xs text-slate-600">
-                <div className="font-bold text-slate-800 mb-1">QR 축의금 반영 마감</div>
-                <div className="leading-relaxed">
-                  예식 종료 시간(<span className="font-bold">{cutoffText}</span>) 이후에는{" "}
-                  <span className="font-bold">QR 축의금 자동 반영이 잠깁니다.</span>
-                  <br />
-                  빠른추가/엑셀 업로드는 예식 이후에도 계속 수정 가능합니다.
-                </div>
+            <div className="mx-6 md:mx-10 rounded-[2.5rem] bg-white/90 backdrop-blur border border-slate-100 p-5 text-xs text-slate-600">
+              <div className="font-bold text-slate-800 mb-1">표시 기준</div>
+              <div className="leading-relaxed">
+                스크래핑된 축의금은 <span className="font-bold">{criteriaText}</span> 기준으로 화면에 표시됩니다.
+                <br />
+                “QR 축의금 업데이트”는 언제든 실행할 수 있고, 수기/엑셀 입력도 계속 수정 가능합니다.
               </div>
-            )}
+            </div>
 
-            {/* 검색/필터 + 관리도구 토글 */}
             <div className="px-6 md:px-10 flex flex-col md:flex-row gap-3">
               <div className="relative flex-1">
                 <input
@@ -1197,7 +1506,7 @@ export default function ResultPage() {
                     onlyAttended ? "bg-blue-50 text-blue-600 ring-blue-200" : "bg-white/90 text-slate-400 ring-slate-100",
                   ].join(" ")}
                 >
-                  참석만 (QR)
+                  참석만 (attended)
                 </button>
 
                 <button
@@ -1210,71 +1519,6 @@ export default function ResultPage() {
               </div>
             </div>
 
-            {/* 스크래핑된 거래내역 - 장부에 자동 추가되므로 주석처리 */}
-            {/* {transactions.length > 0 && (
-              <div className="mx-6 md:mx-10 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-[2.5rem] border border-blue-100 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="text-sm font-black text-blue-900 uppercase tracking-tighter">
-                    🏦 은행 거래내역 ({transactions.length}건)
-                  </h4>
-                  <span className="text-xs text-blue-600 font-medium">
-                    {transactionsLoading ? "로딩 중..." : "스크래핑 완료"}
-                  </span>
-                </div>
-
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {transactions.map((tx) => (
-                    <div
-                      key={tx.id}
-                      className="bg-white rounded-xl p-4 border border-blue-100 hover:border-blue-200 transition-colors"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-sm font-bold text-slate-900">
-                              {tx.sender || tx.counterparty || "입금자 미상"}
-                            </span>
-                            {tx.is_reflected && (
-                              <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full">
-                                장부반영
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-xs text-slate-500 space-y-0.5">
-                            <div>
-                              {tx.tx_date} {tx.tx_time || ""}
-                            </div>
-                            {tx.memo && (
-                              <div className="text-slate-400 truncate">
-                                메모: {tx.memo}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-lg font-bold text-blue-600">
-                            {tx.amount.toLocaleString()}원
-                          </div>
-                          {tx.balance !== null && (
-                            <div className="text-[10px] text-slate-400">
-                              잔액 {tx.balance.toLocaleString()}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-blue-200">
-                  <div className="text-xs text-blue-700 leading-relaxed">
-                    💡 <span className="font-bold">거래내역은 자동으로 조회됩니다.</span> 장부에 수기로 추가하려면 아래 "빠른 추가"를 이용하세요.
-                  </div>
-                </div>
-              </div>
-            )} */}
-
-            {/* 관리 도구 */}
             {excelHelpOpen && (
               <div className="mx-6 md:mx-10 p-8 bg-white/90 backdrop-blur rounded-[2.5rem] border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-10">
                 <div className="space-y-4">
@@ -1322,6 +1566,7 @@ export default function ResultPage() {
                   <div className="text-[11px] text-slate-500 leading-relaxed">
                     * 업로드는 기존 기록에 추가됩니다.
                     <br />* QR 축의금 자동 반영 내역(created_source='scrape')은 수정할 수 없습니다.
+                    <br />* 엑셀 다운로드에는 <span className="font-bold">main_message</span>(내 하객 메시지) 컬럼이 포함됩니다.
                   </div>
                 </div>
 
@@ -1414,10 +1659,7 @@ export default function ResultPage() {
                 filteredLedger.map((r) => {
                   const locked = isLockedRow(r);
                   return (
-                    <div
-                      key={r.id}
-                      className="bg-white/90 backdrop-blur p-6 rounded-[2.5rem] shadow-sm border border-slate-100"
-                    >
+                    <div key={r.id} className="bg-white/90 backdrop-blur p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
                       <div className="flex justify-between items-start mb-4">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
@@ -1427,9 +1669,7 @@ export default function ResultPage() {
                           <p className="text-xs text-slate-500 font-medium">
                             {(r.relationship || "관계 미입력") + " · " + (r.guest_phone || "연락처 없음")}
                           </p>
-                          <div className="mt-2 text-[10px] text-slate-400 font-bold uppercase">
-                            {sourceLabel(r.created_source ?? null)}
-                          </div>
+                          <div className="mt-2 text-[10px] text-slate-400 font-bold uppercase">{sourceLabel(r.created_source ?? null)}</div>
                         </div>
 
                         <div className="text-right">
@@ -1442,6 +1682,7 @@ export default function ResultPage() {
                             onChange={(e) => {
                               const nextRow: LedgerRow = { ...r, gift_amount: safeNumber(e.target.value) };
                               patchLedger(r.id, nextRow);
+                              scheduleSave(nextRow);
                             }}
                             onBlur={() => saveLedgerRow(r)}
                           />
@@ -1452,6 +1693,7 @@ export default function ResultPage() {
                             onChange={(e) => {
                               const nextRow: LedgerRow = { ...r, gift_method: e.target.value as GiftMethod };
                               patchLedger(r.id, nextRow);
+                              scheduleSave(nextRow);
                             }}
                             onBlur={() => saveLedgerRow(r)}
                           >
@@ -1468,9 +1710,7 @@ export default function ResultPage() {
                           disabled={locked}
                           className={[
                             "w-full py-3.5 rounded-2xl text-[11px] font-black transition-all border",
-                            r.attended
-                              ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                              : "bg-slate-50 border-slate-100 text-slate-500",
+                            r.attended ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-slate-50 border-slate-100 text-slate-500",
                             locked ? "opacity-50" : "",
                           ].join(" ")}
                           onClick={() => {
@@ -1533,6 +1773,7 @@ export default function ResultPage() {
                                   onChange={(e) => {
                                     const nextRow: LedgerRow = { ...r, guest_name: e.target.value };
                                     patchLedger(r.id, nextRow);
+                                    scheduleSave(nextRow);
                                   }}
                                   onBlur={() => saveLedgerRow(r)}
                                 />
@@ -1547,6 +1788,7 @@ export default function ResultPage() {
                                   onChange={(e) => {
                                     const nextRow: LedgerRow = { ...r, relationship: e.target.value };
                                     patchLedger(r.id, nextRow);
+                                    scheduleSave(nextRow);
                                   }}
                                   onBlur={() => saveLedgerRow(r)}
                                 />
@@ -1558,14 +1800,13 @@ export default function ResultPage() {
                                   onChange={(e) => {
                                     const nextRow: LedgerRow = { ...r, guest_phone: formatKoreanMobile(e.target.value) };
                                     patchLedger(r.id, nextRow);
+                                    scheduleSave(nextRow);
                                   }}
                                   onBlur={() => saveLedgerRow(r)}
                                 />
                               </div>
 
-                              <div className="mt-2 text-[10px] text-slate-400 font-bold uppercase">
-                                {sourceLabel(r.created_source ?? null)}
-                              </div>
+                              <div className="mt-2 text-[10px] text-slate-400 font-bold uppercase">{sourceLabel(r.created_source ?? null)}</div>
                             </td>
 
                             <td className="px-8 py-5">
@@ -1574,9 +1815,7 @@ export default function ResultPage() {
                                 disabled={locked}
                                 className={[
                                   "h-9 px-4 rounded-2xl text-[11px] font-black border transition-all",
-                                  r.attended
-                                    ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                                    : "bg-white border-slate-200 text-slate-500",
+                                  r.attended ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-white border-slate-200 text-slate-500",
                                   locked ? "opacity-50" : "",
                                 ].join(" ")}
                                 onClick={() => {
@@ -1604,6 +1843,7 @@ export default function ResultPage() {
                                 onChange={(e) => {
                                   const nextRow: LedgerRow = { ...r, gift_amount: safeNumber(e.target.value) };
                                   patchLedger(r.id, nextRow);
+                                  scheduleSave(nextRow);
                                 }}
                                 onBlur={() => saveLedgerRow(r)}
                               />
@@ -1616,6 +1856,7 @@ export default function ResultPage() {
                                   onChange={(e) => {
                                     const nextRow: LedgerRow = { ...r, gift_method: e.target.value as GiftMethod };
                                     patchLedger(r.id, nextRow);
+                                    scheduleSave(nextRow);
                                   }}
                                   onBlur={() => saveLedgerRow(r)}
                                 >
@@ -1636,268 +1877,153 @@ export default function ResultPage() {
               <div className="mt-4 text-[11px] text-slate-500">
                 * 화면에는 핵심 정보(하객정보/참석여부/축의금/방식)만 표시됩니다. 자세한 항목은 엑셀 다운로드에서 확인하세요.
                 <br />
-                * QR 축의금 자동 반영은 예식 종료 이후 잠깁니다. (빠른추가/엑셀은 계속 가능)
+                * 스크래핑은 언제든 업데이트 가능하며, 화면 표시는 예식일 기준으로 필터됩니다.
               </div>
             </div>
           </div>
         )}
 
-        {/* 5) 메시지 탭 (✅ 여기만 “디스플레이 느낌/모바일 특화”로 개선) */}
+        {/* 5) E) 메시지 탭: 디스플레이 느낌 + 배경(사진1/그라데이션) + 워터마크 + 모바일 이미지 저장 */}
         {tab === "messages" && (
-          <div className="px-6 md:px-10 pb-12">
-            <div className="bg-white/90 backdrop-blur rounded-[2.5rem] border border-slate-100 shadow-sm p-6 md:p-8">
-              <div className="flex items-end justify-between gap-4 mb-6">
-                <div>
-                  <h2 className="text-lg md:text-xl font-black text-slate-900">축하 메시지</h2>
-                  <p className="text-xs text-slate-500 mt-1">
-                    “디스플레이 화면을 그대로 보는 느낌”으로 현재 페이지 메시지를 모아 저장할 수 있어요.
-                  </p>
+          <div className="px-0 md:px-10 pb-12">
+            <div className="md:rounded-[2.5rem] md:border md:border-slate-100 md:shadow-sm overflow-hidden bg-white/50">
+              {/* stage (배경 포함) */}
+              <div
+                ref={messageStageRef}
+                className="relative min-h-[70vh] md:min-h-[520px]"
+                style={{
+                  backgroundImage: hasBg
+                    ? `linear-gradient(rgba(255,246,248,0.76), rgba(243,247,255,0.82)), url(${bgUrl})`
+                    : "linear-gradient(135deg, rgba(255,246,248,1) 0%, rgba(243,247,255,1) 100%)",
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                }}
+              >
+                {/* soft blur layer */}
+                <div className="absolute inset-0 backdrop-blur-[2px]" />
+
+                {/* watermark */}
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <div className="text-[36px] md:text-[56px] font-black tracking-tight text-slate-900/5 rotate-[-10deg] select-none">
+                    Digital Guestbook
+                  </div>
                 </div>
 
-                <div className="hidden md:flex items-center gap-2">
-                  <button
-                    onClick={refreshMessages}
-                    className="px-4 py-2 rounded-xl bg-white border border-slate-100 text-slate-700 text-[11px] font-bold shadow-sm"
-                    disabled={messagesLoading}
-                  >
-                    {messagesLoading ? "새로고침 중..." : "새로고침"}
-                  </button>
+                {/* top bar */}
+                <div className="relative px-6 pt-8 md:px-8 md:pt-10 flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] font-black tracking-widest uppercase text-slate-400">
+                      Messages • {safeMsgPage}/{totalMessagePages}
+                    </div>
+                    <h2 className="mt-2 text-xl md:text-2xl font-black text-slate-900">축하 메시지</h2>
+                    <p className="mt-1 text-xs text-slate-500 font-medium">
+                      디스플레이 느낌으로 모아보기 • {messages.length.toLocaleString()}개
+                    </p>
+                  </div>
 
-                  <button
-                    onClick={() => downloadMessagesImage(msgSlice.length)}
-                    className="px-4 py-2 rounded-xl bg-slate-900 text-white text-[11px] font-bold shadow-sm"
-                  >
-                    이미지 저장
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {/* 모바일 전용: 이미지 저장 */}
+                    <button
+                      onClick={saveCurrentMessageImage}
+                      disabled={savingImage}
+                      className="md:hidden px-4 py-2 rounded-2xl bg-slate-900 text-white text-[11px] font-black shadow-lg shadow-slate-200 disabled:opacity-50"
+                    >
+                      {savingImage ? "저장 중..." : "현재화면 이미지 저장"}
+                    </button>
 
-                  <div className="text-xs font-bold text-slate-400">
-                    {safeMsgPage} / {totalMessagePages} • 총 {messages.length.toLocaleString()}개
+                    <button
+                      onClick={refreshMessages}
+                      disabled={messagesLoading}
+                      className="px-4 py-2 rounded-2xl bg-white/90 border border-slate-100 text-slate-700 text-[11px] font-black shadow-sm disabled:opacity-50"
+                    >
+                      {messagesLoading ? "새로고침..." : "새로고침"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* message field */}
+                <div className="relative px-6 pb-8 pt-6 md:px-8 md:pb-10">
+                  {messages.length === 0 ? (
+                    <div className="text-center text-slate-500 py-16">아직 메시지가 없습니다.</div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                      {msgSlice.map((m) => {
+                        const realName = (m.guest_name ?? "").trim();
+                        const nickName = (m.nickname ?? "").trim();
+                        const nameText =
+                          realName && nickName && realName !== nickName
+                            ? `${realName} (${nickName})`
+                            : realName || nickName || "익명";
+
+                        const relText = (m.relationship ?? "").trim();
+                        const side = m.side === "groom" ? "신랑측" : m.side === "bride" ? "신부측" : "";
+
+                        // display-like: 살짝 랜덤 회전/위치감(고정값)
+                        const r = hash01(m.id);
+                        const rot = (r - 0.5) * 2.2; // -1.1 ~ 1.1deg
+                        const lift = Math.round((r - 0.5) * 6); // -3~3px
+
+                        return (
+                          <div
+                            key={m.id}
+                            className="rounded-[1.75rem] border border-white/60 bg-white/75 backdrop-blur px-5 py-4 shadow-sm"
+                            style={{
+                              transform: `translateY(${lift}px) rotate(${rot}deg)`,
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="text-sm font-extrabold text-slate-900 truncate">{nameText}</div>
+                                <div className="mt-1 text-[11px] text-slate-500 font-bold truncate">
+                                  {relText ? `${relText} · ` : ""}
+                                  {formatKSTTime(m.created_at)}
+                                </div>
+                              </div>
+                              {side ? <span className="shrink-0 text-[10px] font-black text-slate-400">{side}</span> : null}
+                            </div>
+                            <div className="mt-3 text-sm text-slate-700 whitespace-pre-wrap break-words leading-relaxed">
+                              {m.body}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* pagination */}
+                  <div className="mt-6 flex items-center justify-between gap-2">
+                    <button
+                      className="px-4 py-3 md:py-2 rounded-2xl border text-xs font-black text-slate-700 bg-white/85 hover:bg-white disabled:opacity-40"
+                      disabled={safeMsgPage <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      이전
+                    </button>
+
+                    <div className="text-[11px] font-black text-slate-400">
+                      {safeMsgPage} / {totalMessagePages}
+                    </div>
+
+                    <button
+                      className="px-4 py-3 md:py-2 rounded-2xl border text-xs font-black text-slate-700 bg-white/85 hover:bg-white disabled:opacity-40"
+                      disabled={safeMsgPage >= totalMessagePages}
+                      onClick={() => setPage((p) => Math.min(totalMessagePages, p + 1))}
+                    >
+                      다음
+                    </button>
+                  </div>
+
+                  {/* footer mini */}
+                  <div className="mt-6 text-center text-[10px] font-black tracking-widest uppercase text-slate-400">
+                    Digital Guestbook
                   </div>
                 </div>
               </div>
 
-              {messages.length === 0 ? (
-                <div className="text-center text-slate-500 py-16">아직 메시지가 없습니다.</div>
-              ) : (
-                <>
-                  {/* ✅ 모바일에서 ‘디스플레이 화면’처럼 보이게: 프레임 + 배경 + 워터마크 */}
-                  <div className="flex flex-col lg:flex-row gap-5">
-                    {/* 캡처/프리뷰 영역 */}
-                    <div className="flex-1">
-                      <div
-                        ref={messagesCaptureRef}
-                        className={[
-                          "relative overflow-hidden",
-                          "rounded-[2.25rem] border border-slate-200/70",
-                          "shadow-[0_40px_90px_-60px_rgba(15,23,42,0.35)]",
-                        ].join(" ")}
-                        style={{
-                          // ✅ 모바일에서 디스플레이 느낌: 세로 화면 비율
-                          aspectRatio: "9 / 16",
-                        }}
-                      >
-                        {/* background (디스플레이 템플릿 느낌) */}
-                        <div className="absolute inset-0">
-                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(244,114,182,0.35),transparent_45%),radial-gradient(circle_at_80%_35%,rgba(99,102,241,0.22),transparent_50%),radial-gradient(circle_at_50%_95%,rgba(251,113,133,0.20),transparent_55%)]" />
-                          <div className="absolute inset-0 bg-gradient-to-b from-white/0 via-white/10 to-white/0" />
-                          <div className="absolute inset-0 bg-black/18" />
-                        </div>
-
-                        {/* top glass bar (디스플레이 상단 UI 느낌) */}
-                        <div className="relative z-10 px-5 pt-5">
-                          <div className="rounded-[1.5rem] border border-white/20 bg-white/12 backdrop-blur-md px-4 py-3">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="text-[11px] font-black tracking-widest text-white/70 uppercase">
-                                  digital guestbook
-                                </div>
-                                <div className="mt-1 text-sm font-extrabold text-white truncate">
-                                  축하 메시지
-                                </div>
-                              </div>
-                              <div className="text-[11px] font-bold text-white/70 shrink-0">
-                                {safeMsgPage}/{totalMessagePages}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* message area */}
-                        <div className="relative z-10 px-5 pt-4 pb-14 h-full">
-                          {/* ✅ 아래쪽으로 쌓이게(디스플레이/채팅 느낌) */}
-                          <div className="h-full flex flex-col justify-end gap-3">
-                            {msgSlice.map((m) => {
-                              const realName = (m.guest_name ?? "").trim();
-                              const nickName = (m.nickname ?? "").trim();
-                              const nameText =
-                                realName && nickName && realName !== nickName
-                                  ? `${realName} (${nickName})`
-                                  : realName || nickName || "익명";
-
-                              const relText = (m.relationship ?? "").trim();
-                              const side = m.side === "groom" ? "groom" : m.side === "bride" ? "bride" : null;
-
-                              const align = side === "groom" ? "justify-start" : side === "bride" ? "justify-end" : "justify-start";
-
-                              const bubbleTone =
-                                side === "groom"
-                                  ? "border-sky-200/40 bg-white/82"
-                                  : side === "bride"
-                                    ? "border-rose-200/40 bg-white/82"
-                                    : "border-white/20 bg-white/78";
-
-                              const chipTone =
-                                side === "groom"
-                                  ? "bg-sky-500/20 text-white/85 border-white/15"
-                                  : side === "bride"
-                                    ? "bg-rose-500/20 text-white/85 border-white/15"
-                                    : "bg-white/12 text-white/80 border-white/15";
-
-                              return (
-                                <div key={m.id} className={`flex ${align}`}>
-                                  <div className="max-w-[82%]">
-                                    {/* meta chip */}
-                                    <div
-                                      className={[
-                                        "inline-flex items-center gap-2",
-                                        "rounded-full border px-3 py-1",
-                                        "backdrop-blur-md",
-                                        chipTone,
-                                      ].join(" ")}
-                                    >
-                                      <span className="text-[11px] font-extrabold">{nameText}</span>
-                                      {relText ? <span className="text-[11px] font-bold opacity-80">· {relText}</span> : null}
-                                      <span className="text-[10px] font-bold opacity-70">
-                                        {formatKSTTime(m.created_at)}
-                                      </span>
-                                    </div>
-
-                                    {/* bubble */}
-                                    <div
-                                      className={[
-                                        "mt-2 rounded-[1.6rem] border px-5 py-4",
-                                        "backdrop-blur-md shadow-[0_18px_40px_-28px_rgba(0,0,0,0.6)]",
-                                        bubbleTone,
-                                      ].join(" ")}
-                                    >
-                                      <div className="text-[15px] md:text-[16px] text-slate-900 leading-relaxed whitespace-pre-wrap break-words">
-                                        {m.body}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          {/* watermark (A: 인스타 아이콘 없음) */}
-                          <div className="absolute right-4 bottom-4">
-                            <div className="rounded-full border border-white/15 bg-black/25 backdrop-blur-md px-3 py-1.5">
-                              <span className="text-[10px] font-black tracking-widest text-white/75 uppercase">
-                                digital guestbook
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* mobile quick controls */}
-                      <div className="mt-4 flex items-center justify-between gap-2 md:hidden">
-                        <button
-                          className="flex-1 px-4 py-3 rounded-2xl border text-xs font-bold text-slate-700 bg-white/90 hover:bg-white disabled:opacity-40"
-                          disabled={safeMsgPage <= 1}
-                          onClick={() => setPage((p) => Math.max(1, p - 1))}
-                        >
-                          이전
-                        </button>
-
-                        <button
-                          className="flex-1 px-4 py-3 rounded-2xl bg-slate-900 text-white text-xs font-bold shadow-sm"
-                          onClick={() => downloadMessagesImage(msgSlice.length)}
-                        >
-                          이미지 저장
-                        </button>
-
-                        <button
-                          className="flex-1 px-4 py-3 rounded-2xl border text-xs font-bold text-slate-700 bg-white/90 hover:bg-white disabled:opacity-40"
-                          disabled={safeMsgPage >= totalMessagePages}
-                          onClick={() => setPage((p) => Math.min(totalMessagePages, p + 1))}
-                        >
-                          다음
-                        </button>
-                      </div>
-
-                      <div className="mt-3 text-[11px] text-slate-500">
-                        * “이미지 저장”은 현재 페이지(최대 {PAGE_SIZE}개) 기준으로 저장됩니다.
-                      </div>
-                    </div>
-
-                    {/* 데스크톱 우측: 리스트(선택) — 기존 카드 느낌 유지 */}
-                    <div className="hidden lg:block w-[360px] shrink-0">
-                      <div className="rounded-[2rem] bg-white/60 border border-slate-100 p-5">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="text-xs font-black tracking-widest text-slate-400 uppercase">LIST</div>
-                          <div className="text-xs font-bold text-slate-400">
-                            {safeMsgPage}/{totalMessagePages}
-                          </div>
-                        </div>
-
-                        <div className="space-y-2 max-h-[520px] overflow-auto pr-2">
-                          {msgSlice.map((m) => {
-                            const realName = (m.guest_name ?? "").trim();
-                            const nickName = (m.nickname ?? "").trim();
-                            const nameText =
-                              realName && nickName && realName !== nickName
-                                ? `${realName} (${nickName})`
-                                : realName || nickName || "익명";
-                            const relText = (m.relationship ?? "").trim();
-                            const side = m.side === "groom" ? "신랑측" : m.side === "bride" ? "신부측" : "";
-                            return (
-                              <div
-                                key={m.id}
-                                className="rounded-2xl border border-slate-100 bg-white/80 px-4 py-3"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <div className="text-sm font-extrabold text-slate-900 truncate">{nameText}</div>
-                                    <div className="mt-1 text-[11px] text-slate-500 font-bold truncate">
-                                      {relText ? `${relText} · ` : ""}
-                                      {formatKSTTime(m.created_at)}
-                                    </div>
-                                  </div>
-                                  {side ? (
-                                    <span className="shrink-0 text-[10px] font-black text-slate-400">{side}</span>
-                                  ) : null}
-                                </div>
-                                <div className="mt-2 text-xs text-slate-600 line-clamp-2 whitespace-pre-wrap">
-                                  {m.body}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        <div className="mt-4 flex items-center justify-between">
-                          <button
-                            className="px-4 py-2 rounded-xl border text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-                            disabled={safeMsgPage <= 1}
-                            onClick={() => setPage((p) => Math.max(1, p - 1))}
-                          >
-                            이전
-                          </button>
-                          <button
-                            className="px-4 py-2 rounded-xl border text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-                            disabled={safeMsgPage >= totalMessagePages}
-                            onClick={() => setPage((p) => Math.min(totalMessagePages, p + 1))}
-                          >
-                            다음
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
+              {/* desktop hint */}
+              <div className="hidden md:block px-8 py-4 text-[11px] text-slate-500">
+                * 모바일에서는 “현재화면 이미지 저장” 버튼으로 페이지 단위(PAGE_SIZE={PAGE_SIZE}) 메시지를 이미지로 저장할 수 있어요.
+              </div>
             </div>
           </div>
         )}

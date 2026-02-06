@@ -177,7 +177,12 @@ export default function ServiceFlowPage() {
                   <p className="max-w-2xl text-lg leading-relaxed text-slate-500 whitespace-pre-line">
                     {step.desc}
                   </p>
-
+                  {/* 01 섹션 각주 */}
+                  {step.id === "reserve" && (
+                    <p className="text-sm text-slate-400">
+                      * 공식 채널을 꼭 추가해주세요
+                    </p>
+                  )}
 
                   {/* 03 섹션 각주 */}
                   {step.id === "guest" && (
@@ -189,7 +194,7 @@ export default function ServiceFlowPage() {
                   {/* 04 섹션 각주 */}
                   {step.id === "report" && (
                     <p className="text-sm text-slate-400">
-                      * 예식 종료 후 본인 인증 절차를 거쳐 리포트가 생성되며, 지정된 수령인에게 제공됩니다.
+                      * 예식 종료 후 본인 인증 절차를 거쳐 리포트가 생성되며, 축의금 내역은 본인만 확인가능합니다.
 
                     </p>
                   )}
@@ -289,16 +294,45 @@ export default function ServiceFlowPage() {
                   </div>
                 )}
 
-                {/* 04,05 기타 */}
-                {step.id !== "reserve" && step.id !== "setup" && step.id !== "guest" && (
+                {/* 04. 웨딩 리포트 */}
+                {step.id === "report" && (
                   <div className="flex justify-center lg:justify-start lg:max-w-3xl">
-                    <img
-                      src={step.images[0]}
-                      alt={step.title}
-                      className="w-full lg:max-w-[560px] rounded-2xl border border-slate-100 shadow-lg object-contain bg-slate-50"
-                    />
+                    <div className="w-full lg:max-w-[560px]">
+                      <img
+                        src={step.images[0]}
+                        alt={step.title}
+                        className="w-full rounded-2xl border border-slate-100 shadow-lg object-contain bg-slate-50"
+                      />
+
+                      {/* 하단 안내문 */}
+                      <p className="mt-3 text-sm leading-relaxed text-slate-500">
+                        * 웨딩 리포트는 현재{" "}
+                        <span className="font-semibold text-slate-700">Windows PC</span>에서만 제공됩니다.
+                        <br />
+                        * 등록된 은행의{" "}
+                        <span className="font-semibold text-slate-700">공인인증서</span>가 PC에 설치되어 있어야 하며,
+                        타행 인증서 사용 시{" "}
+                        <span className="font-semibold text-slate-700">사전 타행 인증서 등록</span>이 필요합니다.
+                      </p>
+                    </div>
                   </div>
                 )}
+              {/* 05. 신랑 · 신부 (준비중) */}
+                {step.id === "couple" && (
+                  <div className="flex justify-center lg:justify-start lg:max-w-3xl">
+                    <div className="w-full lg:max-w-[560px] rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-10 text-center">
+                      <div className="text-3xl">🛠️</div>
+                      <div className="mt-3 text-lg font-extrabold text-slate-900">
+                        준비중
+                      </div>
+                      <div className="mt-2 text-sm text-slate-500">
+                        감사인사 기능은 곧 업데이트됩니다.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+
               </section>
             ))}
           </div>

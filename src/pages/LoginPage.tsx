@@ -208,11 +208,19 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardContent className="p-6">
           <div className="text-center mb-6">
-            <div className="text-xl font-bold">신랑·신부 관리 로그인</div>
-            <div className="text-sm text-muted-foreground mt-2">
-              예식 설정 및 리포트 확인을 위한 이벤트홈 페이지 접근 인증입니다.
-            </div>
+          <div className="text-xl font-bold">
+            예식 설정 · 리포트 로그인
           </div>
+
+          <div className="text-sm text-muted-foreground mt-2">
+            예식 설정과 리포트 확인을 위한 로그인입니다.
+          </div>
+
+          {/* 안심 안내 문구 */}
+          <div className="text-xs text-slate-400 mt-1">
+            예약이 확인되면 예식 홈이 자동으로 생성됩니다.
+          </div>
+        </div>
 
           {step === "email" && (
             <>

@@ -92,26 +92,36 @@ const DISPLAY_STYLE_OPTIONS = [
   { value: "winter", label: "겨울" },
 ];
 
+/**
+ * ✅ BANK_OPTIONS: 쿠콘 표준(한글 은행명) + 기타(직접 입력)
+ * - 화면/DB는 한글 은행명 그대로 저장 (DB 변경 없음)
+ * - '기타(직접 입력)' 선택 시 스크래핑 미지원 안내만 추가
+ */
 const BANK_OPTIONS = [
+  "산업은행",
+  "기업은행",
   "국민은행",
   "신한은행",
   "우리은행",
   "하나은행",
   "NH농협은행",
-  "IBK기업은행",
   "SC제일은행",
   "한국씨티은행",
-  "카카오뱅크",
-  "토스뱅크",
-  "수협은행",
   "대구은행",
   "부산은행",
-  "경남은행",
   "광주은행",
   "전북은행",
+  "경남은행",
   "제주은행",
+  "수협은행",
+  "새마을금고",
+  "신협",
+  "우체국",
+  "케이뱅크",
+  "카카오뱅크",
+  "토스뱅크",
   "기타(직접 입력)",
-];
+] as const;
 
 function isVideoUrl(url: string) {
   const u = (url || "").toLowerCase().split("?")[0]; // 쿼리 제거
@@ -134,7 +144,7 @@ function bytesToMB(bytes: number) {
 }
 
 function isKnownBankName(name: string) {
-  return BANK_OPTIONS.includes(name) && name !== "기타(직접 입력)";
+  return (BANK_OPTIONS as readonly string[]).includes(name) && name !== "기타(직접 입력)";
 }
 
 function summarizeSkipped(skipped: string[], maxItems = 2) {
@@ -184,11 +194,15 @@ export default function ConfirmPage() {
   const [event, setEvent] = useState<EventRow | null>(null);
   const [settings, setSettings] = useState<EventSettingsRow | null>(null);
   const [accounts, setAccounts] = useState<AccountForm[]>([]);
-  const [allMembers, setAllMembers] = useState<{ id: string; role: string }[]>([]);
+  const [allMembers, setAllMembers] = useState<{ id: string; role: string }[]>(
+    []
+  );
   const [myMemberId, setMyMemberId] = useState<string | null>(null);
 
   // ✅ 토스트 (짧게, 자동 사라짐)
-  const [toast, setToast] = useState<{ type: "info" | "error"; text: string } | null>(null);
+  const [toast, setToast] = useState<{ type: "info" | "error"; text: string } | null>(
+    null
+  );
 
   // 기본 정보
   const [groomName, setGroomName] = useState("");
@@ -334,7 +348,8 @@ export default function ConfirmPage() {
             : "template";
         setBackgroundMode(mode);
 
-        if (Array.isArray(s.media_urls) && s.media_urls.length > 0) setMediaUrls(s.media_urls);
+        if (Array.isArray(s.media_urls) && s.media_urls.length > 0)
+          setMediaUrls(s.media_urls);
         else setMediaUrls([]);
 
         setMobileInvitationLink(s.mobile_invitation_link ?? "");
@@ -387,7 +402,8 @@ export default function ConfirmPage() {
         setAccounts(
           accountData.map((row: any) => {
             const bankName = row.bank_name ?? "";
-            const mode: BankMode = bankName && isKnownBankName(bankName) ? "select" : "custom";
+            const mode: BankMode =
+              bankName && isKnownBankName(bankName) ? "select" : "custom";
             return {
               id: row.id,
               label: row.label,
@@ -433,8 +449,14 @@ export default function ConfirmPage() {
     }
   }
 
-  function handleAccountChange(index: number, field: keyof AccountForm, value: string | boolean | null) {
-    setAccounts((prev) => prev.map((acct, i) => (i === index ? { ...acct, [field]: value } : acct)));
+  function handleAccountChange(
+    index: number,
+    field: keyof AccountForm,
+    value: string | boolean | null
+  ) {
+    setAccounts((prev) =>
+      prev.map((acct, i) => (i === index ? { ...acct, [field]: value } : acct))
+    );
   }
 
   // ✅ 본인 선택 (나머지 계좌에서 내 ID 제거)
@@ -444,12 +466,19 @@ export default function ConfirmPage() {
       prev.map((acct, i) => {
         if (i === index) {
           // 이미 나로 선택되어 있으면 해제, 아니면 나로 선택
-          return { ...acct, owner_member_id: acct.owner_member_id === myMemberId ? null : myMemberId };
+          return {
+            ...acct,
+            owner_member_id:
+              acct.owner_member_id === myMemberId ? null : myMemberId,
+          };
         } else {
           // 다른 계좌에서 내 ID가 있으면 제거
           return {
             ...acct,
-            owner_member_id: acct.owner_member_id === myMemberId ? null : acct.owner_member_id,
+            owner_member_id:
+              acct.owner_member_id === myMemberId
+                ? null
+                : acct.owner_member_id,
           };
         }
       })
@@ -474,7 +503,11 @@ export default function ConfirmPage() {
   }
 
   function removeAccount(index: number) {
-    setAccounts((prev) => prev.filter((_, i) => i !== index).map((acct, i) => ({ ...acct, sort_order: i })));
+    setAccounts((prev) =>
+      prev
+        .filter((_, i) => i !== index)
+        .map((acct, i) => ({ ...acct, sort_order: i }))
+    );
   }
 
   function removeMedia(index: number) {
@@ -527,15 +560,18 @@ export default function ConfirmPage() {
         }
 
         const ext = file.name.split(".").pop() || (isVideo ? "mp4" : "jpg");
-        const safeExt = ext.replace(/[^a-zA-Z0-9]/g, "") || (isVideo ? "mp4" : "jpg");
+        const safeExt =
+          ext.replace(/[^a-zA-Z0-9]/g, "") || (isVideo ? "mp4" : "jpg");
         const filename = `${Date.now()}_${i}.${safeExt}`;
         const path = `${eventId}/${filename}`;
 
-        const { error: uploadError } = await supabase.storage.from("event-media").upload(path, file, {
-          upsert: false,
-          contentType: file.type || undefined,
-          cacheControl: "3600",
-        });
+        const { error: uploadError } = await supabase.storage
+          .from("event-media")
+          .upload(path, file, {
+            upsert: false,
+            contentType: file.type || undefined,
+            cacheControl: "3600",
+          });
 
         if (uploadError) throw uploadError;
 
@@ -561,7 +597,8 @@ export default function ConfirmPage() {
       }
     } catch (err: any) {
       console.error("[ConfirmPage] file upload error", err);
-      const msg = err.message ?? "업로드 중 오류가 발생했습니다. 다시 시도해주세요.";
+      const msg =
+        err.message ?? "업로드 중 오류가 발생했습니다. 다시 시도해주세요.";
       setError(msg);
       setUploadStatus(null);
       setToast({ type: "error", text: msg });
@@ -576,7 +613,9 @@ export default function ConfirmPage() {
     if (!venueSearchKeyword.trim()) return;
     const kakao = (window as any).kakao;
     if (!kakao || !kakao.maps || !kakao.maps.services) {
-      alert("카카오 지도 스크립트가 아직 로드되지 않았습니다.\n잠시 후 다시 시도해주세요.");
+      alert(
+        "카카오 지도 스크립트가 아직 로드되지 않았습니다.\n잠시 후 다시 시도해주세요."
+      );
       return;
     }
 
@@ -614,22 +653,31 @@ export default function ConfirmPage() {
   // 필수값 검증
   const validateBeforeSave = () => {
     if (!mobileInvitationLink.trim()) return "모바일 초대장 링크가 필요합니다.";
-    if (!isValidUrl(mobileInvitationLink.trim())) return "모바일 초대장 링크가 유효한 URL 형식이 아닙니다.";
+    if (!isValidUrl(mobileInvitationLink.trim()))
+      return "모바일 초대장 링크가 유효한 URL 형식이 아닙니다.";
 
     if (!groomName.trim()) return "신랑 이름을 입력해주세요.";
     if (!brideName.trim()) return "신부 이름을 입력해주세요.";
     if (!venueName.trim()) return "예식장 이름을 입력해주세요.";
-    if (!venueAddress.trim()) return "예식장 주소가 필요합니다. (검색을 통해 선택해주세요.)";
+    if (!venueAddress.trim())
+      return "예식장 주소가 필요합니다. (검색을 통해 선택해주세요.)";
 
     if (!ceremonyDate) return "예식 날짜를 입력해주세요.";
     if (!ceremonyStartTime) return "예식 시작 시간을 선택해주세요.";
     if (!ceremonyEndTime) return "예식 종료 시간을 선택해주세요.";
 
-    if (backgroundMode === "template" && !displayStyle) return "디스플레이 테마를 선택해주세요.";
+    if (backgroundMode === "template" && !displayStyle)
+      return "디스플레이 테마를 선택해주세요.";
 
     const validAccounts = accounts
       .filter((a) => a.is_active)
-      .filter((a) => a.label.trim() && a.holder_name.trim() && a.bank_name.trim() && a.account_number.trim());
+      .filter(
+        (a) =>
+          a.label.trim() &&
+          a.holder_name.trim() &&
+          a.bank_name.trim() &&
+          a.account_number.trim()
+      );
 
     if (validAccounts.length === 0) {
       return "축의금 계좌를 최소 1개 이상 등록해주세요. (라벨/예금주/은행/계좌번호 모두 필요)";
@@ -637,13 +685,19 @@ export default function ConfirmPage() {
 
     // 중복 라벨 체크 (단, '기타'는 중복 허용 가능하지만 사용자 요청에 따라 기본적으로 체크)
     const labels = validAccounts.map((a) => a.label.trim());
-    const duplicateLabels = labels.filter((item, index) => labels.indexOf(item) !== index);
+    const duplicateLabels = labels.filter(
+      (item, index) => labels.indexOf(item) !== index
+    );
 
     // '기타'를 제외한 다른 라벨이 중복되면 에러 (기타는 여러 개일 수 있으므로)
-    const realDuplicates = [...new Set(duplicateLabels)].filter(l => l !== "기타");
+    const realDuplicates = [...new Set(duplicateLabels)].filter(
+      (l) => l !== "기타"
+    );
 
     if (realDuplicates.length > 0) {
-      return `중복된 라벨이 있습니다: ${realDuplicates.join(", ")}. 각 관계별로 하나의 계좌만 등록 가능합니다.`;
+      return `중복된 라벨이 있습니다: ${realDuplicates.join(
+        ", "
+      )}. 각 관계별로 하나의 계좌만 등록 가능합니다.`;
     }
 
     return null;
@@ -675,19 +729,25 @@ export default function ConfirmPage() {
         venue_lng: venueLng,
       };
 
-      const { error: eventUpdateError } = await supabase.from("events").update(eventPayload).eq("id", eventId);
+      const { error: eventUpdateError } = await supabase
+        .from("events")
+        .update(eventPayload)
+        .eq("id", eventId);
       if (eventUpdateError) throw eventUpdateError;
 
       // 2) recipients (신랑/신부)
       const recipients: any[] = [];
-      if (groomName.trim()) recipients.push({ name: groomName.trim(), role: "신랑", contact: null });
-      if (brideName.trim()) recipients.push({ name: brideName.trim(), role: "신부", contact: null });
+      if (groomName.trim())
+        recipients.push({ name: groomName.trim(), role: "신랑", contact: null });
+      if (brideName.trim())
+        recipients.push({ name: brideName.trim(), role: "신부", contact: null });
 
       // 배경모드/미디어 배열
       const cleaned = mediaUrls.map((u) => u.trim()).filter(Boolean);
       const isPhotoValid = cleaned.length > 0;
 
-      const modeToSave: "photo" | "template" = backgroundMode === "photo" && isPhotoValid ? "photo" : "template";
+      const modeToSave: "photo" | "template" =
+        backgroundMode === "photo" && isPhotoValid ? "photo" : "template";
       const mediaToSave = modeToSave === "photo" ? cleaned : null;
 
       const payload = {
@@ -710,7 +770,10 @@ export default function ConfirmPage() {
 
       // 3) event_settings upsert
       if (settings?.id) {
-        const { error: updateError } = await supabase.from("event_settings").update(payload).eq("id", settings.id);
+        const { error: updateError } = await supabase
+          .from("event_settings")
+          .update(payload)
+          .eq("id", settings.id);
         if (updateError) throw updateError;
       } else {
         const { data: inserted, error: insertError } = await supabase
@@ -725,14 +788,20 @@ export default function ConfirmPage() {
       // 4) 계좌 저장 (필요한 것만 삭제 후 upsert)
       const validAccounts = accounts
         .filter((a) => a.is_active)
-        .filter((a) => a.label.trim() && a.holder_name.trim() && a.bank_name.trim() && a.account_number.trim())
+        .filter(
+          (a) =>
+            a.label.trim() &&
+            a.holder_name.trim() &&
+            a.bank_name.trim() &&
+            a.account_number.trim()
+        )
         .map((a, index) => ({
           ...(a.id ? { id: a.id } : {}),
           event_id: eventId,
           owner_member_id: a.owner_member_id || null, // 수정: 내 것이 아닐 수도 있으므로 a.owner_member_id 사용
           label: a.label.trim(),
           holder_name: a.holder_name.trim(),
-          bank_name: a.bank_name.trim(),
+          bank_name: a.bank_name.trim(), // ✅ 한글 그대로 저장 (DB 변경 없음)
           account_number: a.account_number.trim(),
           sort_order: index,
           is_active: a.is_active,
@@ -774,7 +843,9 @@ export default function ConfirmPage() {
         if (insertError && insertError.code !== "42P01") throw insertError;
       }
 
-      setSuccess("저장이 완료되었습니다. 상세 설정은 예식 1시간 전까지 변경할 수 있습니다.");
+      setSuccess(
+        "저장이 완료되었습니다. 상세 설정은 예식 1시간 전까지 변경할 수 있습니다."
+      );
     } catch (e: any) {
       console.error("[ConfirmPage] handleSave error:", e);
       setError(e.message ?? "저장 중 오류가 발생했습니다.");
@@ -816,8 +887,11 @@ export default function ConfirmPage() {
       {toast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999]">
           <div
-            className={`px-4 py-2 rounded-full text-xs shadow-lg border backdrop-blur bg-white/90 ${toast.type === "error" ? "border-red-200 text-red-700" : "border-gray-200 text-gray-700"
-              }`}
+            className={`px-4 py-2 rounded-full text-xs shadow-lg border backdrop-blur bg-white/90 ${
+              toast.type === "error"
+                ? "border-red-200 text-red-700"
+                : "border-gray-200 text-gray-700"
+            }`}
           >
             {toast.text}
           </div>
@@ -847,7 +921,7 @@ export default function ConfirmPage() {
         <div>
           <h1 className="text-xl md:text-2xl font-bold">예식 기본 정보 설정</h1>
           <p className="text-xs md:text-sm text-gray-600 mt-1">
-            예식 시간, 성함, 디스플레이 배경 구성이 전광판에 반영됩니다.
+            예식 시간, 성함, 배경 구성이 디스플레이에 반영됩니다.
           </p>
         </div>
       </div>
@@ -930,7 +1004,6 @@ export default function ConfirmPage() {
               </div>
             </div>
           </div>
-
         </section>
 
         {/* 예식 시간 */}
@@ -1203,7 +1276,7 @@ export default function ConfirmPage() {
           )}
         </section>
 
-        {/* 축의금 계좌 */}
+        {/* ✅ 축의금 계좌 */}
         <section className="bg-white/70 border border-rose-200/70 ring-1 ring-rose-200/40 rounded-2xl p-4 space-y-4 shadow-2xl shadow-rose-200/30 backdrop-blur-xl transition-all hover:border-rose-300/80">
           <div className="flex items-center justify-between">
             <h2 className="text-sm md:text-lg font-semibold">축의금 계좌 설정</h2>
@@ -1225,58 +1298,131 @@ export default function ConfirmPage() {
           <div className="space-y-4">
             {accounts.map((acct, index) => {
               const bankMode: BankMode =
-                acct.bank_mode ?? (acct.bank_name && isKnownBankName(acct.bank_name) ? "select" : "custom");
+                acct.bank_mode ??
+                (acct.bank_name && isKnownBankName(acct.bank_name) ? "select" : "custom");
 
-              const selectValue = bankMode === "custom" ? "기타(직접 입력)" : acct.bank_name ? acct.bank_name : "";
+              const selectValue =
+                bankMode === "custom"
+                  ? "기타(직접 입력)"
+                  : acct.bank_name
+                  ? acct.bank_name
+                  : "";
 
               // 누가 소유하고 있는지 정보
               const owner = allMembers.find((m) => m.id === acct.owner_member_id);
               const isMine = acct.owner_member_id === myMemberId;
 
+              // ✅ 토글 UI 상태
+              const isCustomBank = bankMode === "custom";
+              const showScrapeNotice = isCustomBank; // 기타면 항상 안내
+
               return (
-                <div key={index} className="border rounded-lg p-3 bg-gray-50 space-y-3">
+                <div
+                  key={index}
+                  className={[
+                    "border rounded-2xl p-3 space-y-3 transition-all",
+                    "bg-white/70 backdrop-blur",
+                    isMine
+                      ? "border-rose-300 ring-1 ring-rose-200 shadow-sm shadow-rose-200/30"
+                      : "border-gray-200",
+                  ].join(" ")}
+                >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="text-[11px] font-semibold text-gray-600">계좌 #{index + 1}</div>
+                      <div className="text-[11px] font-semibold text-gray-600">
+                        계좌 #{index + 1}
+                      </div>
+
                       {acct.owner_member_id && (
                         <div
-                          className={`text-[10px] px-1.5 py-0.5 rounded ${isMine ? "bg-rose-100 text-rose-700" : "bg-gray-200 text-gray-700"
-                            }`}
+                          className={`text-[10px] px-1.5 py-0.5 rounded ${
+                            isMine
+                              ? "bg-rose-100 text-rose-700"
+                              : "bg-gray-200 text-gray-700"
+                          }`}
                         >
-                          {isMine ? "본인(나)" : `${owner?.role === "groom" ? "신랑" : owner?.role === "bride" ? "신부" : "관리자"}의 계좌`}
+                          {isMine
+                            ? "내 계좌"
+                            : `${
+                                owner?.role === "groom"
+                                  ? "신랑"
+                                  : owner?.role === "bride"
+                                  ? "신부"
+                                  : "관리자"
+                              }의 계좌`}
                         </div>
                       )}
                     </div>
+
                     <div className="flex items-center gap-2">
                       {accounts.length > 1 && (
-                        <button type="button" onClick={() => removeAccount(index)} className="text-[11px] text-red-500 hover:underline">
+                        <button
+                          type="button"
+                          onClick={() => removeAccount(index)}
+                          className="text-[11px] text-red-500 hover:underline"
+                        >
                           삭제
                         </button>
                       )}
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-[60px_110px_1fr_1.5fr_2.5fr] gap-3 items-start">
-                    {/* 1. 본인체크 열 */}
+                  <div className="grid grid-cols-1 md:grid-cols-[110px_1fr_1.5fr_2.5fr] gap-3 items-start">
+                    {/* ✅ 1) 내 계좌 토글 */}
                     <div className="flex flex-col gap-2">
-                      <label className="block text-[11px] font-semibold text-gray-500 px-1">본인체크</label>
-                      <div className="flex items-center justify-start h-10 px-2">
-                        <input
-                          type="checkbox"
-                          checked={isMine}
-                          onChange={() => handleSelectMe(index)}
-                          className="w-5 h-5 accent-rose-500 cursor-pointer rounded border-gray-300"
-                        />
-                      </div>
+                      <label className="block text-[11px] font-semibold text-gray-500 px-1">
+                        내 계좌
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSelectMe(index)}
+                        disabled={!myMemberId}
+                        className={[
+                          "h-10 w-full rounded-full px-3 text-xs border transition-all",
+                          !myMemberId ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+                          isMine
+                            ? "bg-rose-600 text-white border-rose-600 shadow-sm"
+                            : "bg-white text-gray-700 border-gray-200 hover:border-rose-200",
+                        ].join(" ")}
+                        aria-pressed={isMine}
+                      >
+                        <div className="flex items-center justify-center gap-2">
+                          <span
+                            className={[
+                              "inline-flex items-center w-9 h-5 rounded-full p-[2px] transition-all",
+                              isMine ? "bg-white/40" : "bg-gray-200",
+                            ].join(" ")}
+                          >
+                            <span
+                              className={[
+                                "w-4 h-4 rounded-full bg-white shadow transition-transform",
+                                isMine ? "translate-x-4" : "translate-x-0",
+                              ].join(" ")}
+                            />
+                          </span>
+                          <span className="font-semibold">
+                            {isMine ? "내 계좌" : "선택"}
+                          </span>
+                        </div>
+                      </button>
+
+                      <p className="text-[10px] text-gray-400 px-1 whitespace-nowrap">
+                        * 내 계좌만 축의금 내역을 확인할 수 있습니다
+                      </p>
                     </div>
 
-                    {/* 2. 라벨(관계) */}
+                    {/* 2) 라벨(관계) */}
                     <div className="flex flex-col gap-2">
-                      <label className="block text-[11px] font-semibold text-gray-500 px-1">라벨(관계)</label>
+                      <label className="block text-[11px] font-semibold text-gray-500 px-1">
+                        계좌구분
+                      </label>
                       <select
                         className="w-full border border-gray-200 rounded-full px-3 py-2 text-xs h-10 bg-white focus:ring-2 focus:ring-rose-100 outline-none transition-all"
                         value={acct.label}
-                        onChange={(e) => handleAccountChange(index, "label", e.target.value)}
+                        onChange={(e) =>
+                          handleAccountChange(index, "label", e.target.value)
+                        }
                       >
                         <option value="신랑">신랑</option>
                         <option value="신부">신부</option>
@@ -1288,66 +1434,94 @@ export default function ConfirmPage() {
                       </select>
                     </div>
 
-                    {/* 3. 예금주 */}
+                    {/* 3) 예금주 */}
                     <div className="flex flex-col gap-2">
-                      <label className="block text-[11px] font-semibold text-gray-500 px-1">예금주</label>
+                      <label className="block text-[11px] font-semibold text-gray-500 px-1">
+                        예금주
+                      </label>
                       <input
                         type="text"
                         className="w-full border border-gray-200 rounded-full px-4 py-2 text-xs h-10 bg-white focus:ring-2 focus:ring-rose-100 outline-none transition-all"
                         value={acct.holder_name}
-                        onChange={(e) => handleAccountChange(index, "holder_name", e.target.value)}
+                        onChange={(e) =>
+                          handleAccountChange(index, "holder_name", e.target.value)
+                        }
                       />
                     </div>
 
-                    {/* 4. 은행 */}
+                    {/* 4) 은행 */}
                     <div className="flex flex-col gap-2">
-                      <label className="block text-[11px] font-semibold text-gray-500 px-1">은행</label>
+                      <label className="block text-[11px] font-semibold text-gray-500 px-1">
+                        은행
+                      </label>
                       <div className="flex flex-col gap-1">
                         <select
                           className="w-full border border-gray-200 rounded-full px-3 py-2 text-xs h-10 bg-white focus:ring-2 focus:ring-rose-100 outline-none transition-all"
                           value={selectValue}
                           onChange={(e) => {
                             const v = e.target.value;
+
                             if (v === "") {
                               handleAccountChange(index, "bank_mode", "select");
                               handleAccountChange(index, "bank_name", "");
                               return;
                             }
+
                             if (v === "기타(직접 입력)") {
                               handleAccountChange(index, "bank_mode", "custom");
+                              // bank_name은 입력칸에서 직접 채움
                               return;
                             }
+
                             handleAccountChange(index, "bank_mode", "select");
-                            handleAccountChange(index, "bank_name", v);
+                            handleAccountChange(index, "bank_name", v); // ✅ 한글 은행명 그대로 저장
                           }}
                         >
                           <option value="">은행 선택</option>
-                          {BANK_OPTIONS.map((name) => (
+                          {(BANK_OPTIONS as readonly string[]).map((name) => (
                             <option key={name} value={name}>
                               {name}
                             </option>
                           ))}
                         </select>
+
                         {bankMode === "custom" && (
-                          <input
-                            type="text"
-                            className="w-full border border-gray-200 rounded-full px-4 py-2 text-xs h-10 mt-1 bg-white focus:ring-2 focus:ring-rose-100 outline-none transition-all animate-in fade-in slide-in-from-top-1 px-1"
-                            placeholder="은행명 입력"
-                            value={acct.bank_name}
-                            onChange={(e) => handleAccountChange(index, "bank_name", e.target.value)}
-                          />
+                          <div className="mt-1 space-y-1">
+                            <input
+                              type="text"
+                              className="w-full border border-gray-200 rounded-full px-4 py-2 text-xs h-10 bg-white focus:ring-2 focus:ring-rose-100 outline-none transition-all animate-in fade-in slide-in-from-top-1"
+                              placeholder="은행명 입력"
+                              value={acct.bank_name}
+                              onChange={(e) =>
+                                handleAccountChange(index, "bank_name", e.target.value)
+                              }
+                            />
+
+                            {/* ✅ '기타' 선택 시 스크래핑 미지원 안내/제약 */}
+                            {showScrapeNotice && (
+                              <p className="text-[10px] px-1 leading-snug text-rose-600">
+                                * 기타 은행은 현재 “QR 축의금 갱신(스크래핑)”이 지원되지 않을 수 있어요.
+                                리포트에서 수기/엑셀로 추가할 수 있습니다.
+                                {isMine ? " (내 계좌로 선택한 경우 스크래핑 대상에서 제외될 수 있어요.)" : ""}
+                              </p>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
 
-                    {/* 5. 계좌번호 */}
-                    <div className="flex flex-col gap-2">
-                      <label className="block text-[11px] font-semibold text-gray-500 px-1">계좌번호</label>
+                    {/* 5) 계좌번호 */}
+                    <div className="flex flex-col gap-2 md:col-span-4">
+                      <label className="block text-[11px] font-semibold text-gray-500 px-1">
+                        계좌번호
+                      </label>
                       <input
                         type="text"
                         className="w-full border border-gray-200 rounded-full px-4 py-2 text-xs h-10 bg-white focus:ring-2 focus:ring-rose-100 outline-none transition-all"
                         value={acct.account_number}
-                        onChange={(e) => handleAccountChange(index, "account_number", e.target.value)}
+                        onChange={(e) =>
+                          handleAccountChange(index, "account_number", e.target.value)
+                        }
                       />
                     </div>
                   </div>
@@ -1390,7 +1564,11 @@ export default function ConfirmPage() {
           )}
 
           <div className="flex items-center justify-end gap-2 pt-2">
-            <button type="submit" disabled={saving} className="px-4 py-2 rounded-md bg-black text-white text-sm disabled:opacity-50">
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 rounded-md bg-black text-white text-sm disabled:opacity-50"
+            >
               {saving ? "저장 중..." : "저장하기"}
             </button>
           </div>
@@ -1403,7 +1581,11 @@ export default function ConfirmPage() {
           <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl p-4 space-y-3">
             <div className="flex items-center justify-between mb-1">
               <h3 className="text-base font-semibold">예식장 검색</h3>
-              <button type="button" className="text-sm text-gray-500" onClick={() => setVenueSearchOpen(false)}>
+              <button
+                type="button"
+                className="text-sm text-gray-500"
+                onClick={() => setVenueSearchOpen(false)}
+              >
                 닫기
               </button>
             </div>
@@ -1434,9 +1616,13 @@ export default function ConfirmPage() {
 
             <div className="max-h-72 overflow-auto border rounded-lg">
               {venueSearchLoading ? (
-                <div className="py-8 text-center text-sm text-gray-500">검색 중입니다.</div>
+                <div className="py-8 text-center text-sm text-gray-500">
+                  검색 중입니다.
+                </div>
               ) : venueSearchResults.length === 0 ? (
-                <div className="py-8 text-center text-sm text-gray-500">검색 결과가 없습니다. 이름을 조금 다르게 입력해보세요.</div>
+                <div className="py-8 text-center text-sm text-gray-500">
+                  검색 결과가 없습니다. 이름을 조금 다르게 입력해보세요.
+                </div>
               ) : (
                 <ul className="divide-y">
                   {venueSearchResults.map((place) => (
@@ -1447,7 +1633,9 @@ export default function ConfirmPage() {
                         onClick={() => handleSelectVenue(place)}
                       >
                         <div className="font-medium">{place.place_name}</div>
-                        <div className="text-xs text-gray-600">{place.road_address_name || place.address_name}</div>
+                        <div className="text-xs text-gray-600">
+                          {place.road_address_name || place.address_name}
+                        </div>
                       </button>
                     </li>
                   ))}
