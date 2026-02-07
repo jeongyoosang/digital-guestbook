@@ -1279,17 +1279,34 @@ export default function ResultPage() {
   }, [settings?.ceremony_date]);
 
   const dashboardStats = useMemo(() => {
-    const totalAmount = ledger.reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
+  const ceremonyDate = settings?.ceremony_date ?? null;
 
-    const verifiedAmount = ledger
-      .filter((r) => (r.created_source ?? "manual") === "scrape" && r.attended === true)
-      .reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
+  const isAttended = (r: LedgerRow) => r.attended === true || !!r.attended_at;
 
-    const attendedCount = ledger.filter((r) => r.attended === true).length;
-    const qrScannedCount = ledger.filter((r) => (r.created_source ?? null) === "guestpage").length;
+  // 1) 총 축의금
+  const totalAmount = ledger.reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
 
-    return { totalAmount, verifiedAmount, attendedCount, qrScannedCount };
-  }, [ledger]);
+  // 2) QR 스캔 축의금 = scrape 중 예식일 tx_date만
+  const qrAmount = ledger
+    .filter((r) => (r.created_source ?? "manual") === "scrape")
+    .filter((r) => {
+      if (!ceremonyDate) return true;
+      const txDate = r.event_scrape_transactions?.tx_date ?? null;
+      return txDate === ceremonyDate;
+    })
+    .reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
+
+  // 3) 총 참석자
+  const attendedCount = ledger.filter(isAttended).length;
+
+  // 4) QR 스캔 기준 현장 참석자
+  const qrScannedCount = ledger
+    .filter((r) => (r.created_source ?? null) === "guestpage")
+    .filter(isAttended).length;
+
+  return { totalAmount, qrAmount, attendedCount, qrScannedCount };
+}, [ledger, settings?.ceremony_date]);
+
 
   const filteredLedger = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -1420,7 +1437,7 @@ export default function ResultPage() {
             },
             {
               label: "QR 확인 축의금",
-              value: `${dashboardStats.verifiedAmount.toLocaleString()}원`,
+              value: `${dashboardStats.qrAmount.toLocaleString()}원`,
               sub: "QR 스캔으로 확인된 축의금",
               color: "text-blue-600",
             },
@@ -1685,7 +1702,7 @@ export default function ResultPage() {
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-xl font-black text-slate-900">{r.guest_name}</span>
-                            {locked && <span className="text-[10px] font-bold text-slate-300">자동</span>}
+                            {locked && <span className="text-[10px] font-bold text-slate-300">자동(수정불가)</span>}
                           </div>
                           <p className="text-xs text-slate-500 font-medium">
                             {(r.relationship || "관계 미입력") + " · " + (r.guest_phone || "연락처 없음")}
