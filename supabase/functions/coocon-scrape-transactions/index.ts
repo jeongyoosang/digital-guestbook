@@ -343,19 +343,39 @@ Deno.serve(async (req) => {
     });
 
     /* ================= Logging setup ================= */
-    const debugLogs: string[] = [];
-    const log = (msg: string, data?: any) => {
-      const line = data ? `${msg} ${JSON.stringify(data)}` : msg;
-      console.log(line);
-      debugLogs.push(line);
-    };
+      const debugLogs: string[] = [];
+      const log = (msg: string, data?: any) => {
+        const line = data ? `${msg} ${JSON.stringify(data)}` : msg;
+        console.log(line);
+        debugLogs.push(line);
+      };
 
-    log("[coocon-scrape-transactions] Processing request:", {
-      eventId: body.eventId,
-      scrapeAccountId: body.scrapeAccountId,
-      hasDecryptParams: !!(body.decryptParams?.uid && body.decryptParams?.action),
-      hasCooconOutput: !!body.cooconOutput,
-    });
+      log("[coocon-scrape-transactions] Processing request:", {
+        eventId: body.eventId,
+        scrapeAccountId: body.scrapeAccountId,
+        hasDecryptParams: !!(body.decryptParams?.uid && body.decryptParams?.action),
+        hasCooconOutput: !!body.cooconOutput,
+      });
+
+      /* ✅ 예식 날짜 조회 (ledger 필터 기준) */
+      const { data: eventSettings, error: settingsErr } = await admin
+        .from("event_settings")
+        .select("ceremony_date")
+        .eq("event_id", body.eventId)
+        .maybeSingle();
+
+      if (settingsErr) {
+        log("[WARN] Failed to fetch event_settings:", settingsErr);
+      }
+
+      const ceremonyDate = eventSettings?.ceremony_date ?? null;
+
+      if (!ceremonyDate) {
+        log("[WARN] ceremony_date is null – ledger will not be filtered by date");
+      } else {
+        log("[INFO] ceremony_date resolved:", ceremonyDate);
+      }
+
 
     const normalized = await normalizeFromCooconOutput(
       body.eventId,
@@ -412,12 +432,19 @@ Deno.serve(async (req) => {
         }
 
         if (eventAccount?.owner_member_id) {
-          // upsert된 거래내역의 실제 ID 조회 (중복 방지를 위해)
-          const { data: insertedTransactions, error: txQueryErr } = await admin
+          let txQuery = admin
             .from("event_scrape_transactions")
-            .select("id, tx_hash, sender, amount, memo")
+            .select("id, tx_hash, sender, amount, memo, tx_date")
             .eq("scrape_account_id", body.scrapeAccountId)
             .in("tx_hash", normalized.map(tx => tx.tx_hash));
+
+          /* ✅ ceremony_date가 있으면 ledger는 예식 당일만 */
+          if (ceremonyDate) {
+            txQuery = txQuery.eq("tx_date", ceremonyDate);
+          }
+
+          const { data: insertedTransactions, error: txQueryErr } = await txQuery;
+
 
           if (txQueryErr) {
             log("[WARN] Failed to query inserted transactions:", txQueryErr);

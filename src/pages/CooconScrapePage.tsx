@@ -200,11 +200,16 @@ export default function CooconScrapePage() {
         `&accountMasked=${encodeURIComponent(accountMasked)}` +
         `&accountNumber=${encodeURIComponent(rawNum)}`;
 
-      popupRef.current = window.open(
-        url,
-        "coocon_scrape",
-        "width=960,height=800"
-      );
+      if (popupRef.current && !popupRef.current.closed) {
+        popupRef.current.focus();
+      } else {
+        popupRef.current = window.open(
+          url,
+          "coocon_scrape",
+          "width=960,height=800"
+        );
+}
+
     } catch (e: any) {
       console.error(e);
       setError(e.message ?? "알 수 없는 오류");

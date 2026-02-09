@@ -214,10 +214,21 @@ function hash01(input: string) {
   return ((h >>> 0) % 1000) / 1000;
 }
 
+const ADMIN_EMAIL =
+  (import.meta as any).env?.VITE_ADMIN_EMAIL || "goraeuniverse@gmail.com";
+
 export default function ResultPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { eventId } = useParams<RouteParams>();
+
+  const asMemberId = useMemo(() => {
+    try {
+      return new URLSearchParams(location.search).get("asMemberId");
+    } catch {
+      return null;
+    }
+  }, [location.search]);
 
   const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState<MessageRow[]>([]);
@@ -255,6 +266,15 @@ export default function ResultPage() {
   const [ownerEmail, setOwnerEmail] = useState<string | null>(null);
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
 
+  // ✅ 관리자 뷰 전환: 이 이벤트의 멤버 옵션
+  const [memberOptions, setMemberOptions] = useState<
+    { id: string; role: string | null; name?: string | null }[]
+  >([]);
+
+  const isAdmin = useMemo(() => {
+    return !!ownerEmail && ownerEmail.toLowerCase() === String(ADMIN_EMAIL).toLowerCase();
+  }, [ownerEmail]);
+
   // 거래내역(현재 UI에선 주석/비표시지만, lastTxCreatedAt 계산용으로 유지)
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
@@ -289,14 +309,48 @@ export default function ResultPage() {
   const [excelUploadResult, setExcelUploadResult] = useState<string | null>(null);
 
   /* ------------------ 내 member id 찾기 ------------------ */
-  async function resolveOwnerMemberId(): Promise<string | null> {
+  async function resolveOwnerMemberId(overrideMemberId?: string | null): Promise<string | null> {
     const { data: authData } = await supabase.auth.getUser();
     if (!authData?.user) return null;
 
     const user = authData.user;
-    setOwnerEmail(user.email ?? null);
+    const email = user.email ?? null;
+
+    setOwnerEmail(email);
     setOwnerUserId(user.id ?? null);
 
+    const isAdminNow = !!email && email.toLowerCase() === String(ADMIN_EMAIL).toLowerCase();
+
+    // ✅ 운영자 + asMemberId가 있으면: "내 멤버"가 아니라 "그 멤버"로 보기
+    if (isAdminNow && overrideMemberId) {
+      try {
+        const { data: m, error: mErr } = await supabase
+          .from("event_members")
+          .select("id, role, name")
+          .eq("event_id", eventId)
+          .eq("id", overrideMemberId)
+          .maybeSingle();
+
+        if (mErr) throw mErr;
+
+        // label/role을 그 멤버 기준으로 세팅 (엑셀 파일명/상단 표기용)
+        const role = (m as any)?.role ?? null;
+        const name = (m as any)?.name ?? null;
+
+        setOwnerRole(role);
+        setOwnerLabel(name ? `${name}` : "멤버");
+
+        return overrideMemberId;
+      } catch (e) {
+        console.error("resolveOwnerMemberId(admin override) error:", e);
+        // override가 실패해도 id 자체는 유지(장부는 owner_member_id로만 필터링하니까)
+        setOwnerRole(null);
+        setOwnerLabel("멤버");
+        return overrideMemberId;
+      }
+    }
+
+    // ✅ 일반 사용자: 기존 로직 유지 (user_id로 내 멤버 찾기)
     const { data, error } = await supabase
       .from("event_members")
       .select("id, role")
@@ -441,8 +495,30 @@ export default function ResultPage() {
         await refreshTxCount();
         await refreshLastTxCreatedAt();
 
-        // owner_member_id
-        const memberId = await resolveOwnerMemberId();
+        // ✅ admin이면 이 이벤트의 멤버 옵션 로드(뷰 전환 드롭다운용)
+        try {
+          const { data: authData } = await supabase.auth.getUser();
+          const email = authData.user?.email ?? null;
+          const isAdminNow = !!email && email.toLowerCase() === String(ADMIN_EMAIL).toLowerCase();
+
+          if (isAdminNow) {
+            const { data: mems } = await supabase
+              .from("event_members")
+              .select("id, role, name")
+              .eq("event_id", eventId)
+              .order("created_at", { ascending: true });
+
+            setMemberOptions((mems as any[]) ?? []);
+          } else {
+            setMemberOptions([]);
+          }
+        } catch (e) {
+          console.error("admin memberOptions load failed:", e);
+          setMemberOptions([]);
+        }
+
+        // owner_member_id (✅ admin override 지원)
+        const memberId = await resolveOwnerMemberId(asMemberId);
         setOwnerMemberId(memberId ?? null);
       } catch (err) {
         console.error(err);
@@ -454,7 +530,7 @@ export default function ResultPage() {
 
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId]);
+  }, [eventId, asMemberId]);
 
   // ✅ 페이지 복귀/포커스/라우트 변경 시 최신화 (스크래핑 후 returnTo로 돌아온 경우 포함)
   useEffect(() => {
@@ -590,7 +666,8 @@ export default function ResultPage() {
     if (!eventId) return;
 
     try {
-      const downloadUrl = "https://vtejlkxltifytyvbeato.supabase.co/storage/v1/object/public/download/NXiSAS.exe";
+      const downloadUrl =
+        "https://vtejlkxltifytyvbeato.supabase.co/storage/v1/object/public/download/NXiSAS.exe";
       const link = document.createElement("a");
       link.href = downloadUrl;
       link.download = "NXiSAS.exe";
@@ -634,7 +711,8 @@ export default function ResultPage() {
   }
 
   async function saveLedgerRow(rowOrId: string | LedgerRow) {
-    const row: LedgerRow | undefined = typeof rowOrId === "string" ? ledgerRef.current[rowOrId] : rowOrId;
+    const row: LedgerRow | undefined =
+      typeof rowOrId === "string" ? ledgerRef.current[rowOrId] : rowOrId;
     if (!row) return;
     if (isLockedRow(row)) return;
 
@@ -831,7 +909,8 @@ export default function ResultPage() {
       if (!prev) msgByGuest.set(key, m);
       else {
         // 최신 created_at 우선
-        if (new Date(m.created_at).getTime() > new Date(prev.created_at).getTime()) msgByGuest.set(key, m);
+        if (new Date(m.created_at).getTime() > new Date(prev.created_at).getTime())
+          msgByGuest.set(key, m);
       }
     }
 
@@ -919,9 +998,12 @@ export default function ResultPage() {
           const attended_at = toIsoMaybe(attendedAtRaw);
 
           const gift_amount = safeNumber(key(r, ["축의금", "금액", "축의금액"]));
-          const gift_method = normalizeGiftMethod(key(r, ["축의금방식(선택)", "축의금방식", "방식", "gift_method"]));
+          const gift_method = normalizeGiftMethod(
+            key(r, ["축의금방식(선택)", "축의금방식", "방식", "gift_method"])
+          );
 
-          const ticket_count = safeNumber(key(r, ["식권(매수)", "식권", "식권매수", "ticket_count"])) ?? 0;
+          const ticket_count =
+            safeNumber(key(r, ["식권(매수)", "식권", "식권매수", "ticket_count"])) ?? 0;
 
           const return_given_raw = key(r, ["답례", "답례여부", "return_given"]);
           const return_given = normalizeBool(return_given_raw) ?? false;
@@ -1049,47 +1131,46 @@ export default function ResultPage() {
         return lines;
       };
 
-     // 높이 계산(페이지 메시지 카드들) — 여유 높이 보정 버전
-        const fake = document.createElement("canvas").getContext("2d")!;
-        fake.font = `600 13px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+      // 높이 계산(페이지 메시지 카드들) — 여유 높이 보정 버전
+      const fake = document.createElement("canvas").getContext("2d")!;
+      fake.font = `600 13px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
 
-        const cardW = width - padding * 2;
-        const bodyW = cardW - cardPad * 2;
+      const cardW = width - padding * 2;
+      const bodyW = cardW - cardPad * 2;
 
-        // ✅ 안전 여유값 (잘림 방지 핵심)
-        const EXTRA_TOP = 16;        // 상단 여유
-        const EXTRA_BOTTOM = 140;    // 하단 페이지/워터마크/여백
-        const EXTRA_SAFE = 80;       // 전체 안전 마진
-        const MIN_HEIGHT = 1200;     // 너무 작게 잡히는 상황 방지
+      // ✅ 안전 여유값 (잘림 방지 핵심)
+      const EXTRA_TOP = 16; // 상단 여유
+      const EXTRA_BOTTOM = 140; // 하단 페이지/워터마크/여백
+      const EXTRA_SAFE = 80; // 전체 안전 마진
+      const MIN_HEIGHT = 1200; // 너무 작게 잡히는 상황 방지
 
-        let totalH = 0;
+      let totalH = 0;
 
-        // top title block
-        totalH += 20 + 26 + 10;
-        totalH += 10;
-        totalH += EXTRA_TOP;
+      // top title block
+      totalH += 20 + 26 + 10;
+      totalH += 10;
+      totalH += EXTRA_TOP;
 
-        for (const m of msgSlice) {
-          const body = (m.body ?? "").trim();
-          const lines = wrap(fake, body, bodyW);
-          const bodyH = Math.max(1, lines.length) * lineH;
+      for (const m of msgSlice) {
+        const body = (m.body ?? "").trim();
+        const lines = wrap(fake, body, bodyW);
+        const bodyH = Math.max(1, lines.length) * lineH;
 
-          // card block
-          totalH += 14;        // card top
-          totalH += 18;        // name
-          totalH += 6;         // meta
-          totalH += bodyH;     // body
-          totalH += 14;        // card bottom
-          totalH += 12;        // gap
-        }
+        // card block
+        totalH += 14; // card top
+        totalH += 18; // name
+        totalH += 6; // meta
+        totalH += bodyH; // body
+        totalH += 14; // card bottom
+        totalH += 12; // gap
+      }
 
-        // footer
-        totalH += 22;
-        totalH += EXTRA_SAFE + EXTRA_BOTTOM;
+      // footer
+      totalH += 22;
+      totalH += EXTRA_SAFE + EXTRA_BOTTOM;
 
-        // ✅ 최소 높이 보장
-        totalH = Math.max(totalH, MIN_HEIGHT);
-
+      // ✅ 최소 높이 보장
+      totalH = Math.max(totalH, MIN_HEIGHT);
 
       // canvas
       const canvas = document.createElement("canvas");
@@ -1150,7 +1231,7 @@ export default function ResultPage() {
       ctx.fillText("Digital Guestbook", 0, 0);
       ctx.restore();
 
-     // header
+      // header
       const title = "축하 메시지";
 
       // ✅ 신랑/신부 이름 추출 (settings.recipients 기반)
@@ -1172,7 +1253,6 @@ export default function ResultPage() {
       ctx.fillStyle = "rgba(100, 116, 139, 0.95)";
       ctx.font = `700 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
       ctx.fillText(sub, padding, 56);
-
 
       // cards
       let y = 72;
@@ -1279,48 +1359,53 @@ export default function ResultPage() {
   }, [settings?.ceremony_date]);
 
   const dashboardStats = useMemo(() => {
-  const ceremonyDate = settings?.ceremony_date ?? null;
+    const ceremonyDate = settings?.ceremony_date ?? null;
 
-  const isAttended = (r: LedgerRow) => r.attended === true || !!r.attended_at;
+    const isAttended = (r: LedgerRow) => r.attended === true || !!r.attended_at;
 
-  // 1) 총 축의금
-  const totalAmount = ledger.reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
+    // 1) 총 축의금
+    const totalAmount = ledger.reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
 
-  // 2) QR 스캔 축의금 = scrape 중 예식일 tx_date만
-  const qrAmount = ledger
-    .filter((r) => (r.created_source ?? "manual") === "scrape")
-    .filter((r) => {
-      if (!ceremonyDate) return true;
-      const txDate = r.event_scrape_transactions?.tx_date ?? null;
-      return txDate === ceremonyDate;
-    })
-    .reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
+    // 2) QR 스캔 축의금 = scrape 중 예식일 tx_date만
+    const qrAmount = ledger
+      .filter((r) => (r.created_source ?? "manual") === "scrape")
+      .filter((r) => {
+        if (!ceremonyDate) return true;
+        const txDate = r.event_scrape_transactions?.tx_date ?? null;
+        return txDate === ceremonyDate;
+      })
+      .reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
 
-  // 3) 총 참석자
-  const attendedCount = ledger.filter(isAttended).length;
+    // 3) 총 참석자
+    const attendedCount = ledger.filter(isAttended).length;
 
-  // 4) QR 스캔 기준 현장 참석자
-  const qrScannedCount = ledger
-    .filter((r) => (r.created_source ?? null) === "guestpage")
-    .filter(isAttended).length;
+    // 4) QR 스캔 기준 현장 참석자
+    const qrScannedCount = ledger
+      .filter((r) => (r.created_source ?? null) === "guestpage")
+      .filter(isAttended).length;
 
-  return { totalAmount, qrAmount, attendedCount, qrScannedCount };
-}, [ledger, settings?.ceremony_date]);
-
+    return { totalAmount, qrAmount, attendedCount, qrScannedCount };
+  }, [ledger, settings?.ceremony_date]);
 
   const filteredLedger = useMemo(() => {
     const query = q.trim().toLowerCase();
 
     return ledger
       .filter((r) => {
-        if ((r.created_source ?? null) === "scrape" && settings?.ceremony_date && r.event_scrape_transactions?.tx_date) {
+        if (
+          (r.created_source ?? null) === "scrape" &&
+          settings?.ceremony_date &&
+          r.event_scrape_transactions?.tx_date
+        ) {
           return r.event_scrape_transactions.tx_date === settings.ceremony_date;
         }
         return true;
       })
       .filter((r) => {
         if (!query) return true;
-        const hay = [r.guest_name, r.relationship ?? "", r.guest_phone ?? "", r.memo ?? ""].join(" ").toLowerCase();
+        const hay = [r.guest_name, r.relationship ?? "", r.guest_phone ?? "", r.memo ?? ""]
+          .join(" ")
+          .toLowerCase();
         return hay.includes(query);
       })
       .filter((r) => (onlyAttended ? r.attended === true : true))
@@ -1412,11 +1497,43 @@ export default function ResultPage() {
                 <p className="text-xs font-bold text-slate-600">{formatKSTTime(lastTxCreatedAt)}</p>
                 <p className="mt-1 text-[10px] text-slate-400 font-medium">{criteriaText}</p>
               </div>
+
+              {/* ✅ 관리자 뷰 전환 드롭다운 (tab=ledger에서만 노출) */}
+              {isAdmin && (
+                <div className="bg-white/90 backdrop-blur border border-slate-100 px-4 py-3 rounded-2xl shadow-sm">
+                  <p className="text-[10px] font-black text-slate-300 uppercase leading-none mb-1">
+                    관리자 뷰 전환
+                  </p>
+                  <select
+                    className="w-52 bg-slate-50 border-none rounded-xl px-3 py-2 text-xs font-bold text-slate-700"
+                    value={asMemberId ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value || "";
+                      const sp = new URLSearchParams(location.search);
+                      if (!v) sp.delete("asMemberId");
+                      else sp.set("asMemberId", v);
+                      // ✅ replace로 URL만 바꾸고, useMemo(asMemberId) + effect로 재로딩
+                      navigate(
+                        { pathname: location.pathname, search: sp.toString() ? `?${sp.toString()}` : "" },
+                        { replace: true }
+                      );
+                    }}
+                  >
+                    <option value="">(기본) 내 계정 기준</option>
+                    {memberOptions.map((m) => {
+                      const label = `${(m.name ?? "").trim() || (m.role ?? "member")} • ${m.id.slice(0, 6)}`;
+                      return (
+                        <option key={m.id} value={m.id}>
+                          {label}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              )}
             </div>
           ) : (
-            <div className="flex flex-wrap gap-2">
-           
-            </div>
+            <div className="flex flex-wrap gap-2"></div>
           )}
         </header>
 
@@ -1459,10 +1576,10 @@ export default function ResultPage() {
               className="bg-white/90 backdrop-blur p-6 rounded-[2rem] shadow-sm border border-slate-100/60 hover:shadow-md transition-shadow"
             >
               <p className="text-slate-400 text-[11px] font-bold uppercase mb-1 tracking-widest">{s.label}</p>
-                <p className={`font-black ${s.color} mb-1 whitespace-nowrap tracking-tight text-[clamp(18px,5.2vw,26px)]`}>
-                    {s.value}
-                  </p>              
-                <p className="text-[10px] text-slate-400 font-medium">{s.sub}</p>
+              <p className={`font-black ${s.color} mb-1 whitespace-nowrap tracking-tight text-[clamp(18px,5.2vw,26px)]`}>
+                {s.value}
+              </p>
+              <p className="text-[10px] text-slate-400 font-medium">{s.sub}</p>
             </div>
           ))}
         </div>
@@ -1945,7 +2062,6 @@ export default function ResultPage() {
                   <div className="absolute right-6 top-6 text-white/30 font-semibold tracking-wide pointer-events-none">
                     Digital Guestbook
                   </div>
-
                 </div>
 
                 {/* top bar */}

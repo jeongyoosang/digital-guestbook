@@ -589,10 +589,11 @@
 
         var ok = safePostToOpener(payload);
         if (ok) {
-          try {
-            // window.close(); // Keep open for debugging
-          } catch (e) { }
+          setTimeout(function () {
+            window.close();
+          }, 300);
         }
+
       });
 
       log("페이지 로드 완료");

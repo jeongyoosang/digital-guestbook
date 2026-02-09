@@ -38,9 +38,28 @@ type EventRow = {
   [key: string]: any;
 };
 
+type Recipient = {
+  name: string;
+  role: string;
+  contact?: string | null;
+};
+
 type EventSettingsRow = {
   id: string;
   event_id: string;
+  recipients?: Recipient[] | string | null;
+  [key: string]: any;
+};
+
+type EventMemberRow = {
+  id: string;
+  event_id: string;
+  role?: string | null; // "신랑", "신부", "신랑아버지" 등으로 들어있을 가능성
+  name?: string | null;
+  side?: string | null;
+  email?: string | null;
+  user_id?: string | null;
+  created_at?: string | null;
   [key: string]: any;
 };
 
@@ -63,6 +82,10 @@ export const AdminPage = () => {
   // event_id -> settings row
   const [settingsMap, setSettingsMap] = useState<Record<string, EventSettingsRow | undefined>>({});
 
+  // ✅ event_id -> members
+  const [memberMap, setMemberMap] = useState<Record<string, EventMemberRow[] | undefined>>({});
+  const [memberLoading, setMemberLoading] = useState(false);
+
   const selected = useMemo(
     () => reservations.find((r) => r.id === selectedId) ?? null,
     [reservations, selectedId]
@@ -78,6 +101,12 @@ export const AdminPage = () => {
     if (!eid) return null;
     return settingsMap[eid] ?? null;
   }, [selectedEvent?.id, settingsMap]);
+
+  const selectedMembers = useMemo(() => {
+    const eid = selectedEvent?.id;
+    if (!eid) return [];
+    return memberMap[eid] ?? [];
+  }, [selectedEvent?.id, memberMap]);
 
   // ✅ IA 정공법 URL들
   const getSettingsUrl = (eventId: string) => `${window.location.origin}/app/event/${eventId}/settings`;
@@ -95,6 +124,54 @@ export const AdminPage = () => {
     }
   };
 
+  const parseRecipientsSafe = (raw: EventSettingsRow["recipients"]): Recipient[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw as Recipient[];
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? (parsed as Recipient[]) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
+  const labelRecipient = (r: Recipient) => {
+    // ✅ “신랑(김용준)” / “신랑아버지(홍길동)” 형태
+    const role = (r.role || "").trim();
+    const name = (r.name || "").trim();
+    if (role && name) return `${role} (${name})`;
+    return role || name || "멤버";
+  };
+
+  // ✅ recipient ↔ event_member 매칭 (role 우선, 없으면 name으로 보정)
+  const findMemberIdForRecipient = (r: Recipient, members: EventMemberRow[]) => {
+    const role = (r.role || "").trim();
+    const name = (r.name || "").trim();
+
+    // 1) role 정확히 일치
+    if (role) {
+      const hit = members.find((m) => (m.role || "").trim() === role);
+      if (hit?.id) return hit.id;
+    }
+
+    // 2) name 일치
+    if (name) {
+      const hit = members.find((m) => (m.name || "").trim() === name);
+      if (hit?.id) return hit.id;
+    }
+
+    // 3) role 포함 (예: "신랑 부" vs "신랑아버지" 등)
+    if (role) {
+      const hit = members.find((m) => (m.role || "").includes(role));
+      if (hit?.id) return hit.id;
+    }
+
+    return null;
+  };
+
   const fetchEventsForReservations = async (rows: ReservationRow[]) => {
     const ids = rows.map((r) => r.id).filter(Boolean);
     if (ids.length === 0) {
@@ -104,12 +181,7 @@ export const AdminPage = () => {
     }
 
     try {
-      // ✅ supabase -> supabaseAdmin
-      const { data, error } = await supabaseAdmin
-        .from("events")
-        .select("*")
-        .in("reservation_id", ids);
-
+      const { data, error } = await supabaseAdmin.from("events").select("*").in("reservation_id", ids);
       if (error) throw error;
 
       const map: Record<string, EventRow> = {};
@@ -119,12 +191,10 @@ export const AdminPage = () => {
 
       setEventMap(map);
 
-      // 이벤트가 있는 것들에 대해 settings도 한 번에 로드
       const eventIds = (data as EventRow[]).map((e) => e.id).filter(Boolean);
       void fetchSettingsForEvents(eventIds);
     } catch (e) {
       console.error("이벤트 매핑 조회 오류:", e);
-      // 치명적이지 않으니 조용히 실패
     }
   };
 
@@ -135,12 +205,7 @@ export const AdminPage = () => {
     }
 
     try {
-      // ✅ supabase -> supabaseAdmin
-      const { data, error } = await supabaseAdmin
-        .from("event_settings")
-        .select("*")
-        .in("event_id", eventIds);
-
+      const { data, error } = await supabaseAdmin.from("event_settings").select("*").in("event_id", eventIds);
       if (error) throw error;
 
       const map: Record<string, EventSettingsRow> = {};
@@ -153,15 +218,30 @@ export const AdminPage = () => {
     }
   };
 
+  const fetchMembersForEvent = async (eventId: string) => {
+    setMemberLoading(true);
+    try {
+      const { data, error } = await supabaseAdmin
+        .from("event_members")
+        .select("*")
+        .eq("event_id", eventId)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+
+      setMemberMap((prev) => ({ ...prev, [eventId]: (data || []) as EventMemberRow[] }));
+    } catch (e) {
+      console.error("event_members 조회 오류:", e);
+      setMemberMap((prev) => ({ ...prev, [eventId]: [] }));
+    } finally {
+      setMemberLoading(false);
+    }
+  };
+
   const fetchReservations = async () => {
     setLoading(true);
     try {
-      // ✅ supabase -> supabaseAdmin
-      const { data, error } = await supabaseAdmin
-        .from("reservations")
-        .select("*")
-        .order("created_at", { ascending: false });
-
+      const { data, error } = await supabaseAdmin.from("reservations").select("*").order("created_at", { ascending: false });
       if (error) throw error;
 
       const rows = (data || []) as ReservationRow[];
@@ -178,36 +258,26 @@ export const AdminPage = () => {
     }
   };
 
-         // ✅ 이벤트 없으면 생성 (관리자는 insert 가능)
-    const ensureEventForReservation = async (row: ReservationRow) => {
-      const existing = eventMap[row.id];
-      if (existing?.id) return existing.id;
+  // ✅ 이벤트 없으면 생성 (관리자는 insert 가능)
+  const ensureEventForReservation = async (row: ReservationRow) => {
+    const existing = eventMap[row.id];
+    if (existing?.id) return existing.id;
 
-      // ✅ owner_email / is_public까지 같이 넣어서 재발 방지
-      const payload: Partial<EventRow> = {
-        reservation_id: row.id,
-        owner_email: row.email ?? null,   // ✅ 핵심
-        is_public: true,                 // ✅ 기본값(원하면 false로)
-      };
-
-      const { data, error } = await supabaseAdmin
-        .from("events")
-        .insert(payload)
-        .select("*")
-        .single();
-
-      if (error) throw error;
-
-      const newEvent = data as EventRow;
-
-      setEventMap((prev) => ({ ...prev, [row.id]: newEvent }));
-
-      // settings도 미리 로드
-      void fetchSettingsForEvents([newEvent.id]);
-
-      return newEvent.id;
+    const payload: Partial<EventRow> = {
+      reservation_id: row.id,
+      owner_email: row.email ?? null,
+      is_public: true,
     };
 
+    const { data, error } = await supabaseAdmin.from("events").insert(payload).select("*").single();
+    if (error) throw error;
+
+    const newEvent = data as EventRow;
+    setEventMap((prev) => ({ ...prev, [row.id]: newEvent }));
+    void fetchSettingsForEvents([newEvent.id]);
+
+    return newEvent.id;
+  };
 
   const promptOpenOrCopySettings = async (eventId: string) => {
     const settingsUrl = getSettingsUrl(eventId);
@@ -221,10 +291,7 @@ export const AdminPage = () => {
       return;
     }
 
-    const copied = await copyToClipboardBestEffort(
-      settingsUrl,
-      "예약설정 링크가 클립보드에 복사되었습니다."
-    );
+    const copied = await copyToClipboardBestEffort(settingsUrl, "예약설정 링크가 클립보드에 복사되었습니다.");
     if (!copied) alert(settingsUrl);
   };
 
@@ -237,19 +304,11 @@ export const AdminPage = () => {
       const next: ReservationStatus =
         current === "new" ? "in_progress" : current === "in_progress" ? "done" : "new";
 
-      // ✅ supabase -> supabaseAdmin
-      const { error } = await supabaseAdmin
-        .from("reservations")
-        .update({ status: next })
-        .eq("id", row.id);
-
+      const { error } = await supabaseAdmin.from("reservations").update({ status: next }).eq("id", row.id);
       if (error) throw error;
 
-      setReservations((prev) =>
-        prev.map((r) => (r.id === row.id ? { ...r, status: next } : r))
-      );
+      setReservations((prev) => prev.map((r) => (r.id === row.id ? { ...r, status: next } : r)));
 
-      // 신규 -> 진행 : 이벤트 생성 + 예약설정 링크 안내
       if (current === "new" && next === "in_progress") {
         const eventId = await ensureEventForReservation(row);
         await promptOpenOrCopySettings(eventId);
@@ -284,7 +343,7 @@ export const AdminPage = () => {
     }
   };
 
-  // ✅ /admin 접근 자체를 “운영자 계정”으로 제한 (숨은 우회 접근)
+  // ✅ /admin 접근 자체를 “운영자 계정”으로 제한
   useEffect(() => {
     const boot = async () => {
       try {
@@ -293,8 +352,6 @@ export const AdminPage = () => {
 
         const email = data.user?.email ?? null;
         setAdminEmail(email);
-
-        // 운영자 이메일만 허용
         setIsAdmin(!!email && email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
       } catch (e) {
         console.error("어드민 권한 확인 실패:", e);
@@ -316,6 +373,15 @@ export const AdminPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booting, isAdmin]);
 
+  // ✅ 선택 이벤트 바뀌면 members 로드 (한 번만)
+  useEffect(() => {
+    const eid = selectedEvent?.id;
+    if (!eid) return;
+    if (memberMap[eid]) return; // 이미 로드했으면 skip
+    void fetchMembersForEvent(eid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEvent?.id]);
+
   const formatDateTime = (iso: string) => {
     try {
       return new Date(iso).toLocaleString("ko-KR", {
@@ -329,8 +395,7 @@ export const AdminPage = () => {
     }
   };
 
-  const statusLabel = (s?: ReservationStatus | null) =>
-    s === "done" ? "완료" : s === "in_progress" ? "진행 중" : "신규";
+  const statusLabel = (s?: ReservationStatus | null) => (s === "done" ? "완료" : s === "in_progress" ? "진행 중" : "신규");
 
   // ---- UI (권한) ----
   if (booting) {
@@ -346,7 +411,6 @@ export const AdminPage = () => {
   }
 
   if (!isAdmin) {
-    // ✅ B안: /admin/login으로 이동 (redirect는 /admin)
     const loginUrl = `/admin/login?redirect=${encodeURIComponent("/admin")}`;
 
     return (
@@ -393,43 +457,45 @@ export const AdminPage = () => {
   }
 
   // ---- 운영 콘솔 ----
+  const recipients = parseRecipientsSafe(selectedSettings?.recipients);
+
   return (
     <section className="min-h-screen bg-ivory px-4 py-8">
       <div className="container mx-auto max-w-6xl">
         {/* 헤더 */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
-            <div>
-              <h1 className="font-display text-3xl sm:text-4xl text-ink/90">관리자 페이지</h1>
-              <p className="text-sm text-ink/60 mt-1">
-                운영자 계정: <span className="font-mono">{adminEmail}</span>
-                <br className="hidden sm:block" />
-                예약 → 이벤트 생성 → 예식 설정/리포트/디스플레이 운영까지 한 화면에서 확인합니다.
-              </p>
-            </div>
-
-            {/* ✅ 우측 액션: 새로고침 + 로그아웃 */}
-            <div className="flex items-center gap-2 self-start sm:self-auto">
-              <Button
-                variant="outline"
-                onClick={fetchReservations}
-                disabled={loading}
-                className="border-leafLight text-ink hover:bg-ivory/70"
-              >
-                {loading ? "불러오는 중…" : "예약 새로고침"}
-              </Button>
-
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  await supabaseAdmin.auth.signOut();
-                  window.location.href = "/admin/login";
-                }}
-                className="border-red-200 text-red-600 hover:bg-red-50"
-              >
-                로그아웃
-              </Button>
-            </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+          <div>
+            <h1 className="font-display text-3xl sm:text-4xl text-ink/90">관리자 페이지</h1>
+            <p className="text-sm text-ink/60 mt-1">
+              운영자 계정: <span className="font-mono">{adminEmail}</span>
+              <br className="hidden sm:block" />
+              예약 → 이벤트 생성 → 예식 설정/리포트/디스플레이 운영까지 한 화면에서 확인합니다.
+            </p>
           </div>
+
+          {/* 우측 액션 */}
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <Button
+              variant="outline"
+              onClick={fetchReservations}
+              disabled={loading}
+              className="border-leafLight text-ink hover:bg-ivory/70"
+            >
+              {loading ? "불러오는 중…" : "예약 새로고침"}
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={async () => {
+                await supabaseAdmin.auth.signOut();
+                window.location.href = "/admin/login";
+              }}
+              className="border-red-200 text-red-600 hover:bg-red-50"
+            >
+              로그아웃
+            </Button>
+          </div>
+        </div>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)]">
           {/* 왼쪽: 예약 리스트 */}
@@ -452,7 +518,6 @@ export const AdminPage = () => {
 
                       const dateText =
                         r.date_status === "confirmed" ? r.event_date ?? "-" : r.tentative_date || "미정";
-
                       const timeText =
                         r.date_status === "confirmed" && r.wedding_time ? r.wedding_time.slice(0, 5) : "";
 
@@ -468,8 +533,7 @@ export const AdminPage = () => {
                           >
                             <div className="flex items-center justify-between gap-2">
                               <div className="font-medium text-ink truncate">
-                                {r.name || "(이름 없음)"}{" "}
-                                {r.role && <span className="text-xs text-ink/60">/ {r.role}</span>}
+                                {r.name || "(이름 없음)"} {r.role && <span className="text-xs text-ink/60">/ {r.role}</span>}
                               </div>
 
                               <div className="flex items-center gap-1">
@@ -502,12 +566,8 @@ export const AdminPage = () => {
                               </span>
                             </div>
 
-                            {!!r.email && (
-                              <div className="text-[11px] text-ink/55 font-mono truncate">{r.email}</div>
-                            )}
-
+                            {!!r.email && <div className="text-[11px] text-ink/55 font-mono truncate">{r.email}</div>}
                             {r.venue_name && <div className="text-xs text-ink/70 truncate">{r.venue_name}</div>}
-
                             <div className="text-[11px] text-ink/50">접수 : {formatDateTime(r.created_at)}</div>
                           </button>
                         </li>
@@ -534,8 +594,7 @@ export const AdminPage = () => {
                     <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-y-1.5">
                       <span className="text-ink/60">이름</span>
                       <span>
-                        {selected.name || "-"}{" "}
-                        {selected.role && <span className="text-ink/60">/ {selected.role}</span>}
+                        {selected.name || "-"} {selected.role && <span className="text-ink/60">/ {selected.role}</span>}
                       </span>
 
                       <span className="text-ink/60">이메일</span>
@@ -568,18 +627,14 @@ export const AdminPage = () => {
                         className="border-blue-200 text-blue-700 hover:bg-blue-50"
                         onClick={() => handleCreateOrOpenEvent(selected)}
                       >
-                        {creatingEvent
-                          ? "처리 중..."
-                          : eventMap[selected.id]?.id
-                          ? "예약설정페이지 열기"
-                          : "예약설정 링크 생성/열기"}
+                        {creatingEvent ? "처리 중..." : eventMap[selected.id]?.id ? "예약설정페이지 열기" : "예약설정 링크 생성/열기"}
                       </Button>
                     </div>
                   </section>
 
-                  {/* 이벤트/설정 미리보기 */}
+                  {/* 이벤트/설정 */}
                   <section className="space-y-1">
-                    <h3 className="font-semibold text-ink/90 mb-1">이벤트 & 설정 미리보기</h3>
+                    <h3 className="font-semibold text-ink/90 mb-1">이벤트 & 설정</h3>
 
                     {!selectedEvent ? (
                       <div className="text-ink/60 text-sm bg-ivory/70 border border-leafLight/50 rounded-xl px-3 py-3">
@@ -592,14 +647,13 @@ export const AdminPage = () => {
                           <span className="font-mono break-all">{selectedEvent.id}</span>
 
                           <span className="text-ink/60">Owner</span>
-                          <span className="font-mono break-all">
-                            {selectedEvent.owner_email || selected.email || "-"}
-                          </span>
+                          <span className="font-mono break-all">{selectedEvent.owner_email || selected.email || "-"}</span>
 
                           <span className="text-ink/60">공개</span>
                           <span>{selectedEvent.is_public ? "TRUE" : "FALSE/미설정"}</span>
                         </div>
 
+                        {/* ✅ 기본 운영 링크 */}
                         <div className="flex flex-wrap gap-2">
                           <Button
                             variant="outline"
@@ -615,7 +669,7 @@ export const AdminPage = () => {
                             className="border-blue-200 text-blue-700 hover:bg-blue-50"
                             onClick={() => window.open(getReportUrl(selectedEvent.id), "_blank", "noopener,noreferrer")}
                           >
-                            리포트
+                            리포트(기본)
                           </Button>
                           <Button
                             variant="outline"
@@ -648,7 +702,73 @@ export const AdminPage = () => {
                           </Button>
                         </div>
 
-                        {/* settings 미리보기 */}
+                        {/* ✅ 핵심: 멤버로 리포트 보기 */}
+                        <div className="bg-white/70 border border-blue-100 rounded-2xl px-3 py-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm font-semibold text-ink/90">멤버 기준으로 리포트 보기</div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                              onClick={() => void fetchMembersForEvent(selectedEvent.id)}
+                              disabled={memberLoading}
+                            >
+                              {memberLoading ? "불러오는 중…" : "멤버 새로고침"}
+                            </Button>
+                          </div>
+
+                          <div className="text-xs text-ink/60 mt-1">
+                            신랑/신부/혼주가 실제로 받는 화면(장부 개인화 + 엑셀 포함)을 운영자가 그대로 확인합니다.
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {recipients.length === 0 ? (
+                              <div className="text-xs text-ink/60">
+                                recipients가 없습니다. (상세설정에서 수령인/멤버를 먼저 확정해줘야 버튼이 생김)
+                              </div>
+                            ) : (
+                              recipients.map((r, idx) => {
+                                const memberId = findMemberIdForRecipient(r, selectedMembers);
+                                const label = labelRecipient(r);
+                                const url = memberId
+                                  ? `${getReportUrl(selectedEvent.id)}?asMemberId=${encodeURIComponent(memberId)}`
+                                  : null;
+
+                                return (
+                                  <Button
+                                    key={`${r.role}-${r.name}-${idx}`}
+                                    variant="outline"
+                                    size="sm"
+                                    className={cn(
+                                      "border-slate-200 text-ink hover:bg-ivory/70",
+                                      !memberId && "opacity-60 cursor-not-allowed"
+                                    )}
+                                    disabled={!memberId}
+                                    onClick={() => {
+                                      if (!url) return;
+                                      window.open(url, "_blank", "noopener,noreferrer");
+                                    }}
+                                    title={
+                                      memberId
+                                        ? `${label}로 리포트 열기`
+                                        : `event_members 매칭 실패: ${label} (event_members에 role/name이 맞게 들어있는지 확인 필요)`
+                                    }
+                                  >
+                                    {label}로 보기
+                                  </Button>
+                                );
+                              })
+                            )}
+                          </div>
+
+                          {recipients.length > 0 && selectedMembers.length === 0 && (
+                            <div className="mt-2 text-[11px] text-amber-700">
+                              ⚠️ event_members가 비어있습니다. 현재 상태에선 “멤버로 보기”가 매칭되지 않습니다. (초대/생성 플로우에서 event_members insert 필요)
+                            </div>
+                          )}
+                        </div>
+
+                        {/* settings 요약 */}
                         <div className="bg-ivory/70 border border-leafLight/50 rounded-xl px-3 py-3">
                           <div className="text-xs text-ink/60 mb-2">event_settings 요약 (없으면 “-”)</div>
 
@@ -706,12 +826,10 @@ export const AdminPage = () => {
 
                   <section className="border-t border-dashed border-leafLight/60 pt-3 text-xs text-ink/60">
                     <p className="mb-1">
-                      • 예약금 입금 확인 후 <strong>신규 → 진행</strong>으로 바꾸면{" "}
-                      <strong>이벤트가 자동 생성</strong>되고 <strong>예약설정 링크</strong>로 운영 가능.
+                      • 예약금 입금 확인 후 <strong>신규 → 진행</strong>으로 바꾸면 <strong>이벤트가 자동 생성</strong>되고{" "}
+                      <strong>예약설정 링크</strong>로 운영 가능.
                     </p>
-                    <p>
-                      • 운영자 계정은 <strong>/app</strong>에서 전체 이벤트를 조회할 수 있고, 개인 계정은 자기 이벤트만 봅니다.
-                    </p>
+                    <p>• 운영자 계정은 /admin에서 “멤버 기준 리포트”까지 확인하는 게 목표 UX.</p>
                   </section>
                 </div>
               )}
