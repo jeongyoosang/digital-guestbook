@@ -268,8 +268,9 @@ export default function ResultPage() {
 
   // ✅ 관리자 뷰 전환: 이 이벤트의 멤버 옵션
   const [memberOptions, setMemberOptions] = useState<
-    { id: string; role: string | null; name?: string | null }[]
+  { id: string; role: string | null; user_id: string | null }[]
   >([]);
+
 
   const isAdmin = useMemo(() => {
     return !!ownerEmail && ownerEmail.toLowerCase() === String(ADMIN_EMAIL).toLowerCase();
@@ -310,69 +311,125 @@ export default function ResultPage() {
 
   /* ------------------ 내 member id 찾기 ------------------ */
   async function resolveOwnerMemberId(overrideMemberId?: string | null): Promise<string | null> {
-    const { data: authData } = await supabase.auth.getUser();
-    if (!authData?.user) return null;
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) return null;
 
-    const user = authData.user;
-    const email = user.email ?? null;
+  const user = authData.user;
+  const email = user.email ?? null;
 
-    setOwnerEmail(email);
-    setOwnerUserId(user.id ?? null);
+  setOwnerEmail(email);
+  setOwnerUserId(user.id ?? null);
 
-    const isAdminNow = !!email && email.toLowerCase() === String(ADMIN_EMAIL).toLowerCase();
+  const isAdminNow = !!email && email.toLowerCase() === String(ADMIN_EMAIL).toLowerCase();
 
-    // ✅ 운영자 + asMemberId가 있으면: "내 멤버"가 아니라 "그 멤버"로 보기
-    if (isAdminNow && overrideMemberId) {
-      try {
-        const { data: m, error: mErr } = await supabase
-          .from("event_members")
-          .select("id, role, name")
-          .eq("event_id", eventId)
-          .eq("id", overrideMemberId)
-          .maybeSingle();
+  // ✅ 1) ADMIN + asMemberId 있으면: 그 멤버로 보기
+  if (isAdminNow && overrideMemberId) {
+    try {
+      const { data: m, error: mErr } = await supabase
+        .from("event_members")
+        .select("id, role, user_id")
+        .eq("event_id", eventId)
+        .eq("id", overrideMemberId)
+        .maybeSingle();
 
-        if (mErr) throw mErr;
+      if (mErr) throw mErr;
 
-        // label/role을 그 멤버 기준으로 세팅 (엑셀 파일명/상단 표기용)
-        const role = (m as any)?.role ?? null;
-        const name = (m as any)?.name ?? null;
+      const role = (m as any)?.role ?? null;
+      const uid = (m as any)?.user_id ?? null;
 
-        setOwnerRole(role);
-        setOwnerLabel(name ? `${name}` : "멤버");
+      // admin view에서는 groom/bride 필터링 안 걸리게 null 처리
+      setOwnerRole(null);
+      setOwnerLabel(
+        role
+          ? `${role}${uid ? ` • ${String(uid).slice(0, 6)}` : ""}`
+          : `멤버${uid ? ` • ${String(uid).slice(0, 6)}` : ""}`
+      );
 
-        return overrideMemberId;
-      } catch (e) {
-        console.error("resolveOwnerMemberId(admin override) error:", e);
-        // override가 실패해도 id 자체는 유지(장부는 owner_member_id로만 필터링하니까)
-        setOwnerRole(null);
-        setOwnerLabel("멤버");
-        return overrideMemberId;
-      }
+      return overrideMemberId;
+    } catch (e) {
+      console.error("resolveOwnerMemberId(admin override) error:", e);
+      setOwnerRole(null);
+      setOwnerLabel("멤버");
+      return overrideMemberId;
     }
+  }
 
-    // ✅ 일반 사용자: 기존 로직 유지 (user_id로 내 멤버 찾기)
-    const { data, error } = await supabase
-      .from("event_members")
-      .select("id, role")
-      .eq("event_id", eventId)
-      .eq("user_id", user.id)
-      .maybeSingle();
+  // ✅ 2) ADMIN + asMemberId 없으면: 이 이벤트의 owner 멤버를 기본으로 선택
+  if (isAdminNow) {
+    try {
+      // owner 먼저 찾기
+      const { data: ownerRow, error: oErr } = await supabase
+        .from("event_members")
+        .select("id, role, user_id, created_at")
+        .eq("event_id", eventId)
+        .eq("role", "owner")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
-    if (error) {
-      console.error("resolveOwnerMemberId error:", error);
+      if (oErr) throw oErr;
+
+      if (ownerRow?.id) {
+        const uid = (ownerRow as any).user_id ?? null;
+        setOwnerRole(null);
+        setOwnerLabel(`owner${uid ? ` • ${String(uid).slice(0, 6)}` : ""}`);
+        return ownerRow.id;
+      }
+
+      // owner 없으면 첫 멤버
+      const { data: firstRow, error: fErr } = await supabase
+        .from("event_members")
+        .select("id, role, user_id, created_at")
+        .eq("event_id", eventId)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (fErr) throw fErr;
+
+      if (firstRow?.id) {
+        const role = (firstRow as any).role ?? null;
+        const uid = (firstRow as any).user_id ?? null;
+        setOwnerRole(null);
+        setOwnerLabel(`${role || "member"}${uid ? ` • ${String(uid).slice(0, 6)}` : ""}`);
+        return firstRow.id;
+      }
+
+      setOwnerRole(null);
+      setOwnerLabel("멤버");
+      return null;
+    } catch (e) {
+      console.error("resolveOwnerMemberId(admin default) error:", e);
+      setOwnerRole(null);
+      setOwnerLabel("멤버");
       return null;
     }
+  }
 
-    if (data?.id) {
-      setOwnerLabel(data.role === "owner" ? "주최" : "내");
-      setOwnerRole(data.role ?? null);
-      return data.id;
-    }
+  // ✅ 3) 일반 사용자: 기존 로직 유지 (user_id로 내 멤버 찾기)
+  const { data, error } = await supabase
+    .from("event_members")
+    .select("id, role")
+    .eq("event_id", eventId)
+    .eq("user_id", user.id)
+    .maybeSingle();
 
-    setOwnerLabel("내");
-    setOwnerRole(null);
+  if (error) {
+    console.error("resolveOwnerMemberId error:", error);
     return null;
   }
+
+  if (data?.id) {
+    setOwnerLabel(data.role === "owner" ? "주최" : "내");
+    setOwnerRole(data.role ?? null);
+    return data.id;
+  }
+
+  setOwnerLabel("내");
+  setOwnerRole(null);
+  return null;
+}
+
 
   async function refreshTxCount() {
     if (!eventId) return;
@@ -504,10 +561,11 @@ export default function ResultPage() {
           if (!isAdminNow) {
             setMemberOptions([]);
           } else {
+            // ✅ [수정포인트 3] name 제거, user_id 포함
             // 1차: created_at 정렬 (있으면 이게 베스트)
             const { data: mems1, error: err1 } = await supabase
               .from("event_members")
-              .select("id, role, name, created_at")
+              .select("id, role, user_id, created_at")
               .eq("event_id", eventId)
               .order("created_at", { ascending: true });
 
@@ -517,7 +575,7 @@ export default function ResultPage() {
               // 2차: created_at 없이 재시도 (created_at 컬럼 없을 때 400 방어)
               const { data: mems2, error: err2 } = await supabase
                 .from("event_members")
-                .select("id, role, name")
+                .select("id, role, user_id")
                 .eq("event_id", eventId);
 
               if (err2) {
@@ -1393,6 +1451,7 @@ export default function ResultPage() {
         const txDate = r.event_scrape_transactions?.tx_date ?? null;
         return txDate === ceremonyDate;
       })
+      .filter(isAttended) // ✅ 여기!
       .reduce((acc, r) => acc + (r.gift_amount ?? 0), 0);
 
     // 3) 총 참석자
@@ -1540,7 +1599,7 @@ export default function ResultPage() {
                   >
                     <option value="">(기본) 내 계정 기준</option>
                     {memberOptions.map((m) => {
-                      const label = `${(m.name ?? "").trim() || (m.role ?? "member")} • ${m.id.slice(0, 6)}`;
+                    const label = `${(m.role ?? "member")} • ${(m.user_id ?? "").slice(0, 6) || m.id.slice(0, 6)}`;
                       return (
                         <option key={m.id} value={m.id}>
                           {label}
@@ -2206,7 +2265,7 @@ export default function ResultPage() {
 
               {/* desktop hint */}
               <div className="hidden md:block px-8 py-4 text-[11px] text-slate-500">
-                * 모바일에서는 “이미지 저장” 버튼으로 페이지 단위fh 메시지를 이미지로 저장할 수 있어요.
+                * 모바일에서는 “이미지 저장” 버튼으로 페이지 단위로 메시지를 이미지로 저장할 수 있어요.
               </div>
             </div>
           </div>
