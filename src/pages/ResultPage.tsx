@@ -498,24 +498,43 @@ export default function ResultPage() {
         // ✅ admin이면 이 이벤트의 멤버 옵션 로드(뷰 전환 드롭다운용)
         try {
           const { data: authData } = await supabase.auth.getUser();
-          const email = authData.user?.email ?? null;
+          const email = authData?.user?.email ?? null;
           const isAdminNow = !!email && email.toLowerCase() === String(ADMIN_EMAIL).toLowerCase();
 
-          if (isAdminNow) {
-            const { data: mems } = await supabase
+          if (!isAdminNow) {
+            setMemberOptions([]);
+          } else {
+            // 1차: created_at 정렬 (있으면 이게 베스트)
+            const { data: mems1, error: err1 } = await supabase
               .from("event_members")
-              .select("id, role, name")
+              .select("id, role, name, created_at")
               .eq("event_id", eventId)
               .order("created_at", { ascending: true });
 
-            setMemberOptions((mems as any[]) ?? []);
-          } else {
-            setMemberOptions([]);
+            if (err1) {
+              console.error("[memberOptions] query1 failed:", err1);
+
+              // 2차: created_at 없이 재시도 (created_at 컬럼 없을 때 400 방어)
+              const { data: mems2, error: err2 } = await supabase
+                .from("event_members")
+                .select("id, role, name")
+                .eq("event_id", eventId);
+
+              if (err2) {
+                console.error("[memberOptions] query2 failed:", err2);
+                setMemberOptions([]);
+              } else {
+                setMemberOptions(((mems2 as any[]) ?? []).filter(Boolean));
+              }
+            } else {
+              setMemberOptions(((mems1 as any[]) ?? []).filter(Boolean));
+            }
           }
         } catch (e) {
           console.error("admin memberOptions load failed:", e);
           setMemberOptions([]);
         }
+
 
         // owner_member_id (✅ admin override 지원)
         const memberId = await resolveOwnerMemberId(asMemberId);
