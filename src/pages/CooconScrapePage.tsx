@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { isasDecrypt } from "../lib/seed-cbc";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,7 +22,7 @@ export default function CooconScrapePage() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // eventId: param / query 둘 다 지원
+  // ✅ eventId: param / query 둘 다 지원
   const eventId = useMemo(() => {
     return (
       params.eventId ??
@@ -32,13 +31,19 @@ export default function CooconScrapePage() {
     );
   }, [params.eventId, location.search]);
 
+  // ✅ ceremonyDate: query에서 받기 (ResultPage가 ?ceremonyDate=YYYY-MM-DD로 넘겨줌)
+  const ceremonyDate = useMemo(() => {
+    try {
+      return new URLSearchParams(location.search).get("ceremonyDate") ?? "";
+    } catch {
+      return "";
+    }
+  }, [location.search]);
+
   const popupRef = useRef<Window | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /* =========================
-     1️⃣ 쿠콘 연결 시작
-     ========================= */
   /* =========================
      Constants & Helpers
      ========================= */
@@ -63,16 +68,24 @@ export default function CooconScrapePage() {
   };
 
   const getBankCode = (name: string): string | null => {
-    // 1) 매핑 테이블 조회
+    if (!name) return null;
+
+    // 1) 매핑 테이블 exact
     if (BANK_CODE_MAP[name]) return BANK_CODE_MAP[name];
 
-    // 2) 이름에 포함된 경우 (e.g. "KB국민은행" -> "국민") - 간단 매칭 시도
+    // 2) 이름에 포함된 경우 (e.g. "KB국민은행" -> "국민")
     for (const [key, code] of Object.entries(BANK_CODE_MAP)) {
-      if (name.includes(key.replace("은행", ""))) return code;
+      const needle = key.replace("은행", "");
+      if (needle && name.includes(needle)) return code;
     }
     return null;
   };
 
+  const formatDate = (d: Date) => d.toISOString().split("T")[0];
+
+  /* =========================
+     1️⃣ 쿠콘 연결 시작
+     ========================= */
   const startConnect = async () => {
     try {
       setLoading(true);
@@ -101,7 +114,7 @@ export default function CooconScrapePage() {
       let ownerMemberId: string | null = null;
       const userEmail = session.user.email;
 
-      // 1. Try by user_id
+      // 1) Try by user_id
       const { data: memberByUser } = await supabase
         .from("event_members")
         .select("id")
@@ -109,10 +122,10 @@ export default function CooconScrapePage() {
         .eq("user_id", userId)
         .maybeSingle();
 
-      if (memberByUser) {
+      if (memberByUser?.id) {
         ownerMemberId = memberByUser.id;
       } else if (userEmail) {
-        // 2. Try by email
+        // 2) Try by email
         const { data: memberByEmail } = await supabase
           .from("event_members")
           .select("id")
@@ -120,24 +133,18 @@ export default function CooconScrapePage() {
           .eq("email", userEmail)
           .maybeSingle();
 
-        if (memberByEmail) {
-          ownerMemberId = memberByEmail.id;
-        }
+        if (memberByEmail?.id) ownerMemberId = memberByEmail.id;
       }
 
       if (!ownerMemberId) {
         throw new Error("이벤트 멤버 정보를 찾을 수 없습니다. (권한 없음)");
       }
 
-      // ownerMemberId is now guaranteed to be set if we passed the error check
-
       /* =========================
-         B️⃣ 본인 계좌 1개 조회
+         B️⃣ 본인 계좌 1개 조회 (event_accounts)
          ========================= */
-      // ✅ `bank_code` 컬럼이 없어서 400 에러 발생 추정 -> `bank_name` 조회 후 매핑
       const { data: account, error: accountErr } = await supabase
         .from("event_accounts")
-        // bank_name, account_number(for masking)
         .select("id, bank_name, account_number")
         .eq("event_id", eventId)
         .eq("owner_member_id", ownerMemberId)
@@ -146,7 +153,6 @@ export default function CooconScrapePage() {
         .maybeSingle();
 
       if (accountErr || !account) {
-        // console.error(accountErr);
         throw new Error("연결할 계좌가 없습니다. 먼저 계좌를 설정해주세요.");
       }
 
@@ -157,10 +163,7 @@ export default function CooconScrapePage() {
         );
       }
 
-      // ✅ 계좌번호 마스킹 (간단 예시: 앞 3자리 + *** + 뒤 2자리 등)
-      // 실제로는 전체를 넘겨서 팝업에서 마스킹하거나, 여기서 마스킹해서 넘김.
-      // 여기서는 팝업이 'visible' 로 쓸 수 있으므로 그냥 넘기거나, 보안상 마스킹 처리.
-      // 사용자가 확인용으로만 쓰므로, "110-***-123456" 형태로 만듦
+      // ✅ 계좌번호 마스킹 (간단)
       const rawNum = account.account_number || "";
       const accountMasked =
         rawNum.length > 6
@@ -176,8 +179,8 @@ export default function CooconScrapePage() {
           body: {
             action: "start",
             eventId,
-            eventAccountId: account.id, // ✅ 설정한 계좌 ID 전달
-            bankCode: derivedBankCode, // ✅ 매핑된 코드 사용
+            eventAccountId: account.id,
+            bankCode: derivedBankCode,
           },
         }
       );
@@ -193,10 +196,10 @@ export default function CooconScrapePage() {
          ========================= */
       const url =
         `/coocon/bank_scrape.html` +
-        `?eventId=${eventId}` +
-        `&scrapeAccountId=${data.scrapeAccountId}` +
+        `?eventId=${encodeURIComponent(eventId)}` +
+        `&scrapeAccountId=${encodeURIComponent(data.scrapeAccountId)}` +
         `&bankCode=${encodeURIComponent(derivedBankCode)}` +
-        `&bankName=${encodeURIComponent(account.bank_name)}` +
+        `&bankName=${encodeURIComponent(account.bank_name ?? "")}` +
         `&accountMasked=${encodeURIComponent(accountMasked)}` +
         `&accountNumber=${encodeURIComponent(rawNum)}`;
 
@@ -208,11 +211,10 @@ export default function CooconScrapePage() {
           "coocon_scrape",
           "width=960,height=800"
         );
-}
-
+      }
     } catch (e: any) {
       console.error(e);
-      setError(e.message ?? "알 수 없는 오류");
+      setError(e?.message ?? "알 수 없는 오류");
     } finally {
       setLoading(false);
     }
@@ -223,72 +225,109 @@ export default function CooconScrapePage() {
      ========================= */
   useEffect(() => {
     const onMessage = async (e: MessageEvent) => {
-      console.log("[CooconScrapePage] onMessage received:", e.data); // ✅ Debug Log
+      console.log("[CooconScrapePage] onMessage received:", e.data);
 
       if (!e.data || e.data.type !== "COOCON_FINISH") return;
 
       try {
-        console.log("[CooconScrapePage] Processing COOCON_FINISH payload:", e.data); // ✅ Debug Log
+        console.log(
+          "[CooconScrapePage] Processing COOCON_FINISH payload:",
+          e.data
+        );
 
-        const {
-          scrapeAccountId,
-          bankCode,
-          bankName,
-          accountMasked,
-          mode,
-        } = e.data;
+        if (!eventId) {
+          setError("이벤트 ID가 없습니다.");
+          return;
+        }
+
+        const { scrapeAccountId, bankCode, bankName, accountMasked, mode } =
+          e.data;
 
         const {
           data: { session },
         } = await supabase.auth.getSession();
 
         if (!session) {
-          console.error("[CooconScrapePage] No active session found during onMessage");
+          console.error(
+            "[CooconScrapePage] No active session found during onMessage"
+          );
           return;
         }
 
         console.log("[CooconScrapePage] Calling coocon-connect (finish)...");
-        const { data: finishRes, error: finishErr } = await supabase.functions.invoke("coocon-connect", {
-          body: {
-            action: "finish",
-            eventId,
-            scrapeAccountId,
-            bankCode,
-            bankName,
-            accountMasked,
-            mode: mode ?? "real",
-          },
-        });
+        const { data: finishRes, error: finishErr } =
+          await supabase.functions.invoke("coocon-connect", {
+            body: {
+              action: "finish",
+              eventId,
+              scrapeAccountId,
+              bankCode,
+              bankName,
+              accountMasked,
+              mode: mode ?? "real",
+            },
+          });
 
         if (finishErr) {
-          console.error("[CooconScrapePage] coocon-connect (finish) failed:", finishErr);
+          console.error(
+            "[CooconScrapePage] coocon-connect (finish) failed:",
+            finishErr
+          );
           throw finishErr;
         }
-        console.log("[CooconScrapePage] coocon-connect (finish) success:", finishRes);
 
-        // ✅ 만약 중복 병합(Merge)이 일어났다면, 백엔드가 반환한 ID가 진짜 ID임
+        console.log(
+          "[CooconScrapePage] coocon-connect (finish) success:",
+          finishRes
+        );
+
+        // ✅ merge가 발생하면 백엔드가 준 id가 진짜
         const realScrapeAccountId =
           finishRes?.scrapeAccount?.id ?? scrapeAccountId;
 
-        // 팝업 닫기
+        // 팝업 닫기(디버깅 중이면 주석 유지)
         if (popupRef.current) {
           console.log("[CooconScrapePage] Closing popup");
-          // popupRef.current.close(); // Keep open for debugging
+          // popupRef.current.close();
         }
 
-        // ✅ 4️⃣ 거래내역 스크래핑 요청 (최근 1개월)
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setMonth(startDate.getMonth() - 1);
+        /* =========================
+           ✅ 스크래핑 기간 결정
+           - 스크래핑(tx 저장)은 예식일 전 7일~예식일로 여유 있게
+           - ceremonyDate 없으면 fallback 최근 1개월
+           ========================= */
+        let startDateStr = "";
+        let endDateStr = "";
 
-        const formatDate = (d: Date) => d.toISOString().split("T")[0];
+        if (ceremonyDate) {
+          const c = new Date(`${ceremonyDate}T00:00:00`);
+          const s = new Date(c);
+          s.setDate(s.getDate() - 7);
+
+          startDateStr = formatDate(s);
+          endDateStr = ceremonyDate;
+        } else {
+          const end = new Date();
+          const start = new Date();
+          start.setMonth(start.getMonth() - 1);
+
+          startDateStr = formatDate(start);
+          endDateStr = formatDate(end);
+        }
 
         // 🔄 Client-Side Decryption (Browser Native)
         let cooconOutput = e.data.cooconOutput;
         const decryptParams = e.data.decryptParams;
 
-        if (cooconOutput?.Output?.Result && typeof cooconOutput.Output.Result === "string" && decryptParams?.uid && decryptParams?.action) {
-          console.log("[CooconScrapePage] Attempting Client-Side Decryption (TypeScript)...");
+        if (
+          cooconOutput?.Output?.Result &&
+          typeof cooconOutput.Output.Result === "string" &&
+          decryptParams?.uid &&
+          decryptParams?.action
+        ) {
+          console.log(
+            "[CooconScrapePage] Attempting Client-Side Decryption (TypeScript)..."
+          );
           try {
             // Dynamic import to keep initial bundle small
             const { isasDecrypt } = await import("../lib/seed-cbc");
@@ -301,15 +340,26 @@ export default function CooconScrapePage() {
 
             if (decryptedJsonStr) {
               const decryptedObj = JSON.parse(decryptedJsonStr);
-              console.log("✅ [CooconScrapePage] 복호화 성공! 전체 데이터:", decryptedObj);
+              console.log(
+                "✅ [CooconScrapePage] 복호화 성공! 전체 데이터:",
+                decryptedObj
+              );
 
-              // 거래내역 리스트만 따로 출력 (은행마다 키 값이 다를 수 있음)
-              const txList = decryptedObj["거래내역조회"] || decryptedObj["수시거래내역조회"] || decryptedObj["List"] || decryptedObj["ResultList"];
+              const txList =
+                decryptedObj["거래내역조회"] ||
+                decryptedObj["수시거래내역조회"] ||
+                decryptedObj["List"] ||
+                decryptedObj["ResultList"];
+
               if (txList) {
-                console.log(`📊 총 ${txList.length}건의 거래내역이 발견되었습니다.`);
-                console.table(txList); // 표 형태로 깔끔하게 출력
+                console.log(
+                  `📊 총 ${txList.length}건의 거래내역이 발견되었습니다.`
+                );
+                console.table(txList);
               } else {
-                console.log("⚠️ 거래내역 리스트를 찾을 수 없습니다. (데이터 구조 확인 필요)");
+                console.log(
+                  "⚠️ 거래내역 리스트를 찾을 수 없습니다. (데이터 구조 확인 필요)"
+                );
                 console.log("전체 키:", Object.keys(decryptedObj));
               }
 
@@ -318,27 +368,38 @@ export default function CooconScrapePage() {
                 ...cooconOutput,
                 Output: {
                   ...cooconOutput.Output,
-                  Result: decryptedObj
-                }
+                  Result: decryptedObj,
+                },
               };
             } else {
-              console.error("[CooconScrapePage] Client-Side Decryption returned null");
+              console.error(
+                "[CooconScrapePage] Client-Side Decryption returned null"
+              );
               setError("거래내역 복호화에 실패했습니다.");
             }
           } catch (decErr) {
-            console.error("[CooconScrapePage] Client-Side Decryption Error:", decErr);
+            console.error(
+              "[CooconScrapePage] Client-Side Decryption Error:",
+              decErr
+            );
             setError(`복호화 중 오류가 발생했습니다: ${String(decErr)}`);
           }
         }
 
-        console.log(`[CooconScrapePage] Calling coocon-scrape-transactions for account: ${realScrapeAccountId}`);
+        console.log(
+          `[CooconScrapePage] Calling coocon-scrape-transactions for account: ${realScrapeAccountId}`
+        );
 
         const body = {
           eventId,
           scrapeAccountId: realScrapeAccountId,
-          startDate: formatDate(startDate),
-          endDate: formatDate(endDate),
-          cooconOutput: cooconOutput, // Use modified output
+          startDate: startDateStr,
+          endDate: endDateStr,
+
+          // ✅ 스크래핑은 넓게, ledger 반영은 Edge Function이 ceremonyDate로 필터링
+          ceremonyDate: ceremonyDate || null,
+
+          cooconOutput: cooconOutput,
           decryptParams: decryptParams,
           accountNumber: e.data.accountNumber,
           accountMasked: e.data.accountMasked,
@@ -347,7 +408,9 @@ export default function CooconScrapePage() {
 
         console.log("[CooconScrapePage] Invoking Edge Function with body:", {
           ...body,
-          cooconOutput: body.cooconOutput ? "PRESENT (size=" + JSON.stringify(body.cooconOutput).length + ")" : "MISSING",
+          cooconOutput: body.cooconOutput
+            ? "PRESENT (size=" + JSON.stringify(body.cooconOutput).length + ")"
+            : "MISSING",
           decryptParams: body.decryptParams,
         });
 
@@ -357,16 +420,22 @@ export default function CooconScrapePage() {
               body,
             });
 
-
           if (scrapeErr) {
             const anyErr: any = scrapeErr;
-            console.error("[CooconScrapePage] Transaction scraping failed:", scrapeErr);
+            console.error(
+              "[CooconScrapePage] Transaction scraping failed:",
+              scrapeErr
+            );
+
             if (anyErr?.context) {
-              console.error("[CooconScrapePage] Edge Function error context:", {
-                status: anyErr.context.status,
-                statusText: anyErr.context.statusText,
-                body: anyErr.context.body,
-              });
+              console.error(
+                "[CooconScrapePage] Edge Function error context:",
+                {
+                  status: anyErr.context.status,
+                  statusText: anyErr.context.statusText,
+                  body: anyErr.context.body,
+                }
+              );
             }
 
             const serverMsg =
@@ -375,18 +444,25 @@ export default function CooconScrapePage() {
               anyErr?.context?.statusText ??
               anyErr?.message ??
               "거래내역 불러오기에 실패했습니다.";
+
             setError(String(serverMsg));
           } else {
-            console.log("[CooconScrapePage] Transaction scraping success:", scrapeRes);
-            if (scrapeRes.debugLogs) {
+            console.log(
+              "[CooconScrapePage] Transaction scraping success:",
+              scrapeRes
+            );
+            if (scrapeRes?.debugLogs) {
               console.log("=============== SERVER LOGS ===============");
               console.log(scrapeRes.debugLogs.join("\n"));
               console.log("===========================================");
             }
           }
-        } catch (e) {
-          console.error("[CooconScrapePage] Exception calling scrape-transactions:", e);
-          setError(`거래내역 호출 중 예외가 발생했습니다: ${String(e)}`);
+        } catch (ex) {
+          console.error(
+            "[CooconScrapePage] Exception calling scrape-transactions:",
+            ex
+          );
+          setError(`거래내역 호출 중 예외가 발생했습니다: ${String(ex)}`);
         }
 
         // 리포트 페이지로 이동
@@ -399,11 +475,8 @@ export default function CooconScrapePage() {
     };
 
     window.addEventListener("message", onMessage);
-    return () => {
-      window.removeEventListener("message", onMessage);
-    };
-  }, [eventId, navigate]);
-
+    return () => window.removeEventListener("message", onMessage);
+  }, [eventId, navigate, ceremonyDate]);
 
   /* =========================
      UI
@@ -412,13 +485,11 @@ export default function CooconScrapePage() {
     <div className="max-w-xl mx-auto py-16 px-4">
       <Card>
         <CardContent className="p-8 space-y-6">
-          <h1 className="text-xl font-bold tracking-tight">
-            축의금 계좌 연결
-          </h1>
+          <h1 className="text-xl font-bold tracking-tight">축의금 계좌 연결</h1>
 
           <p className="text-sm text-muted-foreground">
-            은행 계좌를 연결하면 결혼식 당일 축의금 내역을 자동으로
-            불러올 수 있습니다.
+            은행 계좌를 연결하면 결혼식 당일 축의금 내역을 자동으로 불러올 수
+            있습니다.
           </p>
 
           {error && (

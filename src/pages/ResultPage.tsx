@@ -765,11 +765,14 @@ export default function ResultPage() {
     const returnTo = encodeURIComponent(`/app/event/${eventId}/report`);
     const mode = scrapeAccountId ? "scrape_only" : "connect_then_scrape";
 
+    const ceremonyDate = settings?.ceremony_date ?? "";
+
     const qs = new URLSearchParams({
       eventId,
       mode,
       ...(startDate ? { startDate } : {}),
       ...(endDate ? { endDate } : {}),
+      ...(ceremonyDate ? { ceremonyDate } : {}), // ✅ 추가
       returnTo,
     });
 
