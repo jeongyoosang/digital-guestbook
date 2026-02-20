@@ -646,13 +646,11 @@ export default function DisplayPage() {
               ref={videoRef}
               key={currentMediaUrl}
               src={currentMediaUrl}
-              className="absolute inset-0 w-full h-full object-cover"
+              className="absolute inset-0 w-full h-full object-contain bg-black"
               autoPlay
               playsInline
               preload="auto"
-              onEnded={() => {
-                advanceSlide();
-              }}
+              onEnded={() => advanceSlide()}
               onLoadedMetadata={() => {
                 const v = videoRef.current;
                 if (!v) return;
