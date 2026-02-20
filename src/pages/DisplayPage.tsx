@@ -663,7 +663,7 @@ useEffect(() => {
   src={currentMediaUrl}
   className="absolute inset-0 w-full h-full object-cover"
   style={{
-    objectPosition: "50% 8%"  // 🔥 핵심
+    objectPosition: "50% -5%"  // 🔥 핵심
   }}
   autoPlay
   playsInline
