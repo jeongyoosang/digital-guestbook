@@ -664,6 +664,7 @@ useEffect(() => {
   className="absolute inset-0 w-full h-full object-cover"
   style={{
     objectPosition: "50% -5%"  // 🔥 핵심
+    transform: "translateY(12%)", // 🔥 핵심: 아래로 내리기
   }}
   autoPlay
   playsInline
