@@ -400,79 +400,20 @@ export default function DisplayPage() {
   }, [currentIsVideo, currentMediaUrl]); */
 
   // ✅ 사운드 정책(임시수정): 영상/사진 상관없이 기본 BGM만 재생, 영상 소리는 항상 mute
-// ✅ 1) BGM은 mount 시 1회 세팅 + 재생
 useEffect(() => {
   const bgm = bgmRef.current;
-  if (!bgm) return;
-
-  bgm.loop = true;
-  bgm.preload = "auto";
-  bgm.muted = false;
-  bgm.volume = 1;
-
-  // 일부 환경(iOS/TV WebView)에서 도움됨
-  // @ts-ignore
-  bgm.playsInline = true;
-
-  bgm.play().catch(() => {});
-}, []);
-
-// ✅ 2) 영상이 재생되며 BGM이 죽는 환경(스탠바이미) 방어: video 이벤트 기반 keep-alive
-useEffect(() => {
-  const bgm = bgmRef.current;
-  if (!bgm) return;
-
-  const ensureBgm = () => {
-    const a = bgmRef.current;
-    if (!a) return;
-    if (!a.paused) return;          // 이미 재생 중이면 OK
-    a.play().catch(() => {});       // 죽었으면 다시 깨움
-  };
-
-  // 슬라이드 변경 시도 시에도 1번 깨움
-  ensureBgm();
-
-  const v = videoRef.current;
-
-  // ✅ 영상 소리는 무조건 차단 (영상 내장음악 덮어쓰기)
-  if (v) {
-    v.muted = true;
-    // @ts-ignore
-    v.defaultMuted = true;
-    v.volume = 0;
+  if (bgm) {
+    bgm.muted = false;
+    bgm.volume = 1;
+    bgm.play().catch(() => {});
   }
 
-  // 영상 엘리먼트가 존재하면, 재생 관련 이벤트마다 BGM 재생을 다시 보장
-  if (!v) return;
-
-  const onPlay = () => ensureBgm();
-  const onPlaying = () => ensureBgm();
-  const onLoadedData = () => ensureBgm();
-  const onVolumeChange = () => {
-    // 혹시라도 mute가 풀리려 하면 다시 잠금
-    v.muted = true;
-    // @ts-ignore
-    v.defaultMuted = true;
+  const v = videoRef.current;
+  if (v) {
+    v.muted = true;   // ✅ 영상 소리 차단
     v.volume = 0;
-    ensureBgm();
-  };
-
-  v.addEventListener("play", onPlay);
-  v.addEventListener("playing", onPlaying);
-  v.addEventListener("loadeddata", onLoadedData);
-  v.addEventListener("volumechange", onVolumeChange);
-
-  // ✅ 최후의 안전장치(일부 TV WebView에서 이벤트가 누락됨): 짧은 keep-alive
-  const t = window.setInterval(() => ensureBgm(), 1200);
-
-  return () => {
-    v.removeEventListener("play", onPlay);
-    v.removeEventListener("playing", onPlaying);
-    v.removeEventListener("loadeddata", onLoadedData);
-    v.removeEventListener("volumechange", onVolumeChange);
-    window.clearInterval(t);
-  };
-}, [currentMediaUrl]);
+  }
+}, [currentIsVideo, currentMediaUrl]);
   /* ---------- ✅ 자동 밀도 ---------- */
   const queueLen = rotationQueueRef.current.length;
 
