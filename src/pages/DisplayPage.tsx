@@ -643,20 +643,18 @@ export default function DisplayPage() {
         {usePhotoBackground ? (
           currentIsVideo ? (
             <video
-              ref={videoRef}
-              key={currentMediaUrl}
-              src={currentMediaUrl}
-              className="absolute inset-0 w-full h-full object-contain bg-black"
-              autoPlay
-              playsInline
-              preload="auto"
-              onEnded={() => advanceSlide()}
-              onLoadedMetadata={() => {
-                const v = videoRef.current;
-                if (!v) return;
-                v.play().catch(() => {});
-              }}
-            />
+  ref={videoRef}
+  key={currentMediaUrl}
+  src={currentMediaUrl}
+  className="absolute inset-0 w-full h-full object-cover"
+  style={{
+    objectPosition: "50% 10%"  // 🔥 핵심
+  }}
+  autoPlay
+  playsInline
+  preload="auto"
+  onEnded={() => advanceSlide()}
+/>
           ) : isPortrait ? (
             <img
               src={currentMediaUrl}
