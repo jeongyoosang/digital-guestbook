@@ -400,20 +400,82 @@ export default function DisplayPage() {
   }, [currentIsVideo, currentMediaUrl]); */
 
   // ✅ 사운드 정책(임시수정): 영상/사진 상관없이 기본 BGM만 재생, 영상 소리는 항상 mute
+// ✅ 최종 사운드 정책:
+// - 사진/영상 상관없이 우리 BGM(bgm.m4a)만 계속 재생
+// - 영상 자체 소리는 항상 mute
+// - 스탠바이미(WebOS)에서 autoplay 오디오가 막히는 경우 대비: "unlock" + keep-alive
+const [audioUnlocked, setAudioUnlocked] = useState(false);
+
 useEffect(() => {
   const bgm = bgmRef.current;
-  if (bgm) {
-    bgm.muted = false;
-    bgm.volume = 1;
-    bgm.play().catch(() => {});
-  }
+  if (!bgm) return;
 
+  // iOS/TV 계열에서 도움되는 옵션들
+  bgm.loop = true;
+  bgm.preload = "auto";
+  bgm.muted = false;
+  bgm.volume = 1;
+
+  let keepAliveTimer: number | null = null;
+
+  const tryPlay = async () => {
+    try {
+      // 이미 재생 중이면 건드리지 않음
+      if (!bgm.paused) return;
+      await bgm.play();
+      setAudioUnlocked(true);
+    } catch {
+      // autoplay가 막히면 unlocked=false 상태 유지
+      setAudioUnlocked(false);
+    }
+  };
+
+  // 1) 최초 시도
+  tryPlay();
+
+  // 2) keep-alive: TV 브라우저에서 오디오가 "조용히" 멈추는 경우가 있어서 주기적으로 살림
+  keepAliveTimer = window.setInterval(() => {
+    tryPlay();
+  }, 2500);
+
+  // 3) 화면 다시 들어오면(리로드/탭전환/화면보호기 등) 재시도
+  const onVis = () => {
+    if (document.visibilityState === "visible") tryPlay();
+  };
+  document.addEventListener("visibilitychange", onVis);
+
+  // 4) 사용자 제스처로 unlock (TV: 터치/클릭/엔터)
+  const unlockByGesture = () => {
+    tryPlay();
+  };
+  window.addEventListener("pointerdown", unlockByGesture, { passive: true });
+  window.addEventListener("touchstart", unlockByGesture, { passive: true });
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") unlockByGesture();
+  });
+
+  return () => {
+    if (keepAliveTimer) window.clearInterval(keepAliveTimer);
+    document.removeEventListener("visibilitychange", onVis);
+    window.removeEventListener("pointerdown", unlockByGesture as any);
+    window.removeEventListener("touchstart", unlockByGesture as any);
+    // keydown은 익명함수라 제거가 어려우니, 여기서는 생략해도 큰 문제 없음(페이지 단일)
+  };
+  // ❗ 의도: 미디어가 바뀌어도 bgm을 "끊지 않게" 의존성은 비움
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
+useEffect(() => {
   const v = videoRef.current;
-  if (v) {
-    v.muted = true;   // ✅ 영상 소리 차단
-    v.volume = 0;
-  }
-}, [currentIsVideo, currentMediaUrl]);
+  if (!v) return;
+
+  // ✅ 영상 소리는 언제나 kill
+  v.muted = true;
+  v.volume = 0;
+
+  // ✅ 영상 재생 자체는 유지(오디오랑 독립)
+  v.play().catch(() => {});
+}, [currentMediaUrl, currentIsVideo]);
   /* ---------- ✅ 자동 밀도 ---------- */
   const queueLen = rotationQueueRef.current.length;
 
