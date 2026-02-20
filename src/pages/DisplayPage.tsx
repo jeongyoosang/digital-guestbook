@@ -363,7 +363,7 @@ export default function DisplayPage() {
   // ✅ 사운드 정책:
   // - 사진: BGM play
   // - 영상: BGM pause + 영상 음소거 해제 시도
-  useEffect(() => {
+  /*useEffect(() => {
     const bgm = bgmRef.current;
 
     // 사진/템플릿일 때는 bgm 유지
@@ -397,8 +397,23 @@ export default function DisplayPage() {
         })
         .catch(() => {});
     });
-  }, [currentIsVideo, currentMediaUrl]);
+  }, [currentIsVideo, currentMediaUrl]); */
 
+  // ✅ 사운드 정책(임시수정): 영상/사진 상관없이 기본 BGM만 재생, 영상 소리는 항상 mute
+useEffect(() => {
+  const bgm = bgmRef.current;
+  if (bgm) {
+    bgm.muted = false;
+    bgm.volume = 1;
+    bgm.play().catch(() => {});
+  }
+
+  const v = videoRef.current;
+  if (v) {
+    v.muted = true;   // ✅ 영상 소리 차단
+    v.volume = 0;
+  }
+}, [currentIsVideo, currentMediaUrl]);
   /* ---------- ✅ 자동 밀도 ---------- */
   const queueLen = rotationQueueRef.current.length;
 
@@ -654,6 +669,10 @@ export default function DisplayPage() {
   playsInline
   preload="auto"
   onEnded={() => advanceSlide()}
+  
+  muted
+  controls={false}
+  
 />
           ) : isPortrait ? (
             <img
