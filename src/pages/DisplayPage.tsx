@@ -663,7 +663,7 @@ useEffect(() => {
   src={currentMediaUrl}
   className="absolute inset-0 w-full h-full object-cover"
   style={{
-    objectPosition: "50% 70%"  // 🔥 핵심
+    objectPosition: "50% 20%"  // 🔥 핵심
   }}
   autoPlay
   playsInline
@@ -678,7 +678,7 @@ useEffect(() => {
             <img
               src={currentMediaUrl}
               className="absolute inset-0 w-full h-full object-cover"
-              style={{ objectPosition: "50% 5%" }} // ✅ 사진을 위로 올려서(위쪽을 더 보여줌)
+              style={{ objectPosition: "50% 85%" }} // ✅ 사진을 위로 올려서(위쪽을 더 보여줌)
               alt="background"
             />
           ) : (
