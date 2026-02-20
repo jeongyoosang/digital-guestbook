@@ -663,17 +663,15 @@ useEffect(() => {
   src={currentMediaUrl}
   className="absolute inset-0 w-full h-full object-cover"
   style={{
-    objectPosition: "50% -5%"  // 🔥 핵심
-    transform: "translateY(12%)", // 🔥 핵심: 아래로 내리기
+    objectPosition: "50% 0%",
+    transform: "translateY(12%)",
   }}
   autoPlay
   playsInline
   preload="auto"
   onEnded={() => advanceSlide()}
-  
   muted
   controls={false}
-  
 />
           ) : isPortrait ? (
             <img
