@@ -718,7 +718,11 @@ useEffect(() => {
         </span>
 
         <span className="flex items-center gap-2 text-white/90">
-          <InstagramIcon className="text-white/90" />
+          <img
+            src="/Instagram_logo.png"
+            alt="Instagram"
+            className="w-5 h-5 object-contain"
+          />
           <span>@digital_guestbook</span>
         </span>
       </footer>
