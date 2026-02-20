@@ -648,7 +648,7 @@ export default function DisplayPage() {
   src={currentMediaUrl}
   className="absolute inset-0 w-full h-full object-cover"
   style={{
-    objectPosition: "50% 10%"  // 🔥 핵심
+    objectPosition: "50% 15%"  // 🔥 핵심
   }}
   autoPlay
   playsInline
