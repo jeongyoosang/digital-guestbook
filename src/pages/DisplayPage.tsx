@@ -663,8 +663,7 @@ useEffect(() => {
   src={currentMediaUrl}
   className="absolute inset-0 w-full h-full object-cover"
   style={{
-    objectPosition: "50% 0%",
-    transform: "translateY(12%)",
+    objectPosition: "50% 8%", // 위 자막 더 보이게: 20% → 8% (필요하면 0~12% 사이 조절)
   }}
   autoPlay
   playsInline
