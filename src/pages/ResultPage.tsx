@@ -738,48 +738,50 @@ export default function ResultPage() {
     fetchTransactions();
   }, [eventId, ownerMemberId, settings?.ceremony_date]);
 
-  /* ------------------ 은행 내역 업데이트 (스크래핑) ------------------ */
-  const handleGenerateReport = async () => {
-    if (!eventId) return;
+ /* ------------------ 은행 내역 업데이트 (스크래핑) ------------------ */
+const handleGenerateReport = async () => {
+  if (!eventId) return;
 
-    try {
-      const downloadUrl =
-        "https://vtejlkxltifytyvbeato.supabase.co/storage/v1/object/public/download/NXiSAS.exe";
-      const link = document.createElement("a");
-      link.href = downloadUrl;
-      link.download = "NXiSAS.exe";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setScrapeResult("NXiSAS.exe 다운로드를 시작했습니다. 설치/실행 후 업데이트를 진행해주세요.");
-    } catch {
-      // noop
-    }
+  setScrapeResult(null);
+  setScraping(true);
 
-    setScraping(true);
+  const ceremonyDate = settings?.ceremony_date ?? "";
 
-    const date = settings?.ceremony_date ?? "";
-    const startDate = date;
-    const endDate = date;
+  // ✅ ceremony_date 없으면 최근 30일로 fallback (start/end 비어있으면 coocon/scrape에서 꼬일 수 있음)
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, "0");
+  const dd = String(today.getDate()).padStart(2, "0");
+  const endFallback = `${yyyy}-${mm}-${dd}`;
 
-    const returnTo = encodeURIComponent(`/app/event/${eventId}/report`);
-    const mode = scrapeAccountId ? "scrape_only" : "connect_then_scrape";
+  const startFallbackDate = new Date(today);
+  startFallbackDate.setDate(startFallbackDate.getDate() - 30);
+  const yyyy2 = startFallbackDate.getFullYear();
+  const mm2 = String(startFallbackDate.getMonth() + 1).padStart(2, "0");
+  const dd2 = String(startFallbackDate.getDate()).padStart(2, "0");
+  const startFallback = `${yyyy2}-${mm2}-${dd2}`;
 
-    const ceremonyDate = settings?.ceremony_date ?? "";
+  const startDate = ceremonyDate || startFallback;
+  const endDate = ceremonyDate || endFallback;
 
-    const qs = new URLSearchParams({
-      eventId,
-      mode,
-      ...(startDate ? { startDate } : {}),
-      ...(endDate ? { endDate } : {}),
-      ...(ceremonyDate ? { ceremonyDate } : {}), // ✅ 추가
-      returnTo,
-    });
+  const returnTo = encodeURIComponent(`/app/event/${eventId}/report`);
 
-    setTimeout(() => setScraping(false), 300);
-    navigate(`/coocon/scrape?${qs.toString()}`);
-  };
+  // ✅ scrapeAccountId 있으면 "scrape_only" + scrapeAccountId를 반드시 넘김
+  const mode = scrapeAccountId ? "scrape_only" : "connect_then_scrape";
 
+  const qs = new URLSearchParams({
+    eventId,
+    mode,
+    startDate,
+    endDate,
+    ...(ceremonyDate ? { ceremonyDate } : {}),
+    ...(scrapeAccountId ? { scrapeAccountId } : {}), // ✅ 핵심: 이거 없으면 scrape_only가 동작 안 함
+    returnTo,
+  });
+
+  setTimeout(() => setScraping(false), 300);
+  navigate(`/coocon/scrape?${qs.toString()}`);
+};
   /* ------------------ 장부: 업데이트/추가 ------------------ */
   function patchLedger(id: string, nextRow: LedgerRow) {
     setLedger((prev) => prev.map((r) => (r.id === id ? nextRow : r)));

@@ -425,20 +425,22 @@ Deno.serve(async (req) => {
     if (normalized.length > 0) {
       const onConflict = "scrape_account_id,tx_hash";
 
-      const { error: upsertErr, count } = await admin
-        .from("event_scrape_transactions")
-        .upsert(normalized, {
-          onConflict,
-          ignoreDuplicates: true,
-          count: "exact",
-        });
+      const { error: upsertErr } = await admin
+  .from("event_scrape_transactions")
+  .upsert(normalized, {
+    onConflict,
+    ignoreDuplicates: true,
+  });
 
-      if (upsertErr) {
-        log("[UPSERT ERROR]", upsertErr);
-        throw new Error(
-          `transaction upsert failed (onConflict=${onConflict}): ${upsertErr.message}`
-        );
-      }
+if (upsertErr) {
+  log("[UPSERT ERROR]", upsertErr);
+  throw new Error(
+    `transaction upsert failed (onConflict=${onConflict}): ${upsertErr.message}`
+  );
+}
+
+// ✅ insertedTx는 "이번 요청에서 처리한(정규화된) 입금건 수"로 고정 (중복 여부는 DB가 처리)
+insertedTx = normalized.length;
 
       insertedTx = count ?? normalized.length;
 
