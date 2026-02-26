@@ -361,59 +361,41 @@ export default function DisplayPage() {
   }, [usePhotoBackground, mediaUrls.length, currentSlide, currentIsVideo]);
 
   // ✅ 사운드 정책:
-  // - 사진: BGM play
-  // - 영상: BGM pause + 영상 음소거 해제 시도
-  /*useEffect(() => {
-    const bgm = bgmRef.current;
-
-    // 사진/템플릿일 때는 bgm 유지
-    if (!currentIsVideo) {
-      if (bgm) {
-        bgm.muted = false;
-        bgm.volume = 1;
-        bgm.play().catch(() => {});
-      }
-      return;
-    }
-
-    // 영상일 때: bgm 멈추고, 영상 소리 시도
-    if (bgm) bgm.pause();
-
-    const v = videoRef.current;
-    if (!v) return;
-
-    v.muted = false;
-    v.volume = 1;
-
-    v.play().catch(() => {
-      // 소리 있는 autoplay가 막히면: muted로 먼저 시작 -> 이후 언뮤트 시도
-      v.muted = true;
-      v.play()
-        .then(() => {
-          window.setTimeout(() => {
-            v.muted = false;
-            v.volume = 1;
-          }, 300);
-        })
-        .catch(() => {});
-    });
-  }, [currentIsVideo, currentMediaUrl]); */
-
-  // ✅ 사운드 정책(임시수정): 영상/사진 상관없이 기본 BGM만 재생, 영상 소리는 항상 mute
-useEffect(() => {
+  useEffect(() => {
   const bgm = bgmRef.current;
-  if (bgm) {
-    bgm.muted = false;
-    bgm.volume = 1;
-    bgm.play().catch(() => {});
+  const v = videoRef.current;
+
+  if (!currentIsVideo) {
+    // 📸 사진일 때 → BGM 재생
+    if (bgm) {
+      bgm.muted = false;
+      bgm.volume = 1;
+      bgm.play().catch(() => {});
+    }
+    if (v) v.pause();
+    return;
   }
 
-  const v = videoRef.current;
-  if (v) {
-    v.muted = true;   // ✅ 영상 소리 차단
-    v.volume = 0;
-  }
+  // 🎥 영상일 때 → BGM 중지 + 영상 소리 재생
+  if (bgm) bgm.pause();
+
+  if (!v) return;
+
+  v.muted = false;
+  v.volume = 1;
+
+  v.play().catch(() => {
+    // autoplay 차단 대비
+    v.muted = true;
+    v.play().then(() => {
+      setTimeout(() => {
+        v.muted = false;
+        v.volume = 1;
+      }, 300);
+    }).catch(() => {});
+  });
 }, [currentIsVideo, currentMediaUrl]);
+
   /* ---------- ✅ 자동 밀도 ---------- */
   const queueLen = rotationQueueRef.current.length;
 
@@ -596,23 +578,34 @@ useEffect(() => {
         className="relative w-full flex items-center justify-center px-6"
         style={{ height: topBarHeight }}
       >
-        <div className="absolute inset-0 bg-black/40 z-20" />
-
-        <div className="relative w-full max-w-6xl flex items-center justify-between z-40">
+        {/* ✅ 상단 블러 확장(사진일 때만) */}
+        {usePhotoBackground && !!currentMediaUrl && !currentIsVideo ? (
+          <div className="absolute inset-0 z-20 overflow-hidden">
+            <img
+              src={currentMediaUrl}
+              className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl"
+              alt="header blur bg"
+            />
+            <div className="absolute inset-0 bg-[#F5F5F5]/75" />
+          </div>
+        ) : (
+          <div className="absolute inset-0 bg-[#F5F5F5] z-20" />
+        )}       
+ <div className="relative w-full max-w-6xl flex items-center justify-between z-40">
           <div className="text-right">
             <p
-              className={`${groomBrideLabelClass} ${groomBrideGapClass} text-white/70`}
+              className={`${groomBrideLabelClass} ${groomBrideGapClass} text-black/60`}
               style={roleLabelStyle}
             >
               {leftRoleLabel}
             </p>
-            <p className="text-white font-bold" style={nameStyle}>
+            <p className="text-black font-bold" style={nameStyle}>
               {groomName}
             </p>
           </div>
 
           <div className="text-center">
-            <p className="text-white font-bold mb-3" style={titleStyle}>
+            <p className="text-black font-bold mb-3" style={titleStyle}>
               축하의 마음 전하기
             </p>
 
@@ -623,12 +616,12 @@ useEffect(() => {
               alt="QR"
             />
 
-            <p className="mt-3 text-white/90" style={lowerStyle}>
+            <p className="mt-3 text-black/80" style={lowerStyle}>
               {lowerMessage}
             </p>
 
             {dateText && (
-              <p className="text-white/70" style={dateStyle}>
+              <p className="text-black/60" style={dateStyle}>
                 {dateText}
               </p>
             )}
@@ -636,12 +629,12 @@ useEffect(() => {
 
           <div className="text-left">
             <p
-              className={`${groomBrideLabelClass} ${groomBrideGapClass} text-white/70`}
+              className={`${groomBrideLabelClass} ${groomBrideGapClass} text-black/60`}
               style={roleLabelStyle}
             >
               {rightRoleLabel}
             </p>
-            <p className="text-white font-bold" style={nameStyle}>
+            <p className="text-black font-bold" style={nameStyle}>
               {brideName}
             </p>
           </div>
@@ -658,25 +651,21 @@ useEffect(() => {
         {usePhotoBackground ? (
           currentIsVideo ? (
             <video
-  ref={videoRef}
-  key={currentMediaUrl}
-  src={currentMediaUrl}
-  className="absolute inset-0 w-full h-full object-cover"
-  style={{
-    objectPosition: "50% 8%", // 위 자막 더 보이게: 20% → 8% (필요하면 0~12% 사이 조절)
-  }}
-  autoPlay
-  playsInline
-  preload="auto"
-  onEnded={() => advanceSlide()}
-  muted
-  controls={false}
-/>
+              ref={videoRef}
+              key={currentMediaUrl}
+              src={currentMediaUrl}
+              className="absolute inset-0 w-full h-full object-cover"
+              autoPlay
+              playsInline
+              preload="auto"
+              onEnded={() => advanceSlide()}
+              muted
+              controls={false}
+            />
           ) : isPortrait ? (
             <img
               src={currentMediaUrl}
               className="absolute inset-0 w-full h-full object-cover"
-              style={{ objectPosition: "50% 95%" }} // ✅ 사진을 위로 올려서(위쪽을 더 보여줌)
               alt="background"
             />
           ) : (
@@ -701,11 +690,12 @@ useEffect(() => {
             }}
           />
         )}
+        
       </section>
 
       {/* FOOTER */}
       <footer
-        className="relative z-50 w-full flex items-center justify-between px-6 bg-black/70 text-white"
+        className="relative z-50 w-full flex items-center justify-between px-6 bg-[#F5F5F5] text-black"
         style={{ height: FOOTER_HEIGHT_PX }}
       >
         <span>
@@ -716,7 +706,7 @@ useEffect(() => {
           })}
         </span>
 
-        <span className="flex items-center gap-2 text-white/90">
+        <span className="flex items-center gap-2 text-black/80">
           <img
             src="/Instagram_logo.png"
             alt="Instagram"

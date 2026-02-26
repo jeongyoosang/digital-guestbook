@@ -77,7 +77,7 @@ const MAX_MEDIA_FILE_MB = 150; // 사진/영상 모두 파일 1개당 150MB 이�
 
 const DEFAULT_TITLE = "WEDDING MESSAGES";
 const DEFAULT_SUBTITLE = "소중한 분들의 마음을 전하는 메시지를 남겨주세요";
-const DEFAULT_LOWER_MESSAGE = "축하의 메시지를 남겨주셔서 감사합니다";
+const DEFAULT_LOWER_MESSAGE = "자리를 빛내주셔서 감사합니다";
 
 const DEFAULT_START_OFFSET = -60; // 예식 시작 1시간 전
 const DEFAULT_END_OFFSET = -10; // 예식 시작 10분 전
