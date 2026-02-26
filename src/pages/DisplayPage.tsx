@@ -416,44 +416,70 @@ export default function DisplayPage() {
   const groomBrideLabelClass = isPortrait ? "text-4xl" : "text-2xl";
   const groomBrideGapClass = isPortrait ? "mb-3" : "mb-2";
 
-  const roleLabelStyle: CSSProperties = {
-    letterSpacing: "0.02em",
-    fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
-  };
+  /* ---------- ✅ 헤더/폰트 (프리미엄 세팅) ---------- */
 
-  const nameStyle: CSSProperties = isPortrait
-    ? {
-        fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
-        fontSize: "clamp(46px, 4.6vw, 84px)",
-        lineHeight: 1.03,
-      }
-    : {
-        fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
-        fontSize: "clamp(28px, 4.2vw, 64px)",
-        lineHeight: 1.05,
-      };
+const roleLabelStyle: CSSProperties = {
+  fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
+  letterSpacing: "0.12em",
+  fontWeight: 400,
+  opacity: 0.7,
+};
 
-  const titleStyle: CSSProperties = isPortrait
-    ? {
-        fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
-        fontSize: "clamp(60px, 5.0vw, 102px)",
-        lineHeight: 1.03,
-      }
-    : {
-        fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
-        fontSize: "clamp(22px, 3.2vw, 52px)",
-        lineHeight: 1.1,
-      };
+const nameStyle: CSSProperties = isPortrait
+  ? {
+      fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
+      fontSize: "clamp(48px, 4.8vw, 88px)",
+      lineHeight: 1.06,
+      fontWeight: 600,
+      letterSpacing: "-0.01em",
+    }
+  : {
+      fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
+      fontSize: "clamp(30px, 4.4vw, 66px)",
+      lineHeight: 1.08,
+      fontWeight: 600,
+      letterSpacing: "-0.01em",
+    };
 
-  const lowerStyle: CSSProperties = isPortrait
-    ? { fontSize: "clamp(30px, 2.6vw, 46px)" }
-    : { fontSize: "clamp(14px, 1.6vw, 24px)" };
+const titleStyle: CSSProperties = isPortrait
+  ? {
+      fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
+      fontSize: "clamp(62px, 5.2vw, 104px)",
+      lineHeight: 1.05,
+      fontWeight: 500,
+      letterSpacing: "0.05em",
+    }
+  : {
+      fontFamily: "Noto Serif KR, Nanum Myeongjo, serif",
+      fontSize: "clamp(24px, 3.4vw, 54px)",
+      lineHeight: 1.1,
+      fontWeight: 500,
+      letterSpacing: "0.05em",
+    };
 
-  const dateStyle: CSSProperties = isPortrait
-    ? { fontSize: "clamp(24px, 2.2vw, 36px)" }
-    : { fontSize: "clamp(12px, 1.4vw, 18px)" };
+const lowerStyle: CSSProperties = isPortrait
+  ? {
+      fontSize: "clamp(30px, 2.6vw, 46px)",
+      letterSpacing: "0.02em",
+    }
+  : {
+      fontSize: "clamp(15px, 1.7vw, 26px)",
+      letterSpacing: "0.02em",
+    };
 
-  const qrSize = isPortrait
+const dateStyle: CSSProperties = isPortrait
+  ? {
+      fontSize: "clamp(24px, 2.2vw, 36px)",
+      letterSpacing: "0.06em",
+      opacity: 0.65,
+    }
+  : {
+      fontSize: "clamp(13px, 1.4vw, 20px)",
+      letterSpacing: "0.06em",
+      opacity: 0.65,
+    };
+
+   const qrSize = isPortrait
     ? "clamp(200px, 15vw, 280px)"
     : "clamp(80px, 8vw, 120px)";
 
@@ -579,19 +605,9 @@ export default function DisplayPage() {
         style={{ height: topBarHeight }}
       >
         {/* ✅ 상단 블러 확장(사진일 때만) */}
-        {usePhotoBackground && !!currentMediaUrl && !currentIsVideo ? (
-          <div className="absolute inset-0 z-20 overflow-hidden">
-            <img
-              src={currentMediaUrl}
-              className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl"
-              alt="header blur bg"
-            />
-            <div className="absolute inset-0 bg-[#F5F5F5]/75" />
-          </div>
-        ) : (
-          <div className="absolute inset-0 bg-[#F5F5F5] z-20" />
-        )}       
- <div className="relative w-full max-w-6xl flex items-center justify-between z-40">
+        {/* 상단 프리미엄 화이트 패널 (블러 제거) */}
+        <div className="absolute inset-0 bg-[#F5F5F5] z-20" />      
+        <div className="relative w-full max-w-6xl flex items-center justify-between z-40">
           <div className="text-right">
             <p
               className={`${groomBrideLabelClass} ${groomBrideGapClass} text-black/60`}
@@ -609,12 +625,22 @@ export default function DisplayPage() {
               축하의 마음 전하기
             </p>
 
-            <img
-              src="/preic_qr.png"
-              className="mx-auto"
-              style={{ width: qrSize, height: qrSize }}
-              alt="QR"
-            />
+            <div
+  className="mx-auto flex items-center justify-center rounded-2xl"
+  style={{
+    width: qrSize,
+    height: qrSize,
+    backgroundColor: "#FAFAFA",
+    boxShadow: "0 6px 24px rgba(0,0,0,0.04)",
+    padding: "12px",
+  }}
+>
+  <img
+    src="/preic_qr.png"
+    className="w-full h-full object-contain"
+    alt="QR"
+  />
+</div>
 
             <p className="mt-3 text-black/80" style={lowerStyle}>
               {lowerMessage}
