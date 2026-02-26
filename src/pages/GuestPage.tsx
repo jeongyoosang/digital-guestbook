@@ -117,7 +117,7 @@ const I18N: Record<
     sending: "전송 중...",
     infoUse: "입력하신 정보는 예식 확인 및 감사인사 목적으로만 사용됩니다.",
     successTitle: "마음이 전달되었습니다",
-    successDesc: "두 분의 앞날을 함께 축복해주셔서 감사합니다.",
+    successDesc: "메시지가 곧 디스플레이에 표시됩니다.\n 방명록/축의/메시지는 예식 후 웨딩리포트로 정리되어 전달됩니다.",
     giftTitle: "축의금 송금하기",
     copyBtn: "계좌번호 복사하기",
     copied: "계좌번호가 복사되었습니다.",
@@ -152,7 +152,7 @@ const I18N: Record<
     sending: "Sending...",
     infoUse: "Your info is used only for check-in and thank-you messages.",
     successTitle: "Delivered",
-    successDesc: "Thank you for celebrating with them.",
+    successDesc: "Message received.\nIt will appear on the display shortly.\nAfter the ceremony, it will be delivered in the wedding report.",  
     giftTitle: "Send a gift",
     copyBtn: "Copy account",
     copied: "Copied.",
@@ -377,22 +377,34 @@ export default function GuestPage() {
 
     try {
       // 1) messages insert (메시지는 여러 개 허용)
-      const bodyToSave = sendMoneyOnly ? DEFAULT_DISPLAY_MESSAGE : message.trim();
-      const nicknameToSave =
-        displayMode === "nickname" ? (isBlank(nickname) ? realName.trim() : nickname.trim()) : null;
+        const bodyToSave = sendMoneyOnly ? DEFAULT_DISPLAY_MESSAGE : message.trim();
 
-      const msgPayload: any = {
-        event_id: eventId,
-        side,
-        guest_name: realName.trim(),
-        guest_phone: phoneDigits,
-        relationship: relationshipValue,
-        body: bodyToSave,
-        source: "onsite",
-        is_anonymous: displayMode === "anonymous" || sendMoneyOnly,
-        nickname: nicknameToSave,
-        // (선택) 나중에 필요하면 account_id 저장 컬럼을 messages에 추가 가능
-      };
+        // ✅ [추가] 닉네임 표시를 선택했는데, 입력이 비어있으면 제출 막기
+        // - sendMoneyOnly(메시지 생략)일 땐 Step2가 숨겨지니 이 체크는 패스
+        if (!sendMoneyOnly && displayMode === "nickname" && isBlank(nickname)) {
+          alert(lang === "KO"
+            ? "닉네임 표시를 선택하셨습니다.\n표시할 이름을 입력해주세요."
+            : "You selected 'Show nickname'.\nPlease enter a name to display."
+          );
+          return;
+        }
+
+        // ✅ [변경] 더 이상 빈 값이면 실명으로 자동 대체하지 않음
+        // - 사용자가 실명을 넣고 싶으면 nickname 칸에 실명을 직접 입력하면 됨
+        const nicknameToSave =
+          displayMode === "nickname" ? nickname.trim() : null;
+
+        const msgPayload: any = {
+          event_id: eventId,
+          side,
+          guest_name: realName.trim(),
+          guest_phone: phoneDigits,
+          relationship: relationshipValue,
+          body: bodyToSave,
+          source: "onsite",
+          is_anonymous: displayMode === "anonymous" || sendMoneyOnly,
+          nickname: nicknameToSave,
+        };
 
       const { data: msgData, error: msgErr } = await supabase
         .from("messages")
@@ -454,8 +466,9 @@ export default function GuestPage() {
 
           <div className="text-4xl mb-4">💐</div>
           <h2 className="text-2xl font-serif font-medium text-gray-900 mb-2">{t.successTitle}</h2>
-          <p className="text-gray-500 text-sm mb-8">{t.successDesc}</p>
-
+          <p className="text-gray-500 text-sm mb-8 whitespace-pre-line">
+            {t.successDesc}
+          </p>
           {selectedAccountForSummary && (
             <div className="bg-white border border-rose-100 rounded-3xl p-6 shadow-sm mb-6 text-left">
               <span className="text-[10px] font-bold text-rose-400 uppercase tracking-widest">
