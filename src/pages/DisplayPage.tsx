@@ -550,6 +550,12 @@ const dateStyle: CSSProperties = isPortrait
   }, [activeItems, phase, intervalMs, maxActive, isPortrait]);
 
   /* ---------- render ---------- */
+
+  // ✅ 세로(StandbyME Portrait)에서 좌/우를 안쪽으로 모으기
+  const headerMaxWClass = isPortrait ? "max-w-5xl" : "max-w-6xl";
+  const leftSideClass = isPortrait ? "text-right pr-10" : "text-right";
+  const rightSideClass = isPortrait ? "text-left pl-10" : "text-left";
+
   return (
     <div className="relative min-h-screen bg-black overflow-hidden">
       <style>{`
@@ -604,11 +610,12 @@ const dateStyle: CSSProperties = isPortrait
         className="relative w-full flex items-center justify-center px-6"
         style={{ height: topBarHeight }}
       >
-        {/* ✅ 상단 블러 확장(사진일 때만) */}
-        {/* 상단 프리미엄 화이트 패널 (블러 제거) */}
-        <div className="absolute inset-0 bg-[#F5F5F5] z-20" />      
-        <div className="relative w-full max-w-6xl flex items-center justify-between z-40">
-          <div className="text-right">
+        <div className="absolute inset-0 bg-[#F5F5F5] z-20" />
+
+        <div
+          className={`relative w-full ${headerMaxWClass} flex items-center justify-between z-40`}
+        >
+          <div className={leftSideClass}>
             <p
               className={`${groomBrideLabelClass} ${groomBrideGapClass} text-black/60`}
               style={roleLabelStyle}
@@ -626,21 +633,21 @@ const dateStyle: CSSProperties = isPortrait
             </p>
 
             <div
-  className="mx-auto flex items-center justify-center rounded-2xl"
-  style={{
-    width: qrSize,
-    height: qrSize,
-    backgroundColor: "#FAFAFA",
-    boxShadow: "0 6px 24px rgba(0,0,0,0.04)",
-    padding: "12px",
-  }}
->
-  <img
-    src="/preic_qr.png"
-    className="w-full h-full object-contain"
-    alt="QR"
-  />
-</div>
+              className="mx-auto flex items-center justify-center rounded-2xl"
+              style={{
+                width: qrSize,
+                height: qrSize,
+                backgroundColor: "#FAFAFA",
+                boxShadow: "0 6px 24px rgba(0,0,0,0.04)",
+                padding: "12px",
+              }}
+            >
+              <img
+                src="/preic_qr.png"
+                className="w-full h-full object-contain"
+                alt="QR"
+              />
+            </div>
 
             <p className="mt-3 text-black/80" style={lowerStyle}>
               {lowerMessage}
@@ -653,7 +660,7 @@ const dateStyle: CSSProperties = isPortrait
             )}
           </div>
 
-          <div className="text-left">
+          <div className={rightSideClass}>
             <p
               className={`${groomBrideLabelClass} ${groomBrideGapClass} text-black/60`}
               style={roleLabelStyle}
